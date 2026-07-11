@@ -26,8 +26,9 @@ gets an entry: hypothesis → files changed → validation → decision → lear
 - `SPELL_SPEC.md` written from reference source analysis (tick discipline, move universe, wire
   formats, NNUE contract, verification protocol).
 - Perft parity suite generated against the frozen baseline
-  (`tests/reference/gen_perft_suite.py` → `tests/reference/perft_spell.csv`), plus full root
-  divides for startpos d1/d2.
+  (`tests/reference/gen_perft_suite.py` → `tests/reference/perft_spell.csv`, 61 positions:
+  active zones of both types, cooldowns 1–3, spent holdings, checks, endgames; d1+d2 for all,
+  d3 for small ones), plus full root divides for startpos d1/d2.
 
 **Learnings / context for future sessions**:
 - The public branch's legal universe **differs from the private historical line**: startpos

@@ -143,11 +143,13 @@ rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] w KQkq - 0 1
 - Holdings in brackets after the board: uppercase = White's spells, lowercase = Black's
   (`J`×2 + `F`×5 each at start). Order inside brackets is not significant; the reference emits
   jumps first.
-- Active spell state, when any cooldown is nonzero, is appended as a `{...}` block after the
-  en-passant field (before halfmove clock in emission position — exact emission:
-  `<board>[holdings] <stm> <castling> <ep> {state} <rule50> <fullmove>`):
-  `{F@e4:3,J@-:1,f@-:0,j@-:0}` — per color/spell: `<char>@<zone-center-square or '-'>:<cooldown>`.
-  Entries with cooldown 0 and no zone may be omitted; parsing accepts any subset.
+- Active spell state is emitted as a `{...}` block between the holdings and the side to move —
+  exact emission order (confirmed against reference output):
+  `<board>[holdings] {state} <stm> <castling> <ep> <rule50> <fullmove>`, e.g.
+  `r1bqkbnr/1ppppp1p/p1n3p1/8/1P1P4/5P2/PBP1P1PP/RN1QKBNR[JJFFFFjjfffff] {F@e3:3,J@-:0,f@-:0,j@-:0} b KQkq - 0 4`.
+  Per color/spell entry: `<char>@<zone-center-square or '-'>:<cooldown>`. The reference **always**
+  emits the block (even when all entries are `-:0`); the parser must accept a missing block and
+  any subset of entries (the startpos config FEN omits it entirely).
 - Freeze zone center: the square whose (clipped) 3x3 zone equals the stored zone.
 
 ### 5.2 UCI moves
