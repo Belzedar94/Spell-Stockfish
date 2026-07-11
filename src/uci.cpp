@@ -613,6 +613,11 @@ std::string UCIEngine::move(Move m, bool chess960) {
     if (m.type_of() == PROMOTION)
         move += " pnbrqk"[m.promotion_type()];
 
+    // Spell casts are prefixed to the base move: "f@e7,e2e4" / "j@d6,d7d5"
+    if (m.is_spell())
+        move = std::string(1, m.spell_type() == SPELL_FREEZE ? 'f' : 'j') + "@"
+             + square(m.gate_sq()) + "," + move;
+
     return move;
 }
 

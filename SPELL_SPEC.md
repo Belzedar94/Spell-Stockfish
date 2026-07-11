@@ -29,7 +29,11 @@ Spell Chess is standard chess plus two spell types per player:
 - **Self-check is legal** (`allow_self_check() == true` in the reference: extinction value set, royal
   piece in extinction set, not pseudo-royal). Moves that leave or place the own king in check are
   legal; the punishment is that the king can be captured. "Check" still exists as a concept
-  (e.g. castling restrictions, search bonuses) but does not restrict move legality.
+  (e.g. castling restrictions, search bonuses) but does not restrict move legality — **with one
+  exception, verified against the reference: the king may not MOVE onto an attacked square**
+  (attackers evaluated spell-aware: frozen attackers — including those frozen by the very cast
+  carried by the king move — do not count, and jump transparency can open new attack lines).
+  Self-check by any other means (breaking a pin, zone expiry, discovered attacks) is legal.
 
 ## 2. Spell state model
 
@@ -87,9 +91,23 @@ This makes `parse(fen(pos))` idempotent and rejects impossible zone/cooldown com
   (Historical note: the old private line blocked the caster on the full 3x3 — that is where the
   obsolete startpos perft `d1=1814` came from; `1878 − 1814 = 64` = exactly the diagonal-origin
   casts. The public rule is authoritative.)
-- Castling as base move of a freeze cast: additionally rejected if the castling destination is
-  frozen. Castling is illegal if the king or castling rook is frozen, or the king is in check
-  (including checks that (re)appear on zone expiry).
+### 3.1b Castling (all rules verified empirically against the frozen baseline)
+- No castling while **in check**, evaluated on the **pre-cast state only**: a candidate freeze does
+  NOT silence the checker (the check would reappear on zone expiry), and a candidate jump's
+  transparency does NOT create a disqualifying check either (`j@d2,e1g1` is legal even when the
+  transparency opens a latent diagonal onto e1).
+- **Path squares** (king destination up to, but excluding, the king's origin) must not be attacked —
+  evaluated WITH the candidate context: freezing the path-attacker with the very cast legalizes the
+  castling (allowed freeze gates = exactly the 3x3 neighborhood of the attacker, minus the
+  restrictions below), and candidate transparency can open new attack lines onto the path.
+- Frozen king or frozen castling rook: no castling.
+- A **jump-transparent rook cannot castle** (phased out); a jump-transparent KING still can —
+  including casting `j@<king-square>` together with the castling in the same ply.
+- Freeze-gated castling: the gate may not be in the block zone of the king's origin (general
+  caster rule) **nor equal the king's destination square**.
+- Jump-gated castling: the gate may not equal the base move's `to` square (the rook's square, per
+  the general jump rule).
+- Path emptiness uses the standard physical occupancy.
 
 ### 3.2 Jump
 - The jump gate square must be **occupied** (either color). While the zone is active, that square is
@@ -99,6 +117,22 @@ This makes `parse(fen(pos))` idempotent and rejects impossible zone/cooldown com
 - No move may **land on** the gate square while gated in the same cast (`to == gate` is filtered for
   the casting ply's combined moves); capturing the jumped piece without the spell is of course a
   normal base move.
+- **Transparent-square landings** (verified empirically against the reference binary):
+  - Sliding RAYS: transparent squares never block (removed from occupancy), whether physically
+    occupied or empty.
+  - Pieces (knight/bishop/rook/queen/king) may NOT land quietly on a jump-transparent square,
+    whether it is physically empty or occupied. Capturing a piece that stands on one is allowed.
+  - **Pawn pushes use a PHASE-FLIPPED occupancy**: a transparent square inverts its state — an
+    occupied one counts as empty (the push may land on it; the reference resolves the landing as a
+    forward "capture"), an empty one counts as solid (no push may land there, e.g. after the jumped
+    piece moved away while the zone persists). Applies to single-push landings and both squares of
+    a double push. Pawn captures target physical enemies as usual.
+- **En passant king-safety** (the one non-king move with a legality filter, inherited from the
+  reference): an ep capture is illegal if, with both pawns removed and the capturer placed on the
+  ep square, the own king is attacked — attackers evaluated spell-aware (jump transparency can
+  create such a "pin through the transparent square"; frozen attackers do not count). The ep square
+  itself is recorded in FEN/state whenever an enemy pawn pseudo-attacks it and it is physically
+  empty, independent of this capture-time filter.
 
 ## 4. Move universe (perft-relevant)
 

@@ -52,7 +52,23 @@ Key enpassant[FILE_NB];
 Key castling[CASTLING_RIGHT_NB];
 Key side, noPawns;
 
+// Spell chess: active zone gate (SQ_NONE contributes nothing), cooldown value
+// and hand count are all part of the position identity (repetition, TT).
+Key spellGate[COLOR_NB][SPELL_NB][SQUARE_NB];
+Key spellCd[COLOR_NB][SPELL_NB][SPELL_COOLDOWN + 1];
+Key spellHand[COLOR_NB][SPELL_NB][8];
+
 }
+
+namespace {
+
+// Fold the full spell state of one color/spell pair into a key
+inline Key spell_state_key(Color c, SpellType sp, Square gate, int cd, int hand) {
+    return (gate != SQ_NONE ? Zobrist::spellGate[c][sp][gate] : 0) ^ Zobrist::spellCd[c][sp][cd]
+         ^ Zobrist::spellHand[c][sp][hand];
+}
+
+}  // namespace
 
 namespace {
 
@@ -137,6 +153,17 @@ void Position::init() {
     Zobrist::side    = rng.rand<Key>();
     Zobrist::noPawns = rng.rand<Key>();
 
+    for (Color c : {WHITE, BLACK})
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+        {
+            for (Square s = SQ_A1; s <= SQ_H8; ++s)
+                Zobrist::spellGate[c][sp][s] = rng.rand<Key>();
+            for (int cd = 0; cd <= SPELL_COOLDOWN; ++cd)
+                Zobrist::spellCd[c][sp][cd] = rng.rand<Key>();
+            for (int n = 0; n < 8; ++n)
+                Zobrist::spellHand[c][sp][n] = rng.rand<Key>();
+        }
+
     // Prepare the cuckoo tables
     cuckoo.fill(0);
     cuckooMove.fill(Move::none());
@@ -210,6 +237,11 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
     std::memset(si, 0, sizeof(StateInfo));
     st = si;
 
+    // No active spell zones until told otherwise (0 from memset would mean SQ_A1)
+    for (Color c : {WHITE, BLACK})
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+            st->spellGate[c][sp] = SQ_NONE;
+
     ss >> std::noskipws;
 
     int numPieces = 0;
@@ -247,6 +279,28 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
             if (rank < RANK_1)
                 return PositionSetError("Invalid FEN. Invalid rank reached.");
         }
+        else if (token == '[')
+        {
+            // Spell holdings, e.g. "[JJFFFFFjjfffff]"; an empty "[]" is valid
+            for (;;)
+            {
+                if (!(ss >> token))
+                    return PositionSetError("Invalid FEN. Unterminated spell holdings.");
+
+                if (token == ']')
+                    break;
+
+                const Color     c  = isupper(token) ? WHITE : BLACK;
+                const char      up = char(toupper(token));
+                const SpellType sp = up == 'F' ? SPELL_FREEZE : SPELL_JUMP;
+                if (up != 'F' && up != 'J')
+                    return PositionSetError(std::string("Invalid FEN. Invalid spell holding: ")
+                                            + std::string(1, token));
+
+                if (++st->spellHand[c][sp] > 7)
+                    return PositionSetError("Invalid FEN. Too many spells in hand.");
+            }
+        }
         else
         {
             if (file >= FILE_NB)
@@ -273,7 +327,8 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
     if (pieces(PAWN) & (Rank1BB | Rank8BB))
         return PositionSetError("Unsupported position. Pawns on the first or eighth rank.");
 
-    if (count<KING>(WHITE) != 1 || count<KING>(BLACK) != 1)
+    // Spell chess: a king may already have been captured (terminal position)
+    if (count<KING>(WHITE) > 1 || count<KING>(BLACK) > 1)
         return PositionSetError("Unsupported position. Incorrect number of kings.");
 
     for (Color c : {WHITE, BLACK})
@@ -289,6 +344,60 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
                                     + (c == WHITE ? "WHITE." : "BLACK."));
     }
 
+    // Optional spell state block between holdings and side to move, e.g.
+    // "{F@e4:3,J@-:1,f@-:0,j@-:0}". Any subset of entries is accepted.
+    ss >> std::ws;
+    if (ss.peek() == '{')
+    {
+        ss >> token;  // consume '{'
+        std::string state;
+        while (ss >> token && token != '}')
+            state.push_back(char(token));
+        if (token != '}')
+            return PositionSetError("Invalid FEN. Unterminated spell state block.");
+
+        usize idx = 0;
+        while (idx < state.size())
+        {
+            usize next  = state.find(',', idx);
+            usize len   = next == string::npos ? state.size() - idx : next - idx;
+            string item = state.substr(idx, len);
+            idx         = next == string::npos ? state.size() : next + 1;
+
+            // Entry format: <spell-char>@<square or '-'>:<cooldown>
+            usize colon = item.find(':');
+            if (item.size() < 5 || item[1] != '@' || colon == string::npos || colon < 3)
+                return PositionSetError("Invalid FEN. Malformed spell state entry: " + item);
+
+            const char up = char(toupper(item[0]));
+            if (up != 'F' && up != 'J')
+                return PositionSetError("Invalid FEN. Invalid spell state entry: " + item);
+            const Color     c  = isupper(item[0]) ? WHITE : BLACK;
+            const SpellType sp = up == 'F' ? SPELL_FREEZE : SPELL_JUMP;
+
+            const string sqs = item.substr(2, colon - 2);
+            Square       gate = SQ_NONE;
+            if (sqs != "-")
+            {
+                if (sqs.size() != 2 || sqs[0] < 'a' || sqs[0] > 'h' || sqs[1] < '1'
+                    || sqs[1] > '8')
+                    return PositionSetError("Invalid FEN. Invalid spell gate square: " + item);
+                gate = make_square(File(sqs[0] - 'a'), Rank(sqs[1] - '1'));
+            }
+
+            const string cds = item.substr(colon + 1);
+            if (cds.empty() || cds.find_first_not_of("0123456789") != string::npos)
+                return PositionSetError("Invalid FEN. Invalid spell cooldown: " + item);
+            const int cd = std::stoi(cds);
+            if (cd > SPELL_COOLDOWN)
+                return PositionSetError("Invalid FEN. Spell cooldown out of range: " + item);
+
+            st->spellGate[c][sp]     = u8(gate);
+            st->spellCooldown[c][sp] = i8(cd);
+        }
+        ss >> std::ws;
+    }
+
     // 2. Active color
     if (!(ss >> token))
         return PositionSetError("Invalid FEN. Unexpected end of stream.");
@@ -298,6 +407,17 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
     sideToMove = (token == 'w' ? WHITE : BLACK);
     if (!(ss >> token) || !isspace(token) || ss.eof())
         return PositionSetError("Invalid FEN. Expected whitespace after side to move.");
+
+    // Normalize impossible zone/cooldown combinations (reference parse rule):
+    // a zone only exists while its owner's cooldown is above the lifetime
+    // threshold, or exactly at it with the opponent to move.
+    for (Color c : {WHITE, BLACK})
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+        {
+            const int cd = st->spellCooldown[c][sp];
+            if (cd < SPELL_ZONE_LIFETIME || (cd == SPELL_ZONE_LIFETIME && sideToMove == c))
+                st->spellGate[c][sp] = SQ_NONE;
+        }
 
     // 3. Castling availability. Compatible with 3 standards: Normal FEN standard,
     // Shredder-FEN that uses the letters of the columns on which the rooks began
@@ -382,7 +502,7 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
 
     // 4. En passant square.
     // Ignore if square is invalid or not on side to move relative rank 6.
-    bool          enpassant = false, legalEP = false;
+    bool          enpassant = false;
     unsigned char col = '-', row;
     ss >> col;
     if (col != '-')
@@ -396,25 +516,21 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
 
             Bitboard pawns = attacks_bb<PAWN>(st->epSquare, ~sideToMove) & pieces(sideToMove, PAWN);
             Bitboard target = (pieces(~sideToMove, PAWN) & (st->epSquare + pawn_push(~sideToMove)));
-            Bitboard occ    = pieces() ^ target ^ st->epSquare;
 
             // En passant square will be considered only if
             // a) side to move have a pawn threatening epSquare
             // b) there is an enemy pawn in front of epSquare
             // c) there is no piece on epSquare or behind epSquare
+            // Spell chess follows the reference: no king-safety refinement
+            // (self-check is legal anyway).
             enpassant = pawns && target
                      && !(pieces() & (st->epSquare | (st->epSquare + pawn_push(sideToMove))));
-
-            // If no pawn can execute the en passant capture without leaving the king in check, don't record the epSquare
-            while (pawns)
-                legalEP |= !(attackers_to(square<KING>(sideToMove), occ ^ pop_lsb(pawns))
-                             & pieces(~sideToMove) & ~target);
         }
         else
             return PositionSetError("Invalid FEN. Invalid en-passant square.");
     }
 
-    if (!enpassant || !legalEP)
+    if (!enpassant)
         st->epSquare = SQ_NONE;
 
     // 5-6. Halfmove clock and fullmove number
@@ -435,8 +551,8 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
     chess960 = isChess960;
     set_state();
 
-    if (attackers_to_exist(square<KING>(~sideToMove), pieces(), sideToMove))
-        return PositionSetError("Unsupported position. King can be captured.");
+    // Note: unlike standard chess we accept positions where the side to move
+    // could capture the enemy king — self-check is legal in Spell Chess.
 
     assert(pos_is_ok());
 
@@ -466,15 +582,26 @@ void Position::set_castling_right(Color c, Square rfrom) {
 // Sets king attacks to detect if a move gives check
 void Position::set_check_info() const {
 
+    // A king may have been captured (games end there); keep the state sane.
+    if (!both_kings_on_board())
+    {
+        st->blockersForKing[WHITE] = st->blockersForKing[BLACK] = 0;
+        st->pinners[WHITE] = st->pinners[BLACK] = 0;
+        for (PieceType pt = PAWN; pt <= KING; ++pt)
+            st->checkSquares[pt] = 0;
+        return;
+    }
+
     update_slider_blockers(WHITE);
     update_slider_blockers(BLACK);
 
     Square ksq = square<KING>(~sideToMove);
 
+    // Sliding check squares respect jump transparency
     st->checkSquares[PAWN]   = attacks_bb<PAWN>(ksq, ~sideToMove);
     st->checkSquares[KNIGHT] = attacks_bb<KNIGHT>(ksq);
-    st->checkSquares[BISHOP] = attacks_bb<BISHOP>(ksq, pieces());
-    st->checkSquares[ROOK]   = attacks_bb<ROOK>(ksq, pieces());
+    st->checkSquares[BISHOP] = attacks_bb<BISHOP>(ksq, occupied_for_sliding());
+    st->checkSquares[ROOK]   = attacks_bb<ROOK>(ksq, occupied_for_sliding());
     st->checkSquares[QUEEN]  = st->checkSquares[BISHOP] | st->checkSquares[ROOK];
     st->checkSquares[KING]   = 0;
 }
@@ -490,7 +617,9 @@ void Position::set_state() const {
     st->nonPawnKey[WHITE] = st->nonPawnKey[BLACK] = 0;
     st->pawnKey                                   = Zobrist::noPawns;
     st->nonPawnMaterial[WHITE] = st->nonPawnMaterial[BLACK] = VALUE_ZERO;
-    st->checkersBB = attackers_to(square<KING>(sideToMove)) & pieces(~sideToMove);
+    st->checkersBB             = both_kings_on_board()
+                                 ? attackers_to(square<KING>(sideToMove)) & pieces(~sideToMove)
+                                 : Bitboard(0);
 
     set_check_info();
 
@@ -524,6 +653,12 @@ void Position::set_state() const {
         st->key ^= Zobrist::side;
 
     st->key ^= Zobrist::castling[st->castlingRights];
+
+    for (Color c : {WHITE, BLACK})
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+            st->key ^= spell_state_key(c, SpellType(sp), spell_gate(c, SpellType(sp)),
+                                       st->spellCooldown[c][sp], st->spellHand[c][sp]);
+
     st->materialKey = compute_material_key();
 }
 
@@ -583,6 +718,33 @@ string Position::fen() const {
         ss << '/';
     }
 
+    // Spell holdings: jumps then freezes, White then Black (reference order)
+    ss << '[';
+    for (Color c : {WHITE, BLACK})
+        for (SpellType sp : {SPELL_JUMP, SPELL_FREEZE})
+            for (int i = 0; i < st->spellHand[c][sp]; ++i)
+                ss << (c == WHITE ? (sp == SPELL_JUMP ? 'J' : 'F')
+                                  : (sp == SPELL_JUMP ? 'j' : 'f'));
+    ss << ']';
+
+    // Spell state block: always emitted; freeze then jump, White then Black
+    ss << " {";
+    for (Color c : {WHITE, BLACK})
+        for (SpellType sp : {SPELL_FREEZE, SPELL_JUMP})
+        {
+            if (c != WHITE || sp != SPELL_FREEZE)
+                ss << ',';
+            ss << (c == WHITE ? (sp == SPELL_FREEZE ? 'F' : 'J')
+                              : (sp == SPELL_FREEZE ? 'f' : 'j'))
+               << '@';
+            if (spell_gate(c, sp) != SQ_NONE)
+                ss << UCIEngine::square(spell_gate(c, sp));
+            else
+                ss << '-';
+            ss << ':' << int(st->spellCooldown[c][sp]);
+        }
+    ss << '}';
+
     ss << (sideToMove == WHITE ? " w " : " b ");
 
     if (can_castle(WHITE_OO))
@@ -639,24 +801,36 @@ void Position::update_slider_blockers(Color c) const {
 
 // Computes a bitboard of all pieces which attack a given square.
 // Slider attacks use the occupied bitboard to indicate occupancy.
+// Spell chess: sliders see through jump-transparent gates, and frozen
+// pieces give no attacks at all.
 Bitboard Position::attackers_to(Square s, Bitboard occupied) const {
 
-    return (attacks_bb<ROOK>(s, occupied) & pieces(ROOK, QUEEN))
-         | (attacks_bb<BISHOP>(s, occupied) & pieces(BISHOP, QUEEN))
-         | (attacks_bb<PAWN>(s, BLACK) & pieces(WHITE, PAWN))
-         | (attacks_bb<PAWN>(s, WHITE) & pieces(BLACK, PAWN))
-         | (attacks_bb<KNIGHT>(s) & pieces(KNIGHT)) | (attacks_bb<KING>(s) & pieces(KING));
+    const Bitboard occSliding = occupied & ~jump_transparent();
+
+    return ((attacks_bb<ROOK>(s, occSliding) & pieces(ROOK, QUEEN))
+            | (attacks_bb<BISHOP>(s, occSliding) & pieces(BISHOP, QUEEN))
+            | (attacks_bb<PAWN>(s, BLACK) & pieces(WHITE, PAWN))
+            | (attacks_bb<PAWN>(s, WHITE) & pieces(BLACK, PAWN))
+            | (attacks_bb<KNIGHT>(s) & pieces(KNIGHT)) | (attacks_bb<KING>(s) & pieces(KING)))
+         & ~frozen_pieces();
 }
 
 bool Position::attackers_to_exist(Square s, Bitboard occupied, Color c) const {
 
-    return (attacks_bb<ROOK>(s, occupied) & pieces(c, ROOK, QUEEN))
-        || (attacks_bb<BISHOP>(s, occupied) & pieces(c, BISHOP, QUEEN))
-        || (attacks_bb<PAWN>(s, ~c) & pieces(c, PAWN))
-        || (attacks_bb<KNIGHT>(s) & pieces(c, KNIGHT)) || (attacks_bb<KING>(s) & pieces(c, KING));
+    const Bitboard occSliding = occupied & ~jump_transparent();
+    const Bitboard active     = ~(frozen_squares(c) & pieces(c));
+
+    return (attacks_bb<ROOK>(s, occSliding) & pieces(c, ROOK, QUEEN) & active)
+        || (attacks_bb<BISHOP>(s, occSliding) & pieces(c, BISHOP, QUEEN) & active)
+        || (attacks_bb<PAWN>(s, ~c) & pieces(c, PAWN) & active)
+        || (attacks_bb<KNIGHT>(s) & pieces(c, KNIGHT) & active)
+        || (attacks_bb<KING>(s) & pieces(c, KING) & active);
 }
 
-// Tests whether a pseudo-legal move is legal
+// Tests whether a pseudo-legal move is legal.
+// Spell chess: self-check is legal (the game is capture-the-king), so the
+// standard pin/king-safety filters do not apply. What remains: castling
+// conditions and the validity of the spell payload itself.
 bool Position::legal(Move m) const {
 
     assert(m.is_ok());
@@ -666,19 +840,121 @@ bool Position::legal(Move m) const {
     Square to   = m.to_sq();
 
     assert(color_of(moved_piece(m)) == us);
-    assert(piece_on(square<KING>(us)) == make_piece(us, KING));
 
-    // Castling moves generation does not check if the castling path is clear of
-    // enemy attacks, it is delayed at a later time: now!
+    // A piece standing inside an enemy freeze zone cannot move
+    if (frozen_squares(us) & from)
+        return false;
+
+    // Validate the spell payload
+    Bitboard castFrozen      = 0;  // enemy pieces frozen by the candidate cast
+    Bitboard castTransparent = 0;  // candidate jump gate transparency
+    if (m.is_spell())
+    {
+        const SpellType sp   = m.spell_type();
+        const Square    gate = m.gate_sq();
+
+        if (!can_cast(us, sp))
+            return false;
+
+        // Only NORMAL and CASTLING base moves may carry a spell
+        if (m.type_of() != NORMAL && m.type_of() != CASTLING)
+            return false;
+
+        if (sp == SPELL_FREEZE)
+        {
+            // The caster's own base move may not start on the gate or its
+            // orthogonal neighbors (SPELL_SPEC.md §3.1)
+            if (from == gate || (FreezeBlockBB[gate] & from))
+                return false;
+            castFrozen = FreezeZoneBB[gate];
+        }
+        else  // SPELL_JUMP
+        {
+            // The gate must be occupied, and the base move may not land on it
+            if (!(pieces() & gate) || to == gate)
+                return false;
+            castTransparent = square_bb(gate);
+        }
+    }
+
+    // En passant keeps the classic king-safety test (inherited from the
+    // reference): illegal if the own king is attacked once both pawns are
+    // gone, with spell-aware attackers (transparency, frozen exclusions).
+    if (m.type_of() == EN_PASSANT && count<KING>(us))
+    {
+        const Square   ksq   = square<KING>(us);
+        const Square   capsq = to - pawn_push(us);
+        const Bitboard occ   = (pieces() ^ from ^ capsq) | to;
+
+        const Bitboard occSliding = occ & ~jump_transparent();
+
+        return !(((attacks_bb<ROOK>(ksq, occSliding) & pieces(~us, ROOK, QUEEN))
+                  | (attacks_bb<BISHOP>(ksq, occSliding) & pieces(~us, BISHOP, QUEEN))
+                  | (attacks_bb<PAWN>(ksq, us) & pieces(~us, PAWN))
+                  | (attacks_bb<KNIGHT>(ksq) & pieces(~us, KNIGHT))
+                  | (attacks_bb<KING>(ksq) & pieces(~us, KING)))
+                 & ~frozen_pieces() & ~square_bb(capsq));
+    }
+
+    // The king may not move into an attacked square. This is the one
+    // remaining king-safety rule: all other forms of self-check (breaking a
+    // pin, zone expiry, ...) are legal and punished by king capture.
+    if (m.type_of() != CASTLING && type_of(moved_piece(m)) == KING)
+    {
+        const Bitboard transparent = jump_transparent() | castTransparent;
+        const Bitboard occSliding  = (pieces() ^ from) & ~transparent;
+        const Bitboard inactive    = frozen_pieces() | (pieces(~us) & castFrozen);
+
+        return !(((attacks_bb<ROOK>(to, occSliding) & pieces(~us, ROOK, QUEEN))
+                  | (attacks_bb<BISHOP>(to, occSliding) & pieces(~us, BISHOP, QUEEN))
+                  | (attacks_bb<PAWN>(to, us) & pieces(~us, PAWN))
+                  | (attacks_bb<KNIGHT>(to) & pieces(~us, KNIGHT))
+                  | (attacks_bb<KING>(to) & pieces(~us, KING)))
+                 & ~inactive);
+    }
+
+    // Castling conditions (checked here, not at generation time)
     if (m.type_of() == CASTLING)
     {
+        // The king and the castling rook must not be frozen
+        if (frozen_squares(us) & (square_bb(from) | square_bb(to)))
+            return false;
+
+        // A phased-out (jump-transparent) ROOK cannot castle; a transparent
+        // king still may (reference rule, incl. j@king + castle in one ply)
+        if ((jump_transparent() | castTransparent) & to)
+            return false;
+
+        // No castling while in check: evaluated on the PRE-cast state only
+        // (reference rule: a candidate freeze does not silence the checker —
+        // the check would reappear on zone expiry — and a candidate jump's
+        // transparency does not create a disqualifying check either).
+        if (checkers())
+            return false;
+
+        // Path squares: the candidate context DOES apply — freezing the
+        // path-attacker legalizes the castling, and candidate transparency
+        // can open new attack lines onto the path.
+        const Bitboard transparent = jump_transparent() | castTransparent;
+        const Bitboard occSliding  = pieces() & ~transparent;
+        const Bitboard inactive    = frozen_pieces() | (pieces(~us) & castFrozen);
+
+        const auto attacked = [&](Square s) {
+            return ((attacks_bb<ROOK>(s, occSliding) & pieces(~us, ROOK, QUEEN))
+                    | (attacks_bb<BISHOP>(s, occSliding) & pieces(~us, BISHOP, QUEEN))
+                    | (attacks_bb<PAWN>(s, us) & pieces(~us, PAWN))
+                    | (attacks_bb<KNIGHT>(s) & pieces(~us, KNIGHT))
+                    | (attacks_bb<KING>(s) & pieces(~us, KING)))
+                & ~inactive;
+        };
+
         // After castling, the rook and king final positions are the same in
         // Chess960 as they would be in standard chess.
-        to             = relative_square(us, to > from ? SQ_G1 : SQ_C1);
-        Direction step = to > from ? WEST : EAST;
+        Square    kto  = relative_square(us, to > from ? SQ_G1 : SQ_C1);
+        Direction step = kto > from ? WEST : EAST;
 
-        for (Square s = to; s != from; s += step)
-            if (attackers_to_exist(s, pieces(), ~us))
+        for (Square s = kto; s != from; s += step)
+            if (attacked(s))
                 return false;
 
         // In case of Chess960, verify if the Rook blocks some checks.
@@ -686,20 +962,15 @@ bool Position::legal(Move m) const {
         return !chess960 || !(blockers_for_king(us) & m.to_sq());
     }
 
-    // If the moving piece is a king, check whether the destination square is
-    // attacked by the opponent.
-    if (type_of(piece_on(from)) == KING)
-        return !(attackers_to_exist(to, pieces() ^ from, ~us));
-
-    // A non-king move is legal if and only if it is not pinned or it
-    // is moving along the ray towards or away from the king.
-    return !(blockers_for_king(us) & from) || line_bb(from, to) & pieces(us, KING);
+    return true;
 }
 
 
 // Takes a random move and tests whether the move is
 // pseudo-legal. It is used to validate moves from TT that can be corrupted
 // due to SMP concurrent access or hash position key aliasing.
+// Spell chess: being in check does not restrict the move universe
+// (self-check is legal), and slider movement respects jump transparency.
 bool Position::pseudo_legal(const Move m) const {
 
     Color  us   = sideToMove;
@@ -707,11 +978,9 @@ bool Position::pseudo_legal(const Move m) const {
     Square to   = m.to_sq();
     Piece  pc   = moved_piece(m);
 
-    // Use a slower but simpler function for uncommon cases
-    // yet we skip the legality check of MoveList<LEGAL>().
+    // Use a slower but simpler function for uncommon base move types
     if (m.type_of() != NORMAL)
-        return checkers() ? MoveList<EVASIONS>(*this).contains(m)
-                          : MoveList<NON_EVASIONS>(*this).contains(m);
+        return MoveList<NON_EVASIONS>(*this).contains(m);
 
     // Is not a promotion, so the promotion piece must be empty
     assert(m.promotion_type() - KNIGHT == NO_PIECE_TYPE);
@@ -725,6 +994,12 @@ bool Position::pseudo_legal(const Move m) const {
     if (pieces(us) & to)
         return false;
 
+    // Sliding sight: active jump zones are transparent, and so is the
+    // candidate gate if this move casts a jump itself
+    Bitboard occSliding = occupied_for_sliding();
+    if (m.is_spell() && m.spell_type() == SPELL_JUMP)
+        occSliding &= ~square_bb(m.gate_sq());
+
     // Handle the special case of a pawn move
     if (type_of(pc) == PAWN)
     {
@@ -732,31 +1007,36 @@ bool Position::pseudo_legal(const Move m) const {
         if ((Rank8BB | Rank1BB) & to)
             return false;
 
-        // Check if it's a valid capture, single push, or double push
+        // Check if it's a valid capture, single push, or double push.
+        // The intermediate square of a double push only needs to be
+        // transparent (a piece may be jumped over), the destination must be
+        // physically empty.
         const bool isCapture    = bool(attacks_bb<PAWN>(from, us) & pieces(~us) & to);
         const bool isSinglePush = (from + pawn_push(us) == to) && empty(to);
         const bool isDoublePush = (from + 2 * pawn_push(us) == to)
                                && (relative_rank(us, from) == RANK_2) && empty(to)
-                               && empty(to - pawn_push(us));
+                               && !(occSliding & (to - pawn_push(us)));
 
         if (!(isCapture || isSinglePush || isDoublePush))
             return false;
     }
-    else if (!(attacks_bb(type_of(pc), from, pieces()) & to))
+    else if (!(attacks_bb(type_of(pc), from, occSliding) & to))
         return false;
-
-    if (checkers())
-        return MoveList<EVASIONS>(*this).contains(m);
 
     return true;
 }
 
 
-// Tests whether a pseudo-legal move gives a check
+// Tests whether a pseudo-legal move gives a check.
+// Spell chess: this is only a cheap hint (zone changes can create or remove
+// checks on their own); do_move() recomputes the checkers from scratch.
 bool Position::gives_check(Move m) const {
 
     assert(m.is_ok());
     assert(color_of(moved_piece(m)) == sideToMove);
+
+    if (!count<KING>(~sideToMove))
+        return false;
 
     Square from = m.from_sq();
     Square to   = m.to_sq();
@@ -843,8 +1123,10 @@ void Position::do_move(Move                      m,
     dp.add_sq = SQ_NONE;
 
     assert(color_of(pc) == us);
-    assert(captured == NO_PIECE || color_of(captured) == (m.type_of() != CASTLING ? them : us));
-    assert(type_of(captured) != KING);
+    // Spell chess: capturing the king is legal and ends the game, and a pawn
+    // push may land on an OWN piece standing on a jump-transparent square
+    // (reference rule) — resolved as a self-capture, so the captured piece's
+    // own color drives the bookkeeping below.
 
     if (m.type_of() == CASTLING)
     {
@@ -884,8 +1166,8 @@ void Position::do_move(Move                      m,
         }
         else
         {
-            st->nonPawnMaterial[them] -= PieceValue[captured];
-            st->nonPawnKey[them] ^= Zobrist::psq[captured][capsq];
+            st->nonPawnMaterial[color_of(captured)] -= PieceValue[captured];
+            st->nonPawnKey[color_of(captured)] ^= Zobrist::psq[captured][capsq];
 
             if (type_of(captured) <= BISHOP)
                 st->minorPieceKey ^= Zobrist::psq[captured][capsq];
@@ -924,26 +1206,18 @@ void Position::do_move(Move                      m,
     {
         // Check if the en passant square needs to be set. Accurate e.p. info is needed
         // for correct zobrist key generation and 3-fold checking.
+        // Spell chess (reference rule): record the ep square whenever an enemy
+        // pawn pseudo-attacks it and it is physically empty (a double push may
+        // pass over an occupied, jump-transparent square) — no king-safety
+        // refinement, self-check is legal anyway.
         if ((int(to) ^ int(from)) == 16)
         {
-            Square   epSquare = to - pawn_push(us);
-            Bitboard pawns    = attacks_bb<PAWN>(epSquare, us) & pieces(them, PAWN);
+            Square epSquare = to - pawn_push(us);
 
-            // If there are no pawns attacking the ep square, ep is not possible.
-            if (pawns)
+            if ((attacks_bb<PAWN>(epSquare, us) & pieces(them, PAWN)) && empty(epSquare))
             {
-                Square   ksq         = square<KING>(them);
-                Bitboard notBlockers = ~st->previous->blockersForKing[them];
-                bool     noDiscovery = (from & notBlockers) || file_of(from) == file_of(ksq);
-
-                // If the pawn gives discovered check, ep is never legal. Else, if at least one
-                // pawn was not a blocker for the enemy king or lies on the same line as the
-                // enemy king and en passant square, a legal capture exists.
-                if (noDiscovery && (pawns & (notBlockers | line_bb(epSquare, ksq))))
-                {
-                    st->epSquare = epSquare;
-                    k ^= Zobrist::enpassant[file_of(epSquare)];
-                }
+                st->epSquare = epSquare;
+                k ^= Zobrist::enpassant[file_of(epSquare)];
             }
         }
 
@@ -988,6 +1262,47 @@ void Position::do_move(Move                      m,
             st->minorPieceKey ^= Zobrist::psq[pc][from] ^ Zobrist::psq[pc][to];
     }
 
+    // ---- Spell chess: apply the cast and tick cooldowns/zones ----
+    // (see SPELL_SPEC.md §2.1; hash contributions are toggled out and back in)
+    {
+        for (Color c : {WHITE, BLACK})
+            for (int sp = 0; sp < SPELL_NB; ++sp)
+                k ^= spell_state_key(c, SpellType(sp), Square(st->spellGate[c][sp]),
+                                     st->spellCooldown[c][sp], st->spellHand[c][sp]);
+
+        // The mover: apply the cast, or clear a stale zone
+        if (m.is_spell())
+        {
+            const SpellType sp = m.spell_type();
+            assert(st->spellHand[us][sp] > 0 && st->spellCooldown[us][sp] == 0);
+            --st->spellHand[us][sp];
+            st->spellCooldown[us][sp] = SPELL_COOLDOWN;
+            st->spellGate[us][sp]     = u8(m.gate_sq());
+        }
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+            if (!(m.is_spell() && m.spell_type() == SpellType(sp))
+                && st->spellCooldown[us][sp] == 0)
+                st->spellGate[us][sp] = SQ_NONE;
+
+        // The opponent: cooldowns tick once per full move, i.e. here; the zone
+        // expires when the cooldown reaches the lifetime threshold.
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+        {
+            if (st->spellCooldown[them][sp] > 0)
+            {
+                if (--st->spellCooldown[them][sp] <= SPELL_ZONE_LIFETIME)
+                    st->spellGate[them][sp] = SQ_NONE;
+            }
+            else
+                st->spellGate[them][sp] = SQ_NONE;
+        }
+
+        for (Color c : {WHITE, BLACK})
+            for (int sp = 0; sp < SPELL_NB; ++sp)
+                k ^= spell_state_key(c, SpellType(sp), Square(st->spellGate[c][sp]),
+                                     st->spellCooldown[c][sp], st->spellHand[c][sp]);
+    }
+
     if (tt)
         prefetch(tt->first_entry(adjust_key50(k)));
     // Update the key with the final value
@@ -1026,10 +1341,15 @@ void Position::do_move(Move                      m,
     // Set capture piece
     st->capturedPiece = captured;
 
-    // Calculate checkers bitboard (if move gives check)
-    st->checkersBB = givesCheck ? attackers_to(square<KING>(them)) & pieces(us) : 0;
-
     sideToMove = ~sideToMove;
+
+    // Spell chess: checks can appear or disappear due to zone changes alone,
+    // so the checkers bitboard is always recomputed from scratch (the
+    // givesCheck hint cannot be trusted).
+    (void) givesCheck;
+    st->checkersBB = both_kings_on_board()
+                     ? attackers_to(square<KING>(sideToMove)) & pieces(~sideToMove)
+                     : Bitboard(0);
 
     // Update king attacks used for fast check detection
     set_check_info();
@@ -1076,7 +1396,7 @@ void Position::undo_move(Move m) {
     Piece  pc   = piece_on(to);
 
     assert(empty(from) || m.type_of() == CASTLING);
-    assert(type_of(st->capturedPiece) != KING);
+    // Spell chess: st->capturedPiece may be a king (that ends the game)
 
     if (m.type_of() == PROMOTION)
     {
@@ -1634,34 +1954,47 @@ bool Position::material_key_is_ok() const { return compute_material_key() == st-
 // This is meant to be helpful when debugging.
 bool Position::pos_is_ok() const {
 
-    if ((sideToMove != WHITE && sideToMove != BLACK) || piece_on(square<KING>(WHITE)) != W_KING
-        || piece_on(square<KING>(BLACK)) != B_KING
+    if ((sideToMove != WHITE && sideToMove != BLACK)
         || (ep_square() != SQ_NONE && relative_rank(sideToMove, ep_square()) != RANK_6))
         assert(0 && "pos_is_ok: Default");
 
-    if (count<KING>(WHITE) != 1 || count<KING>(BLACK) != 1
-        || attackers_to_exist(square<KING>(~sideToMove), pieces(), sideToMove))
+    // Spell chess: a king may have been captured (terminal position), and the
+    // enemy king being attackable is a normal state of affairs (self-check is
+    // legal).
+    if (count<KING>(WHITE) > 1 || count<KING>(BLACK) > 1)
         assert(0 && "pos_is_ok: Kings");
+
+    for (Color c : {WHITE, BLACK})
+        if (count<KING>(c) == 1 && piece_on(square<KING>(c)) != make_piece(c, KING))
+            assert(0 && "pos_is_ok: Kings");
 
     if ((pieces(PAWN) & (Rank1BB | Rank8BB)) || count<PAWN>(WHITE) > 8 || count<PAWN>(BLACK) > 8)
         assert(0 && "pos_is_ok: Pawns");
 
-
     if (ep_square() != SQ_NONE)
     {
-        Square ksq = square<KING>(sideToMove);
-
+        // Our ep recording is pseudo-legal (reference rule): an enemy pawn in
+        // front and a friendly pawn attacking the square must exist.
         Bitboard captured = (ep_square() + pawn_push(~sideToMove)) & pieces(~sideToMove, PAWN);
         Bitboard pawns    = attacks_bb<PAWN>(ep_square(), ~sideToMove) & pieces(sideToMove, PAWN);
-        Bitboard potentialCheckers = pieces(~sideToMove) ^ captured;
 
-        if (!captured || !pawns
-            || ((attackers_to(ksq, pieces() ^ captured ^ ep_square() ^ lsb(pawns))
-                 & potentialCheckers)
-                && (attackers_to(ksq, pieces() ^ captured ^ ep_square() ^ msb(pawns))
-                    & potentialCheckers)))
+        if (!captured || !pawns)
             assert(0 && "pos_is_ok: En passant square");
     }
+
+    // Spell state sanity
+    for (Color c : {WHITE, BLACK})
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+        {
+            if (st->spellHand[c][sp] < 0 || st->spellHand[c][sp] > 7
+                || st->spellCooldown[c][sp] < 0 || st->spellCooldown[c][sp] > SPELL_COOLDOWN)
+                assert(0 && "pos_is_ok: Spell state");
+
+            const Square gate = Square(st->spellGate[c][sp]);
+            if (gate != SQ_NONE
+                && (!is_ok(gate) || st->spellCooldown[c][sp] < SPELL_ZONE_LIFETIME))
+                assert(0 && "pos_is_ok: Spell zone");
+        }
 
     if ((pieces(WHITE) & pieces(BLACK)) || (pieces(WHITE) | pieces(BLACK)) != pieces()
         || popcount(pieces(WHITE)) > 16 || popcount(pieces(BLACK)) > 16)
