@@ -216,6 +216,22 @@ class SpellRules(unittest.TestCase):
         moves = moves_at(fen)
         self.assertIn("j@d6,d7d5", moves)
 
+    def test_perft_suite_depth1(self):
+        # Every suite position must reproduce its recorded d1 count (the full
+        # d2 cross-check against the reference binary runs locally via
+        # compare_perft.py; d1 keeps CI self-contained and fast)
+        import os
+        csv = os.path.join(os.path.dirname(__file__), "reference", "perft_spell.csv")
+        e = Engine.get()
+        with open(csv, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                fen, d1 = line.split(";")[0], int(line.split(";")[1])
+                e.position(fen)
+                self.assertEqual(len(e.legal_moves()), d1, f"d1 mismatch at {fen}")
+
     def test_suite_fen_roundtrip_samples(self):
         samples = [
             "1nkq1r2/7p/rB1p1ppb/1P1P3P/p1b1pP2/P4NnR/3KP3/3R1B2[f] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 2 28",
