@@ -257,6 +257,24 @@ cap probe; gating without regenerating base quiets).
 
 ---
 
+## Phase 4.5 — SPSA infrastructure and the scaling insight (2026-07-12)
+
+**VSTC confirmation of the king-value package: -203.4 ±45.6** (300 games, time losses 0-2 in
+our favor) — statistically the same plateau as -170 ±43. But the node math reframes everything:
+VSTC (2000+20ms) means ~70ms/move ≈ **27k nodes/move**, while the fixed-nodes probes run 120k.
+We score -200 at 27k nodes/move and -52 at 120k: **our search scales BETTER with nodes than the
+baseline's** — the opposite of the earlier hypothesis. The M1 gate's STC (10s+100ms ≈ 300k)
+and LTC (30s+300ms ≈ 1M nodes/move) should favor us; STC A/B running to verify.
+
+**SPSA infrastructure**: spell_params.h constants → plain globals registered with SF's native
+TUNE machinery (10 UCI options, incl. the previously hardcoded LMR moveCount cap, tactical-spell
+LMR bonus and both GateHistory weights). Bench signature unchanged (2,707,081 — defaults
+identical). `tools/spsa_tune.py`: self-play SPSA (theta+ vs theta- pairs, same binary, so speed
+cancels and fixed-node pairs are a faithful signal), fishtest-style schedules, persistent state,
+crash-resilient workers. 8-pair smoke test green.
+
+---
+
 ## Phase 4.4 — crash forensics, review round (PR #4), QSPELL (2026-07-12)
 
 **Crash investigation** (4 engine deaths in 60 fixed-nodes games, exit 0xFFFFFFFF, none in 300

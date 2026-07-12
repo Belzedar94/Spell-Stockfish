@@ -1383,7 +1383,7 @@ moves_loop:  // When in check, search starts here
         // EXTEND every late move by 2 plies — capping keeps it a bounded
         // correction instead of a runaway (found via fixed-nodes probes:
         // depth collapsed to ~12 while the reference reached ~27).
-        r -= std::min(moveCount, 24) * 62;
+        r -= std::min(moveCount, SpellLmrMoveCountCap) * 62;
         r -= std::abs(correctionValue) / 26131;
 
         // Increase reduction for cut nodes
@@ -1397,7 +1397,7 @@ moves_loop:  // When in check, search starts here
         // Reduce tactical spells less, like other tactical moves
         // (reference policy)
         if (tacticalSpell)
-            r -= 1024;
+            r -= SpellTacticalLmrBonus;
 
         // Increase reduction if next ply has a lot of fail high
         if ((ss + 1)->cutoffCnt > 1)
@@ -1412,7 +1412,7 @@ moves_loop:  // When in check, search starts here
                           + captureHistory[movedPiece][move.to_sq()][type_of(pos.captured_piece())];
         else
             ss->statScore = 2 * mainHistory[us][move.raw() & 0xFFFF]
-                          + 2 * gateHistory[us][gate_slot(move)]
+                          + SpellGateHistStatWeight * gateHistory[us][gate_slot(move)]
                           + (*contHist[0])[movedPiece][move.to_sq()]
                           + (*contHist[1])[movedPiece][move.to_sq()];
 

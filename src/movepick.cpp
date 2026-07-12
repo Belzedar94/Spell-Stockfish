@@ -252,7 +252,7 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         {
             // histories
             m.value = 2 * (*mainHistory)[us][m.raw() & 0xFFFF];
-            m.value += 2 * (*gateHistory)[us][gate_slot(m)];
+            m.value += SpellGateHistOrderWeight * (*gateHistory)[us][gate_slot(m)];
             m.value += 2 * sharedHistory->pawn_entry(pos)[pc][to];
             m.value += (*continuationHistory[0])[pc][to];
             m.value += (*continuationHistory[1])[pc][to];
