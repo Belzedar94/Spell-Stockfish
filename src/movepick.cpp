@@ -167,7 +167,8 @@ MovePicker::MovePicker(const Position&              p,
                        int                          pl,
                        ExtMove**                    at,
                        Move*                        scratch,
-                       bool                         spells) :
+                       bool                         spells,
+                       bool                         onlyTactical) :
     pos(p),
     mainHistory(mh),
     lowPlyHistory(lph),
@@ -179,6 +180,7 @@ MovePicker::MovePicker(const Position&              p,
     depth(d),
     ply(pl),
     allowSpells(spells),
+    onlyTacticalSpells(onlyTactical),
     arenaTop(at),
     moves(*at),
     genScratch(scratch) {
@@ -387,6 +389,20 @@ top:
             && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
                 || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
         {
+            // Royal context for the tactical-only restriction, mirroring
+            // the search's own per-node precompute
+            if (onlyTacticalSpells)
+            {
+                const Color us = pos.side_to_move();
+                if (pos.count<KING>(us))
+                {
+                    spellOurRoyal = pos.square<KING>(us);
+                    spellRoyalAttackers = pos.attackers_to(spellOurRoyal) & pos.pieces(~us);
+                }
+                if (pos.count<KING>(~us))
+                    spellEnemyRoyal = pos.square<KING>(~us);
+            }
+
             const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
 
             endCur = endSpells = score<QUIETS>(genScratch, endGen);
@@ -398,7 +414,15 @@ top:
         [[fallthrough]];
 
     case SPELL :
-        if (select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); }))
+        if (select([&]() {
+                if (ply == 0)  // searchmoves may force any legal cast
+                    return true;
+                if (is_useless_spell(pos, *cur))
+                    return false;
+                return !onlyTacticalSpells
+                    || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
+                                         spellOurRoyal);
+            }))
             return *(cur - 1);
 
         // Prepare the pointers to loop over the bad captures

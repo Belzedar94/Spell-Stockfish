@@ -45,7 +45,9 @@ Value Eval::evaluate(const Eval::NNUE::Network&     network,
                      Eval::NNUE::AccumulatorCaches& caches,
                      int                            optimism) {
 
-    assert(!pos.checkers());
+    // Spell chess: self-check is legal (capture-the-king), so the search
+    // treats in-check nodes like normal ones and DOES evaluate them
+    // statically — the stock no-eval-in-check invariant does not apply.
 
     auto [psqt, positional] = network.evaluate(pos, accumulators, caches);
 

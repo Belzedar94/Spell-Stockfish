@@ -58,7 +58,8 @@ class MovePicker {
                int,
                ExtMove**,
                Move*,
-               bool allowSpells = true);
+               bool allowSpells        = true,
+               bool onlyTacticalSpells = false);
     MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove**, Move*);
     ~MovePicker() { *arenaTop -= MAX_MOVES; }
     Move next_move();
@@ -85,6 +86,12 @@ class MovePicker {
     int       ply;
     bool      skipQuiets  = false;
     bool      allowSpells = true;
+    // Shallow non-PV nodes may restrict the SPELL stage to tactical casts;
+    // the royal context for that classification is computed lazily once
+    // per node in SPELL_INIT (mirrors the search's own precompute).
+    bool     onlyTacticalSpells = false;
+    Bitboard spellRoyalAttackers = 0;
+    Square   spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
     ExtMove** arenaTop;
     ExtMove*  moves;
     Move*     genScratch;

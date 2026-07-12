@@ -1146,9 +1146,16 @@ moves_loop:  // When in check, search starts here
     const bool allowSpells = PvNode || ourRoyalAttackers || !is_valid(ss->staticEval)
                           || ss->staticEval + SpellStageMargin >= alpha;
 
+    // Near the horizon, non-PV nodes with a safe king optionally expand only
+    // TACTICAL quiet spells: horizon nodes carry most of the tree, and a
+    // quiet cast there is worth at most about a tempo. Disabled by default
+    // (SpellQuietMinDepth = 0); a SPSA-tunable candidate.
+    const bool onlyTacticalSpells =
+      allowSpells && !PvNode && !ourRoyalAttackers && depth < SpellQuietMinDepth;
+
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &gateHistory,
                   &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch(),
-                  allowSpells);
+                  allowSpells, onlyTacticalSpells);
 
     value = bestValue;
 

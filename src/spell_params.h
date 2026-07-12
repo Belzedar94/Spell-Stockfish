@@ -61,6 +61,11 @@ extern int SpellGateHistStatWeight;   // 2
 // (PV nodes and nodes with our king under attack always search spells).
 extern int SpellStageMargin;  // 400
 
+// Below this depth, non-PV nodes with a safe king expand only TACTICAL
+// quiet spells: quiet casts at the horizon feed the branching explosion
+// for at most about a tempo of value. 0 = no restriction (historical).
+extern int SpellQuietMinDepth;  // 0
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
