@@ -1544,10 +1544,20 @@ endif  # UNIVERSAL_BUILD
 # OpenBench workers build public engines with a bare `make -j EXE=<out>
 # [CC=<compiler>] [EVALFILE=<net>]`: no explicit target, no COMP/ARCH. The
 # default goal must therefore produce a playable native binary. ARCH already
-# defaults to native; COMP is dispatched on the host OS. EVALFILE is
-# intentionally IGNORED here: spell nets are legacy-format runtime nets
-# (loaded via the UCI EvalFile option), not SF-embeddable networks, and the
-# embedded default (EvalFileDefaultName) is fetched by the `net` target.
+# defaults to native; COMP is dispatched on the host OS.
+#
+# EVALFILE (the net OpenBench assigns to a test) cannot be embedded through
+# the stock incbin path — spell nets are legacy-format runtime nets loaded
+# via the UCI EvalFile option. Instead its path is baked in as the option's
+# DEFAULT, loaded at engine startup (SPELL_EVALFILE_DEFAULT in engine.cpp).
+# The worker passes the path with forward slashes, so it is a valid C string
+# literal. The embedded stock default (EvalFileDefaultName) is still fetched
+# by the `net` target either way.
+
+ifdef EVALFILE
+    # Single-quoted so paths with spaces survive the shell's word splitting
+    CXXFLAGS += -DSPELL_EVALFILE_DEFAULT='"$(EVALFILE)"'
+endif
 
 ifeq ($(OS),Windows_NT)
     OPENBENCH_COMP = mingw

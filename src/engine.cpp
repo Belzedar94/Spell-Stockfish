@@ -196,6 +196,17 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     threads.clear();
     threads.ensure_network_replicated();
     resize_threads();
+
+#ifdef SPELL_EVALFILE_DEFAULT
+    // OpenBench public flow: the worker passes EVALFILE=<net> at BUILD time
+    // (it never injects the option at runtime for public engines, and it
+    // benches with a bare `bench`), so the assigned net must load by
+    // default. Routing through setoption fires the EvalFile handler above.
+    {
+        std::istringstream ss("name EvalFile value " SPELL_EVALFILE_DEFAULT);
+        options.setoption(ss);
+    }
+#endif
 }
 
 std::variant<u64, PositionSetError>
