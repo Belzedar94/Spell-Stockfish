@@ -1,0 +1,25 @@
+test_caster_diagonal_neighbor_may_move (__main__.SpellRules) ... ok
+test_castling_blocked_when_rook_frozen (__main__.SpellRules) ... ok
+test_cooldown_ticks_to_zero_and_recast (__main__.SpellRules) ... ok
+test_ep_after_gated_double_push (__main__.SpellRules) ... ok
+test_freeze_attacker_unlocks_king_move (__main__.SpellRules) ... ok
+test_freeze_cast_sets_state_and_hand (__main__.SpellRules) ... ok
+test_frozen_pieces_cannot_move (__main__.SpellRules) ... ok
+test_jump_double_push_through_gate (__main__.SpellRules) ... ok
+test_jump_enables_slider_through_gate (__main__.SpellRules) ... ok
+test_jump_gate_must_be_occupied (__main__.SpellRules) ... ok
+test_king_cannot_step_into_attack (__main__.SpellRules) ... ok
+test_king_capture_is_legal_and_terminal (__main__.SpellRules) ... ok
+test_moving_into_frozen_zone_is_legal (__main__.SpellRules) ... ok
+test_no_spell_with_promotion_or_ep (__main__.SpellRules) ... ok
+test_opponent_can_use_active_jump_zone (__main__.SpellRules) ... ok
+test_spells_alternate_without_shared_cooldown (__main__.SpellRules) ... ok
+test_startpos_fen_roundtrip (__main__.SpellRules) ... ok
+test_startpos_move_counts (__main__.SpellRules) ... ok
+test_suite_fen_roundtrip_samples (__main__.SpellRules) ... ok
+test_zone_expires_after_opponent_reply (__main__.SpellRules) ... ok
+
+----------------------------------------------------------------------
+Ran 20 tests in 0.553s
+
+OK

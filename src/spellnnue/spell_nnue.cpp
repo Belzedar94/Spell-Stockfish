@@ -84,18 +84,39 @@ constexpr int piece_hand_base(bool enemy, int slot) {
     return HandBase + (2 * slot + enemy) * PocketSlots;
 }
 
+inline bool is_little_endian() {
+    const u16 probe = 1;
+    return *reinterpret_cast<const u8*>(&probe) == 1;
+}
+
 template<typename IntType>
 IntType read_le(std::istream& stream) {
-    // Zero-initialized so a failed read on a truncated file compares
-    // deterministically against the expected header constants (none is 0)
-    IntType result{};
-    stream.read(reinterpret_cast<char*>(&result), sizeof(IntType));
-    return result;
+    // Byte-assembled (host-endianness independent) and zero on a failed
+    // read, so truncated files compare deterministically against the
+    // header constants (none is 0)
+    u8 bytes[sizeof(IntType)] = {};
+    stream.read(reinterpret_cast<char*>(bytes), sizeof(IntType));
+    using U = std::make_unsigned_t<IntType>;
+    U v     = 0;
+    for (size_t i = 0; i < sizeof(IntType); ++i)
+        v |= U(bytes[i]) << (8 * i);
+    return IntType(v);
 }
 
 template<typename IntType>
 void read_le(std::istream& stream, IntType* out, size_t count) {
     stream.read(reinterpret_cast<char*>(out), sizeof(IntType) * count);
+    if constexpr (sizeof(IntType) > 1)
+        if (!is_little_endian())
+            for (size_t i = 0; i < count; ++i)
+            {
+                using U = std::make_unsigned_t<IntType>;
+                U v     = U(out[i]);
+                U r     = 0;
+                for (size_t b = 0; b < sizeof(IntType); ++b)
+                    r |= ((v >> (8 * b)) & 0xFF) << (8 * (sizeof(IntType) - 1 - b));
+                out[i] = IntType(r);
+            }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,6 +184,10 @@ struct SpellNet {
 
 std::unique_ptr<SpellNet> net;
 std::string               netFileName;
+
+// Bumped on every net swap; starts at 1 so zero-initialized accumulators
+// never match a live net
+u32 netGeneration = 1;
 
 // ---------------------------------------------------------------------------
 // Feature enumeration (mirrors HalfKAv2Variants::append_active_indices)
@@ -301,6 +326,9 @@ void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateIn
     {
         auto& e = cache->entries[persp][pos.square<KING>(persp)];
 
+        if (e.gen != netGeneration)
+            e.valid = false;
+
         if (!e.valid)
         {
             // Seed the entry with a full rebuild
@@ -385,10 +413,12 @@ void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateIn
                 e.hand[c][sp]     = st->spellHand[c][sp];
             }
         }
+        e.gen   = netGeneration;
         e.valid = true;
 
         std::memcpy(a.acc[persp], e.acc, HalfDims * sizeof(i16));
         std::memcpy(a.psqt[persp], e.psqt, PSQTBuckets * sizeof(i32));
+        a.gen             = netGeneration;
         a.computed[persp] = true;
         return;
     }
@@ -399,14 +429,19 @@ void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateIn
     std::memcpy(a.acc[persp], net->ftBiases.data(), HalfDims * sizeof(i16));
     std::memset(a.psqt[persp], 0, PSQTBuckets * sizeof(i32));
     apply_deltas(a.acc[persp], a.psqt[persp], indices, n, nullptr, 0);
+    a.gen             = netGeneration;
     a.computed[persp] = true;
 }
 
 void ensure_accumulator(const Position& pos, Color persp, int kingBase, RefreshCache* cache) {
 
     StateInfo* st = pos.state();
-    if (st->spellAcc.computed[persp])
+    if (st->spellAcc.computed[persp] && st->spellAcc.gen == netGeneration)
         return;
+
+    // A different net invalidates every perspective of this entry
+    if (st->spellAcc.gen != netGeneration)
+        st->spellAcc.computed[WHITE] = st->spellAcc.computed[BLACK] = false;
 
     // Find a computed ancestor within reach, with no king move (of this
     // perspective) in between — that would change every feature index
@@ -417,7 +452,7 @@ void ensure_accumulator(const Position& pos, Color persp, int kingBase, RefreshC
     StateInfo* s     = st;
     bool       mustRefresh = false;
 
-    while (!s->spellAcc.computed[persp])
+    while (!(s->spellAcc.computed[persp] && s->spellAcc.gen == netGeneration))
     {
         if (!s->previous || steps >= MaxWalk || s->boardOpCount > 4)
         {
@@ -466,6 +501,7 @@ void ensure_accumulator(const Position& pos, Color persp, int kingBase, RefreshC
     std::memcpy(a.psqt[persp], s->spellAcc.psqt[persp], PSQTBuckets * sizeof(i32));
 
     apply_deltas(a.acc[persp], a.psqt[persp], added, nAdded, removed, nRemoved);
+    a.gen             = netGeneration;
     a.computed[persp] = true;
 }
 
@@ -573,9 +609,16 @@ std::string failedPath;
 
 }  // namespace
 
+bool looks_like_spell_net(const std::string& path) {
+    std::ifstream stream(path, std::ios::binary);
+    return stream && read_le<u32>(stream) == Version && read_le<u32>(stream) == OverallHash;
+}
+
 bool load(const std::string& path) {
     const bool ok = load_impl(path);
     failedPath    = ok || loaded() ? "" : path;
+    if (ok)
+        ++netGeneration;  // stale accumulators must not survive a net swap
     return ok;
 }
 
@@ -583,7 +626,10 @@ void unload() {
     net.reset();
     netFileName.clear();
     failedPath.clear();
+    ++netGeneration;
 }
+
+u32 net_generation() { return netGeneration; }
 
 bool loaded() { return net != nullptr; }
 

@@ -157,21 +157,32 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
           const std::string evalPath = std::string(o);
           if (evalPath != EvalFileDefaultName)
           {
-              bool ok = SpellNNUE::load(evalPath);
-
               // GUIs often pass a bare filename while launching the engine
               // from a different working directory: fall back to the binary
               // directory, like the stock network loader does
-              if (!ok && !binaryDirectory.empty() && path_from_utf8(evalPath).is_relative())
+              std::string resolved = evalPath;
+              if (!std::filesystem::exists(path_from_utf8(resolved)) && !binaryDirectory.empty()
+                  && path_from_utf8(evalPath).is_relative())
               {
                   const auto alt = binaryDirectory / path_from_utf8(evalPath);
                   if (std::filesystem::exists(alt))
-                      ok = SpellNNUE::load(alt.string());
+                      resolved = alt.string();
               }
 
-              sync_cout << "info string "
-                        << (ok ? "Spell NNUE loaded: " : "ERROR: spell NNUE failed to load: ")
-                        << evalPath << sync_endl;
+              // Only files with the spell-net magic go through the spell
+              // loader; anything else (e.g. an exported stock net) keeps
+              // the stock workflow
+              if (SpellNNUE::looks_like_spell_net(resolved))
+              {
+                  const bool ok = SpellNNUE::load(resolved);
+                  sync_cout << "info string "
+                            << (ok ? "Spell NNUE loaded: " : "ERROR: spell NNUE failed to load: ")
+                            << evalPath << sync_endl;
+                  return std::nullopt;
+              }
+
+              SpellNNUE::unload();
+              load_network(path_from_utf8(resolved));
               return std::nullopt;
           }
           // Back to the default: drop any active spell net so the stock
@@ -208,8 +219,9 @@ void Engine::search_clear() {
     tt.clear(threads);
     threads.clear();
 
-    // TODO: does not work with multiple instances
-    Tablebases::init(options["SyzygyPath"]);  // Free mapped files
+    // No tablebases exist for Spell Chess: the stored SyzygyPath (kept for
+    // GUI compatibility) must never reach Tablebases::init
+    Tablebases::init("");
 }
 
 void Engine::set_on_update_no_moves(std::function<void(const Engine::InfoShort&)>&& f) {

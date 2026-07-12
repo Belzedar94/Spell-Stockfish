@@ -419,16 +419,18 @@ class Worker {
     // scratch, consumed within each next_move() call. Pages are only
     // committed when touched, so the large reservation is virtual.
     std::unique_ptr<ExtMove[]> movesArena;
+    ExtMove*                   movesArenaTop = nullptr;
     std::unique_ptr<Move[]>    genScratch;
 
     // Per-thread accumulator refresh cache for the spell NNUE (Finny-style:
     // keyed by perspective and own king square)
     SpellNNUE::RefreshCache spellRefreshCache;
 
-    ExtMove* moves_buffer(int ply, int slot) {
-        return movesArena.get() + (usize(2) * ply + slot) * MAX_MOVES;
-    }
-    Move* gen_scratch() { return genScratch.get(); }
+    // MovePickers claim slots RAII/LIFO from the bump arena — ply-keyed
+    // slots would collide when a singular verification search re-enters
+    // search() at the same ply with the outer picker still alive
+    ExtMove** arena_top() { return &movesArenaTop; }
+    Move*     gen_scratch() { return genScratch.get(); }
 
     friend class Stockfish::ThreadPool;
     friend class SearchManager;

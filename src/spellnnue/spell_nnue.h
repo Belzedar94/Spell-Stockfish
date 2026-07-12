@@ -52,6 +52,7 @@ struct RefreshCache {
         u8       gate[COLOR_NB][2];       // spell-state snapshot (SPELL_NB)
         u8       cooldown[COLOR_NB][2];
         u8       hand[COLOR_NB][2];
+        u32      gen;                     // net generation the entry was built with
         bool     valid;
     };
     Entry entries[COLOR_NB][SQUARE_NB];   // [perspective][own king square]
@@ -63,6 +64,11 @@ struct RefreshCache {
     }
 };
 
+// Cheap header sniff: true when the file starts with the spell-net
+// version+hash magic (used to route EvalFile between the spell loader and
+// the stock network loader).
+bool looks_like_spell_net(const std::string& path);
+
 // Load a network file; returns false (and keeps the previous net) on any
 // version/hash/size mismatch.
 bool load(const std::string& path);
@@ -71,6 +77,10 @@ bool load(const std::string& path);
 void unload();
 
 bool loaded();
+
+// Bumped whenever the active net changes (load or unload): accumulators
+// and refresh-cache entries built under another generation are stale.
+u32 net_generation();
 
 // True while the last requested net failed to load and no previous net is
 // active: the engine refuses to search in that state (see verify_network).

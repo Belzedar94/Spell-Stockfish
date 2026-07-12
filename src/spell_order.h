@@ -49,6 +49,25 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
     return s;
 }
 
+// Search-policy filter (reference: is_useless_potion, applied when the
+// MovePicker emits a move — the legal universe is untouched): a freeze
+// whose zone contains no enemy piece wastes the spell, and a jump gated on
+// a square that is not strictly on the base move's path does nothing for
+// that move. This kills the vast majority of the gated universe: jump
+// copies survive only when the jump actually enables the move.
+inline bool is_useless_spell(const Position& pos, Move m) {
+
+    if (!m.is_spell())
+        return false;
+
+    if (m.spell_type() == SPELL_FREEZE)
+        return !(FreezeZoneBB[m.gate_sq()] & pos.pieces(~pos.side_to_move()));
+
+    const Bitboard path =
+      Attacks::between_bb(m.from_sq(), m.to_sq()) & ~square_bb(m.to_sq());
+    return !(path & square_bb(m.gate_sq()));
+}
+
 // A freeze cast is "tactical" (reference policy: treated like a capture or
 // check throughout pruning, reductions and extensions) when its zone
 // touches the enemy king, silences an attacker of our own king (defensive

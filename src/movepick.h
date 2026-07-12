@@ -38,11 +38,14 @@ class MovePicker {
    public:
     MovePicker(const MovePicker&)            = delete;
     MovePicker& operator=(const MovePicker&) = delete;
-    // Spell chess: the caller provides the buffers (a MAX_MOVES ExtMove slot
-    // for the scored moves and a MAX_MOVES Move generation scratch, consumed
-    // within each next_move() call). Keeping them off the C++ stack keeps
-    // search frames small — a stack-local MAX_MOVES array would page-probe
-    // ~256KB on every construction.
+    // Spell chess: the caller provides the buffers via a per-thread bump
+    // arena (a MAX_MOVES ExtMove slot claimed in the constructor, released
+    // in the destructor — MovePicker lifetimes are strictly nested, so LIFO
+    // reuse is safe even when a singular verification search re-enters
+    // search() at the same ply) plus a MAX_MOVES Move generation scratch,
+    // consumed within each next_move() call. Keeping them off the C++ stack
+    // keeps search frames small — a stack-local MAX_MOVES array would
+    // page-probe ~256KB on every construction.
     MovePicker(const Position&,
                Move,
                Depth,
@@ -53,9 +56,10 @@ class MovePicker {
                const PieceToHistory**,
                const SharedHistories*,
                int,
-               ExtMove*,
+               ExtMove**,
                Move*);
-    MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove*, Move*);
+    MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove**, Move*);
+    ~MovePicker() { *arenaTop -= MAX_MOVES; }
     Move next_move();
     void skip_quiet_moves();
 
@@ -73,12 +77,13 @@ class MovePicker {
     const PieceToHistory**       continuationHistory;
     const SharedHistories*       sharedHistory;
     Move                         ttMove;
-    ExtMove *                    cur, *endCur, *endBadCaptures, *endCaptures, *endGenerated;
+    ExtMove *cur, *endCur, *endBadCaptures, *endCaptures, *endGenerated, *endSpells;
     int                          stage;
     int                          threshold;
     Depth                        depth;
     int                          ply;
     bool                         skipQuiets = false;
+    ExtMove**                    arenaTop;
     ExtMove*                     moves;
     Move*                        genScratch;
 };

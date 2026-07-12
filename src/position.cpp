@@ -297,7 +297,7 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
                     return PositionSetError(std::string("Invalid FEN. Invalid spell holding: ")
                                             + std::string(1, token));
 
-                if (++st->spellHand[c][sp] > 7)
+                if (++st->spellHand[c][sp] > SpellInitialHand[sp])
                     return PositionSetError("Invalid FEN. Too many spells in hand.");
             }
         }
@@ -982,6 +982,11 @@ bool Position::pseudo_legal(const Move m) const {
     Square to   = m.to_sq();
     Piece  pc   = moved_piece(m);
 
+    // A raced or corrupted TT entry can carry the invalid spell tag 0b11 —
+    // reject it before any spell_type()/gate indexing
+    if ((m.raw() & Move::SpellTypeMask) == Move::SpellTypeMask)
+        return false;
+
     // Use a slower but simpler function for uncommon base move types
     if (m.type_of() != NORMAL)
         return MoveList<NON_EVASIONS>(*this).contains(m);
@@ -1199,7 +1204,10 @@ void Position::do_move(Move                      m,
         }
         else
         {
-            st->nonPawnMaterial[color_of(captured)] -= PieceValue[captured];
+            // Kings are never part of nonPawnMaterial (they are skipped when
+            // put on the board), so a royal capture must not subtract either
+            if (type_of(captured) != KING)
+                st->nonPawnMaterial[color_of(captured)] -= PieceValue[captured];
             st->nonPawnKey[color_of(captured)] ^= Zobrist::psq[captured][capsq];
 
             if (type_of(captured) <= BISHOP)
@@ -1994,17 +2002,33 @@ bool Position::upcoming_repetition(int ply) const {
 // is only useful for debugging e.g. for finding evaluation symmetry bugs.
 std::optional<PositionSetError> Position::flip() {
 
-    string            f, token;
+    string            f, token, holdings, spellState;
     std::stringstream ss(fen());
 
     for (Rank r = RANK_8;; --r)  // Piece placement
     {
         std::getline(ss, token, r > RANK_1 ? '/' : ' ');
+
+        // Rank 1 carries the holdings suffix "[...]": split it off (it is
+        // case-swapped with the board, order is not significant on parse)
+        if (r == RANK_1)
+        {
+            const usize bracket = token.find('[');
+            if (bracket != string::npos)
+            {
+                holdings = token.substr(bracket);
+                token.resize(bracket);
+            }
+        }
+
         f.insert(0, token + (f.empty() ? " " : "/"));
 
         if (r == RANK_1)
             break;
     }
+    f.insert(f.size() - 1, holdings);  // after the (now) last rank
+
+    ss >> spellState;  // "{F@e4:3,J@-:0,f@-:0,j@-:0}" — handled after the case swap
 
     ss >> token;                        // Active color
     f += (token == "w" ? "B " : "W ");  // Will be lowercased later
@@ -2014,6 +2038,23 @@ std::optional<PositionSetError> Position::flip() {
 
     std::transform(f.begin(), f.end(), f.begin(),
                    [](char c) { return char(islower(c) ? toupper(c) : tolower(c)); });
+
+    // Spell state: swap the colors and mirror the gates (file kept, rank
+    // flipped). Built after the global case swap so the file letters and
+    // the F/J markers keep their intended case.
+    const auto flipEntry = [&](char marker) {
+        const usize at    = spellState.find(string(1, marker) + "@");
+        const usize colon = spellState.find(':', at);
+        const usize end   = spellState.find_first_of(",}", colon);
+        string      gate  = spellState.substr(at + 2, colon - at - 2);
+        if (gate != "-")
+            gate[1] = char('1' + '8' - gate[1]);
+        const char swapped = char(islower(marker) ? char(toupper(marker)) : char(tolower(marker)));
+        return string(1, swapped) + "@" + gate + spellState.substr(colon, end - colon);
+    };
+    const string flippedState = "{" + flipEntry('f') + "," + flipEntry('j') + ","
+                              + flipEntry('F') + "," + flipEntry('J') + "} ";
+    f.insert(f.find(' ') + 1, flippedState);
 
     ss >> token;  // En passant square
     f += (token == "-" ? token : token.replace(1, 1, token[1] == '3' ? "6" : "3"));

@@ -391,7 +391,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 template<Color Us, GenType Type>
 Move* generate_all(const Position& pos, Move* moveList) {
 
-    static_assert(Type != LEGAL, "Unsupported type in generate_all()");
+    static_assert(Type != LEGAL && Type != SPELL_QUIETS, "Unsupported type in generate_all()");
 
     // Terminal position: a king has been captured, the game is over
     if (!pos.count<KING>(Us) || !pos.count<KING>(~Us))
@@ -430,7 +430,25 @@ Move* generate_all(const Position& pos, Move* moveList) {
                     *moveList++ = Move::make<CASTLING>(ksq, pos.castling_rook_square(cr));
     }
 
+    // QUIETS returns the base moves only: the gated quiets are generated
+    // lazily by the SPELL_QUIETS stage of the MovePicker (most nodes cut
+    // off on a base move and never pay for the huge gated expansion)
+    if constexpr (Type == QUIETS)
+        return moveList;
+
     return generate_spell_moves<Us, Type>(pos, cur, moveList);
+}
+
+// The gated quiet moves alone: the base quiets are regenerated at the buffer
+// start as gating material, the gated segment is appended and then slid to
+// the front.
+template<Color Us>
+Move* generate_spell_quiets(const Position& pos, Move* moveList) {
+
+    Move* baseEnd  = generate_all<Us, QUIETS>(pos, moveList);
+    Move* spellEnd = generate_spell_moves<Us, QUIETS>(pos, moveList, baseEnd);
+
+    return std::move(baseEnd, spellEnd, moveList);
 }
 
 }  // namespace
@@ -449,13 +467,18 @@ Move* generate(const Position& pos, Move* moveList) {
 
     Color us = pos.side_to_move();
 
-    return us == WHITE ? generate_all<WHITE, Type>(pos, moveList)
-                       : generate_all<BLACK, Type>(pos, moveList);
+    if constexpr (Type == SPELL_QUIETS)
+        return us == WHITE ? generate_spell_quiets<WHITE>(pos, moveList)
+                           : generate_spell_quiets<BLACK>(pos, moveList);
+    else
+        return us == WHITE ? generate_all<WHITE, Type>(pos, moveList)
+                           : generate_all<BLACK, Type>(pos, moveList);
 }
 
 // Explicit template instantiations
 template Move* generate<CAPTURES>(const Position&, Move*);
 template Move* generate<QUIETS>(const Position&, Move*);
+template Move* generate<SPELL_QUIETS>(const Position&, Move*);
 template Move* generate<EVASIONS>(const Position&, Move*);
 template Move* generate<NON_EVASIONS>(const Position&, Move*);
 

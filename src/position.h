@@ -88,6 +88,7 @@ struct StateInfo {
     struct SpellAccumulator {
         alignas(64) i16 acc[COLOR_NB][512];
         i32  psqt[COLOR_NB][8];
+        u32  gen;  // SpellNNUE::net_generation() this entry was built with
         bool computed[COLOR_NB];
     };
     SpellAccumulator spellAcc;

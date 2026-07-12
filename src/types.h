@@ -228,6 +228,13 @@ constexpr Value BishopValue = 825;
 constexpr Value RookValue   = 1276;
 constexpr Value QueenValue  = 2538;
 
+// Spell chess: the king is a capturable royal commoner (the reference
+// values it at CommonerValueMg = 700). A nonzero value makes capture
+// ordering (MVV), capture futility and SEE treat king captures as the
+// material events they are — with 0, the game-winning capture sorts and
+// prunes like a quiet move. Deliberately excluded from nonPawnMaterial.
+constexpr Value CommonerValue = 700;
+
 
 // clang-format off
 enum PieceType : u8 {
@@ -245,8 +252,8 @@ enum Piece : u8 {
 // clang-format on
 
 constexpr Value PieceValue[PIECE_NB] = {
-  VALUE_ZERO, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, VALUE_ZERO, VALUE_ZERO,
-  VALUE_ZERO, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, VALUE_ZERO, VALUE_ZERO};
+  VALUE_ZERO, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, CommonerValue, VALUE_ZERO,
+  VALUE_ZERO, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, CommonerValue, VALUE_ZERO};
 
 using Depth = int;
 

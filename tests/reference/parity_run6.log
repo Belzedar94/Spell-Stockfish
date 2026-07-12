@@ -1,0 +1,105 @@
+[1/61] FEN MISMATCH
+    suite: rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] w KQkq - 0 1
+    ours : rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] {F@-:0,J@-:0,f@-:0,j@-:0} w KQkq - 0 1
+OK  [1/61] d1=1878 d2=3287752  rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] w KQkq - 0 1
+OK  [2/61] d1=41 d2=1369  2rnkbr1/p2b2R1/p1p1pp1p/2P2P2/5K1P/1qRPpQ1N/1P1NB1P1/2n5[] {F@-:2,J@-:0,f@-:0,j@-:0} w - - 0 31
+FAIL [3/61] d1=3848 d2=8209691!=8209236  r3kbn1/p1pnpp2/b5pr/1p5p/PPpqQ2P/2N2NP1/3PPP2/R1B1KB1R[JJFFFFjffff] {F@-:0,J@-:0,f@-:1,j@h6:3} w KQq - 3 11
+    divide diff after [root] -> e4e7: ours=2425 ref=2420 (191 moves differ)
+    MOVE-SET MISMATCH at: fen 'r3kbn1/p1pnpp2/b5pr/1p5p/PPpqQ2P/2N2NP1/3PPP2/R1B1KB1R[JJFFFFjffff] {F@-:0,J@-:0,f@-:1,j@h6:3} w KQq - 3 11' moves e4e7
+      only OURS (5): ['f@d6,e8c8', 'f@d7,e8c8', 'f@e6,e8c8', 'f@f6,e8c8', 'f@f7,e8c8']
+OK  [4/61] d1=1580 d2=963166  rnb1kbnr/3pq2p/p6p/1p2p1N1/1p2Pp2/N7/P1PPKPPR/R1BQ1B2[FFFjjffff] {F@-:0,J@-:0,f@-:2,j@-:0} w kq - 2 12
+FAIL [5/61] d1=937 d2=2518445!=2520992  rnbqk1nr/3pp2p/1p4p1/1Np2p2/p2P1b2/P3B2N/1PP1PPPP/R2QKB1R[JFFFjfff] {F@-:2,J@-:0,f@-:0,j@-:0} w KQkq - 2 11
+    divide diff after [root] -> j@f4,a1a2: ours=2699 ref=2790 (28 moves differ)
+    MOVE-SET MISMATCH at: fen 'rnbqk1nr/3pp2p/1p4p1/1Np2p2/p2P1b2/P3B2N/1PP1PPPP/R2QKB1R[JFFFjfff] {F@-:2,J@-:0,f@-:0,j@-:0} w KQkq - 2 11' moves j@f4,a1a2
+      only REF  (91): ['f5f4', 'f@a1,f5f4', 'f@a2,f5f4', 'f@a3,f5f4', 'f@a4,f5f4', 'f@a5,f5f4', 'f@a6,f5f4', 'f@a7,f5f4', 'f@a8,f5f4', 'f@b1,f5f4', 'f@b2,f5f4', 'f@b3,f5f4']
+FAIL [6/61] d1=2037 d2=5597095!=5599071  2rqkbnr/ppp1p2p/2np2p1/5p2/4PP2/1P4P1/P1PPb2P/RNBQK1NR[JFFFjffff] {F@-:0,J@-:0,f@-:0,j@-:1} w k - 0 9
+    divide diff after [root] -> j@c6,a2a3: ours=3216 ref=3306 (22 moves differ)
+    MOVE-SET MISMATCH at: fen '2rqkbnr/ppp1p2p/2np2p1/5p2/4PP2/1P4P1/P1PPb2P/RNBQK1NR[JFFFjffff] {F@-:0,J@-:0,f@-:0,j@-:1} w k - 0 9' moves j@c6,a2a3
+      only REF  (90): ['c7c6', 'f@a1,c7c6', 'f@a2,c7c6', 'f@a3,c7c6', 'f@a4,c7c6', 'f@a5,c7c6', 'f@a6,c7c6', 'f@a7,c7c6', 'f@a8,c7c6', 'f@b1,c7c6', 'f@b2,c7c6', 'f@b3,c7c6']
+OK  [7/61] d1=36 d2=76402  4kbnr/p2r2p1/5qNp/1PPppp2/2B1P1n1/B1P1QPP1/3P3P/RN4KR[f] {F@-:1,J@-:0,f@-:0,j@-:0} w - - 7 24
+OK  [8/61] d1=32 d2=71154  rn2kn1r/1p2pp2/pPq3p1/5P1p/3pp3/P1b1P1PP/R1P1QK2/1NBR4[f] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 4 24
+FAIL [9/61] d1=3035 d2=5054042!=5055942  rn2kbnr/pb1p1ppp/2p2q2/4p3/3NP1P1/3B1N2/PPPPQP1P/R1B1K2R[JFFFFjffff] {F@-:0,J@-:2,f@-:0,j@-:0} b KQkq - 2 8
+    divide diff after [root] -> j@d2,f8b4: ours=1945 ref=1936 (101 moves differ)
+    MOVE-SET MISMATCH at: fen 'rn2kbnr/pb1p1ppp/2p2q2/4p3/3NP1P1/3B1N2/PPPPQP1P/R1B1K2R[JFFFFjffff] {F@-:0,J@-:2,f@-:0,j@-:0} b KQkq - 2 8' moves j@d2,f8b4
+      only OURS (9): ['f@a3,e1g1', 'f@a4,e1g1', 'f@a5,e1g1', 'f@b3,e1g1', 'f@b4,e1g1', 'f@b5,e1g1', 'f@c3,e1g1', 'f@c4,e1g1', 'f@c5,e1g1']
+OK  [10/61] d1=2127 d2=51610  rn1k1n1r/1p2pp2/pP3qp1/5P1p/3pp3/P1b1P1PP/R1P1QK2/1NB2R2[f] {F@-:1,J@-:0,f@-:0,j@-:0} b - - 1 22
+OK  [11/61] d1=3541 d2=105298  rnb1kb1r/1p1pp3/8/2p1Qpp1/PpP1n1Pp/3Pq2P/1P2P2R/RN2KBN1[Fjffff] {F@c1:3,J@-:0,f@-:0,j@-:0} b Qkq - 1 15
+FAIL [12/61] d1=719 d2=530522!=531194  rnbqkbnr/pppppp1p/8/6p1/8/P4N2/1PPPPPPP/RNBQKB1R[JJFFFFjjffff] {F@e3:3,J@-:0,f@-:2,j@-:0} b KQkq - 1 2
+    divide diff after [root] -> j@f3,a7a5: ours=749 ref=781 (21 moves differ)
+    MOVE-SET MISMATCH at: fen 'rnbqkbnr/pppppp1p/8/6p1/8/P4N2/1PPPPPPP/RNBQKB1R[JJFFFFjjffff] {F@e3:3,J@-:0,f@-:2,j@-:0} b KQkq - 1 2' moves j@f3,a7a5
+      only REF  (32): ['f2f3', 'j@a1,f2f3', 'j@a3,f2f3', 'j@a5,f2f3', 'j@a8,f2f3', 'j@b1,f2f3', 'j@b2,f2f3', 'j@b7,f2f3', 'j@b8,f2f3', 'j@c1,f2f3', 'j@c2,f2f3', 'j@c7,f2f3']
+OK  [13/61] d1=34 d2=1125  rn2kr2/1p2Pp2/pPq1n3/6pp/3pp3/P1bRPQPP/RBP2K2/1N6[] {F@-:0,J@-:0,f@-:0,j@-:0} b - - 5 28
+FAIL [14/61] d1=1070 d2=3027634!=3030546  1rb1kbr1/pppqppp1/2n4p/P1Pn4/3p1P1P/R7/1P1PPKP1/1NBQ1BNR[JFFFjjfff] {F@-:2,J@-:0,f@-:1,j@-:0} w - - 1 10
+    divide diff after [root] -> j@c6,a3a1: ours=2965 ref=3056 (32 moves differ)
+    MOVE-SET MISMATCH at: fen '1rb1kbr1/pppqppp1/2n4p/P1Pn4/3p1P1P/R7/1P1PPKP1/1NBQ1BNR[JFFFjjfff] {F@-:2,J@-:0,f@-:1,j@-:0} w - - 1 10' moves j@c6,a3a1
+      only REF  (91): ['c7c6', 'f@a1,c7c6', 'f@a2,c7c6', 'f@a3,c7c6', 'f@a4,c7c6', 'f@a5,c7c6', 'f@a6,c7c6', 'f@a7,c7c6', 'f@a8,c7c6', 'f@b1,c7c6', 'f@b2,c7c6', 'f@b3,c7c6']
+OK  [15/61] d1=2067 d2=3766470  rnb1qb1r/5pp1/p1p2k2/1B2p2p/Q2pP2P/N1P2P1N/PP1P3n/R1BK3R[FFFfff] {F@-:0,J@-:0,f@-:0,j@-:2} w - - 0 14
+OK  [16/61] d1=2293 d2=68398  rnb1k3/p2n1pp1/3pq2r/Ppp3bp/4pN2/1PP1P1QP/R2P2P1/2BK1BR1[f] {F@-:0,J@-:2,f@-:0,j@-:0} b q - 1 25
+OK  [17/61] d1=1211 d2=1173220  Qnr1kbr1/2p1np2/b5p1/1N4Bp/PPpp3P/R1N3PR/4PP2/4KB2[JJFff] {F@-:2,J@-:0,f@-:0,j@-:0} b - - 5 22
+OK  [18/61] d1=23 d2=51865  1B1r1qnr/1p1k3p/4p1p1/pPpp3P/2P1pP2/1n3bP1/P2P4/RN4KR[f] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 1 28
+OK  [19/61] d1=26 d2=886  8/2nb1k2/r1q1p3/p2p1N1p/PpPP3R/N2BPPP1/1R2K3/2B5[] {F@-:0,J@-:0,f@-:2,j@-:0} b - - 0 29
+FAIL [20/61] d1=847 d2=1867753!=1870028  r1bqkbnr/1pppp2p/p1n2pp1/8/1P1P4/5P2/PBP1P1PP/RN1QKBNR[JJFFFFjjfffff] {F@-:2,J@-:0,f@-:0,j@-:0} w KQkq - 0 5
+    divide diff after [root] -> j@c6,a2a3: ours=2238 ref=2329 (25 moves differ)
+    MOVE-SET MISMATCH at: fen 'r1bqkbnr/1pppp2p/p1n2pp1/8/1P1P4/5P2/PBP1P1PP/RN1QKBNR[JJFFFFjjfffff] {F@-:2,J@-:0,f@-:0,j@-:0} w KQkq - 0 5' moves j@c6,a2a3
+      only REF  (91): ['c7c6', 'f@a1,c7c6', 'f@a2,c7c6', 'f@a3,c7c6', 'f@a4,c7c6', 'f@a5,c7c6', 'f@a6,c7c6', 'f@a7,c7c6', 'f@a8,c7c6', 'f@b1,c7c6', 'f@b2,c7c6', 'f@b3,c7c6']
+OK  [21/61] d1=49 d2=105875  rn3b1r/4kBp1/Q7/q1P1pbnp/N3P2P/7N/PP1PK3/R1B4R[f] {F@-:2,J@-:0,f@-:1,j@-:0} w - - 3 25
+OK  [22/61] d1=17 d2=18801  rnb1kbnr/p2p1p2/4p1p1/Ppp3Pp/8/1qPP3P/1PN1PP2/R1BQKBNR[FFjffff] {F@-:1,J@-:0,f@f2:3,j@-:0} w KQkq - 1 10
+OK  [23/61] d1=2008 d2=5827132  rn2kbnr/p2b3p/2Ppp3/1p3pp1/2P4P/B2Pq3/4RPP1/1N1QKBNR[FFFjfff] {F@-:0,J@-:0,f@-:0,j@-:0} w Kkq - 0 13
+OK  [24/61] d1=2678 d2=4588335  rnb2b1r/4qBp1/p4k2/Q1p1p1np/3PP2P/7N/PP1PK3/RNB4R[FFff] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 2 20
+FAIL [25/61] d1=1388 d2=2899441!=2903218  rnbqkb1r/p1pppp2/5n1p/Bp6/3PPQ2/1P6/P1P1KPPP/RN3BNR[JFFFFjfff] {F@-:2,J@-:0,f@-:0,j@-:0} w kq - 3 10
+    divide diff after [root] -> j@f6,a2a3: ours=2124 ref=2214 (42 moves differ)
+    MOVE-SET MISMATCH at: fen 'rnbqkb1r/p1pppp2/5n1p/Bp6/3PPQ2/1P6/P1P1KPPP/RN3BNR[JFFFFjfff] {F@-:2,J@-:0,f@-:0,j@-:0} w kq - 3 10' moves j@f6,a2a3
+      only REF  (90): ['f7f6', 'f@a1,f7f6', 'f@a2,f7f6', 'f@a3,f7f6', 'f@a4,f7f6', 'f@a5,f7f6', 'f@a6,f7f6', 'f@a7,f7f6', 'f@a8,f7f6', 'f@b1,f7f6', 'f@b2,f7f6', 'f@b3,f7f6']
+FAIL [26/61] d1=941 d2=41068!=41097  r1b1k1nr/p1qp1p1p/4p3/1ppn4/4P1PP/NPPPbP2/P3K1BR/R1Q3N1[JFFFff] {F@-:1,J@-:0,f@-:2,j@-:1} w kq - 5 15
+    divide diff after [root] -> j@d5,a1b1: ours=44 ref=45 (29 moves differ)
+    MOVE-SET MISMATCH at: fen 'r1b1k1nr/p1qp1p1p/4p3/1ppn4/4P1PP/NPPPbP2/P3K1BR/R1Q3N1[JFFFff] {F@-:1,J@-:0,f@-:2,j@-:1} w kq - 5 15' moves j@d5,a1b1
+      only REF  (1): ['d7d5']
+OK  [27/61] d1=1405 d2=3268453  r1b1kb1r/2pp3p/p2q2p1/1p2pp2/P1P1n3/1n2P1PP/1P1PKP1R/RNBQ1BN1[FFFfff] {F@-:0,J@-:2,f@-:1,j@-:0} w kq - 0 13
+FAIL [28/61] d1=1971 d2=1436412!=1437084  rnbqkbnr/pppppp1p/6p1/8/8/2P2N2/PP1PPPPP/RNBQKB1R[JJFFFFjjfffff] {F@f4:3,J@-:0,f@-:0,j@-:0} b KQkq - 1 2
+    divide diff after [root] -> j@f3,a7a5: ours=817 ref=849 (21 moves differ)
+    MOVE-SET MISMATCH at: fen 'rnbqkbnr/pppppp1p/6p1/8/8/2P2N2/PP1PPPPP/RNBQKB1R[JJFFFFjjfffff] {F@f4:3,J@-:0,f@-:0,j@-:0} b KQkq - 1 2' moves j@f3,a7a5
+      only REF  (32): ['f2f3', 'j@a1,f2f3', 'j@a2,f2f3', 'j@a5,f2f3', 'j@a8,f2f3', 'j@b1,f2f3', 'j@b2,f2f3', 'j@b7,f2f3', 'j@b8,f2f3', 'j@c1,f2f3', 'j@c3,f2f3', 'j@c7,f2f3']
+OK  [29/61] d1=1576 d2=2228832  rnb1kbnr/p4p2/4p1p1/Pppp2Pp/3P4/R1P4P/1PN1PP2/2BQKBNR[FFffff] {F@-:0,J@-:0,f@-:1,j@-:2} w Kkq - 0 12
+FAIL [30/61] d1=1039 d2=933289!=935339  rnbqkbnr/p2p1ppp/2p5/1p2p3/4P1P1/N2B1N2/PPPPQP1P/R1B1K2R[JJFFFFjffff] {F@-:2,J@-:0,f@-:1,j@-:0} b KQkq - 1 6
+    divide diff after [root] -> d8a5: ours=877 ref=878 (207 moves differ)
+    MOVE-SET MISMATCH at: fen 'rnbqkbnr/p2p1ppp/2p5/1p2p3/4P1P1/N2B1N2/PPPPQP1P/R1B1K2R[JJFFFFjffff] {F@-:2,J@-:0,f@-:1,j@-:0} b KQkq - 1 6' moves d8a5
+      only REF  (1): ['j@d2,e1g1']
+FAIL [31/61] d1=1164 d2=2879233!=2882265  r1bk1bnr/ppp1q3/n2pp3/1PN2ppp/3P4/P1P4N/3QPPPP/R1B1KB1R[JFFFjfff] {F@-:1,J@-:0,f@-:0,j@-:0} w KQ - 0 11
+    divide diff after [root] -> j@a6,a1a2: ours=2519 ref=2611 (33 moves differ)
+    MOVE-SET MISMATCH at: fen 'r1bk1bnr/ppp1q3/n2pp3/1PN2ppp/3P4/P1P4N/3QPPPP/R1B1KB1R[JFFFjfff] {F@-:1,J@-:0,f@-:0,j@-:0} w KQ - 0 11' moves j@a6,a1a2
+      only REF  (92): ['a7a6', 'f@a1,a7a6', 'f@a2,a7a6', 'f@a3,a7a6', 'f@a4,a7a6', 'f@a5,a7a6', 'f@b1,a7a6', 'f@b2,a7a6', 'f@b3,a7a6', 'f@b4,a7a6', 'f@b5,a7a6', 'f@b6,a7a6']
+OK  [32/61] d1=43 d2=1442  1r1k1nnr/5pp1/2B1q2p/p1b1p3/P2PP3/1P2QN1P/3PKP2/2B4R[] {F@c1:3,J@-:0,f@-:0,j@-:0} b - - 1 25
+OK  [33/61] d1=26 d2=60149  r1b1kb1r/2pp4/p2q2p1/4pp1p/PpP5/Nn2PNPP/1P1nKPR1/R1BQ1B2[FFfff] {F@-:1,J@-:0,f@-:0,j@-:0} w kq - 0 16
+OK  [34/61] d1=2332 d2=4105119  r1bqkb1r/ppppppp1/2n2n1p/2P5/P7/5P2/1P1PP1PP/RNBQKBNR[JJFFFFjjffff] {F@-:1,J@-:0,f@-:0,j@-:0} b KQkq - 0 4
+OK  [35/61] d1=37 d2=128044  2r3n1/1bpn1k2/Q2b3r/4q1p1/PP2p3/5PP1/4B2P/RNB2K1R[ff] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 3 23
+OK  [36/61] d1=27 d2=987  3rk3/1b3r2/p1n1pPpb/n2p2Pp/1RpP1P1P/2P2N2/1PNQ1KB1/2B4R[] {F@-:0,J@-:0,f@-:1,j@-:0} b - - 2 28
+OK  [37/61] d1=1271 d2=37984  r2qkbnr/p2n1bp1/7p/1ppppp2/PP3N2/2P1PP2/3P2PP/RNB1QBKR[FFFfff] {F@-:0,J@-:0,f@f1:3,j@-:2} w - - 0 14
+FAIL [38/61] d1=1940 d2=2200483!=2201133  rnbqkb1r/p1pppp2/5n1p/Bp6/1P1PPQ2/8/P1P1KPPP/RN3BNR[JFFFFjfff] {F@-:2,J@-:0,f@-:0,j@-:0} b kq - 0 10
+    divide diff after [root] -> j@f4,a7a6: ours=1231 ref=1262 (21 moves differ)
+    MOVE-SET MISMATCH at: fen 'rnbqkb1r/p1pppp2/5n1p/Bp6/1P1PPQ2/8/P1P1KPPP/RN3BNR[JFFFFjfff] {F@-:2,J@-:0,f@-:0,j@-:0} b kq - 0 10' moves j@f4,a7a6
+      only REF  (31): ['f2f4', 'j@a1,f2f4', 'j@a2,f2f4', 'j@a5,f2f4', 'j@a6,f2f4', 'j@a8,f2f4', 'j@b1,f2f4', 'j@b4,f2f4', 'j@b5,f2f4', 'j@b8,f2f4', 'j@c2,f2f4', 'j@c7,f2f4']
+OK  [39/61] d1=1877 d2=3460773  rnbqkbnr/pppppppp/8/8/1P6/8/P1PPPPPP/RNBQKBNR[JJFFFFFjjfffff] {F@-:0,J@-:0,f@-:0,j@-:0} b KQkq - 0 1
+OK  [40/61] d1=37 d2=1148  1nbq1Bnr/r1b4p/1pp1p3/pP5k/P4p1P/N4B1p/1QPPPK2/6N1[] {F@-:2,J@-:0,f@e5:3,j@-:0} w - - 2 23
+OK  [41/61] d1=38 d2=108478  rn1q1b1r/4kBp1/Q3b3/2P1p1np/4P2P/2N4N/PP1PK3/R1B4R[Ff] {F@-:0,J@-:0,f@-:2,j@-:0} b - - 0 23
+OK  [42/61] d1=33 d2=54103  2r1kb1r/1p3p2/1n1p1np1/QPp3Np/p1PP1p1P/P7/1B2KPP1/RN3B1R[ff] {F@-:0,J@-:0,f@-:1,j@-:0} w k - 2 24
+OK  [43/61] d1=23 d2=16439  r1bqkbnr/1pppp1pp/2n2p2/p7/P7/1P3N2/2PPPPPP/RNBQKB1R[JFFFFjffff] {F@-:1,J@-:2,f@-:2,j@-:1} w KQkq - 0 4
+OK  [44/61] d1=854 d2=15112  r2qkb1N/p2npp2/4b3/1p1p1n1p/1Pp3p1/P1P1PP2/3PK1PP/RNB1QBR1[JFFFffff] {F@e6:3,J@-:2,f@-:0,j@-:2} b q - 1 12
+OK  [45/61] d1=28 d2=62165  rnbk4/p2n1pp1/3p3r/Ppp2q1p/4pb1P/1PP1P3/R2P1QP1/2BK1BR1[f] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 1 28
+OK  [46/61] d1=930 d2=30367  1n1q1Bnr/r1b4p/bpp1p3/pP5k/P4p1P/N4B1p/1QPPPK2/6N1[f] {F@c8:3,J@-:0,f@-:0,j@-:0} b - - 1 22
+OK  [47/61] d1=2435 d2=4662388  r2qkb1r/1bp2p1p/1p3n2/p2ppQp1/8/1n2PP1N/PP1P2PP/RNBK1BR1[FFFfff] {F@-:0,J@-:0,f@-:0,j@-:1} b kq - 1 12
+OK  [48/61] d1=34 d2=74539  1nkq1r2/7p/rB1p1ppb/1P1P3P/p1b1pP2/P4NnR/3KP3/3R1B2[f] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 2 28
+OK  [49/61] d1=2243 d2=1767518  r1bqkbnr/1ppppp1p/p1n3p1/8/1P1P4/5P2/PBP1P1PP/RN1QKBNR[JJFFFFjjfffff] {F@e3:3,J@-:0,f@-:0,j@-:0} b KQkq - 0 4
+OK  [50/61] d1=44 d2=1318  1r1k1nnr/3q1pp1/2B4p/p1b1p3/P2PP3/1P2QN1P/3P1P2/2B1K2R[] {F@-:2,J@-:0,f@-:0,j@-:0} b - - 3 26
+OK  [51/61] d1=47 d2=1757  3r3r/1b2kp1N/1pqb2Q1/p2pp1P1/2p4P/1P1BPP2/3n4/RNn1K1R1[] {F@-:0,J@-:0,f@-:0,j@-:0} b - - 2 27
+OK  [52/61] d1=1769 d2=1536593  r1bqk1nr/1ppp3p/p1n1pppb/8/1PPP3P/5P2/PB1NP1P1/R2QKBNR[JFFFjjfffff] {F@g7:3,J@-:1,f@-:0,j@-:0} b KQkq - 0 7
+OK  [53/61] d1=1759 d2=1827513  rnb1kb1r/1p2p3/8/2pp1pp1/PpP1Q1Pp/3Pq2P/1P2PR2/RN2KBN1[Fjfff] {F@-:0,J@-:0,f@-:2,j@-:0} w Qq - 2 18
+OK  [54/61] d1=43 d2=1940  3r1b2/1Q1nk1p1/1N5r/q1PBpbnp/4P2P/7N/PP1PK3/R1B3R1[] {F@-:0,J@-:0,f@-:1,j@-:0} b - - 14 30
+OK  [55/61] d1=2048 d2=42870  3rqb1r/pp1bk3/2p1p3/1Pp4p/1RPPPp1p/P2BB3/2Q2PPR/3K4[F] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 6 27
+OK  [56/61] d1=31 d2=54216  1n1qk2r/rp2ppbp/p4np1/2pp4/1P3P2/P3P1PP/R1PP4/1NBQKB1R[FFfff] {F@-:0,J@-:0,f@-:1,j@-:0} b K - 0 11
+OK  [57/61] d1=27 d2=50160  rnbqkbnr/p1pppp1p/1p6/6p1/3PP3/1P6/P1PBKPPP/RN1Q1BNR[JFFFFFjffff] {F@-:0,J@h7:3,f@-:1,j@-:2} b kq - 2 5
+OK  [58/61] d1=692 d2=21808  r3k1r1/2Pb4/nP2p3/p2p3p/1B4pb/N2PPR2/6P1/4KBN1[j] {F@-:0,J@-:0,f@-:2,j@-:0} b q - 4 26
+OK  [59/61] d1=44 d2=89835  rn3b1r/4qBp1/p3bk2/Q1p1p1np/3PP2P/2N4N/PP1PK3/R1B4R[Fff] {F@-:2,J@-:0,f@-:0,j@-:0} w - - 4 21
+OK  [60/61] d1=36 d2=104346  r1bqk2r/3p1p1p/p2Np2n/2pn4/4P1PP/1PPPbP2/P3K2R/R2Q1BN1[JFFFf] {F@-:0,J@-:0,f@-:1,j@-:0} b kq - 3 18
+OK  [61/61] d1=3521 d2=91694  rnb1kbnr/p2p1p2/4p1p1/Ppp1q1Pp/8/2PP4/1PN1PP1P/R1BQKBNR[FFjfffff] {F@h3:3,J@-:1,f@-:0,j@-:0} b KQkq - 1 8
+
+14 failing positions out of 61

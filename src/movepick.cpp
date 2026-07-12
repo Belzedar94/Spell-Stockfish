@@ -25,18 +25,23 @@
 #include "bitboard.h"
 #include "misc.h"
 #include "position.h"
+#include "spell_order.h"
 
 namespace Stockfish {
 
 namespace {
 
 enum Stages {
-    // generate main search moves
+    // generate main search moves. Gated quiets (SPELL) are generated
+    // lazily after the base quiets: most nodes cut off before paying for
+    // the huge gated expansion (reference staging)
     MAIN_TT,
     CAPTURE_INIT,
     GOOD_CAPTURE,
     QUIET_INIT,
     GOOD_QUIET,
+    SPELL_INIT,
+    SPELL,
     BAD_CAPTURE,
     BAD_QUIET,
 
@@ -160,7 +165,7 @@ MovePicker::MovePicker(const Position&              p,
                        const PieceToHistory**       ch,
                        const SharedHistories*       sh,
                        int                          pl,
-                       ExtMove*                     buf,
+                       ExtMove**                    at,
                        Move*                        scratch) :
     pos(p),
     mainHistory(mh),
@@ -172,26 +177,35 @@ MovePicker::MovePicker(const Position&              p,
     ttMove(ttm),
     depth(d),
     ply(pl),
-    moves(buf),
+    arenaTop(at),
+    moves(*at),
     genScratch(scratch) {
+
+    *arenaTop += MAX_MOVES;
 
     // Spell chess: no evasion staging — self-check is legal, so "in check"
     // nodes are ordered and pruned exactly like normal ones (reference policy)
-    stage = (depth > 0 ? MAIN_TT : QSEARCH_TT) + !(ttm && pos.pseudo_legal(ttm));
+    stage = (depth > 0 ? MAIN_TT : QSEARCH_TT)
+          + !(ttm && pos.pseudo_legal(ttm) && !is_useless_spell(pos, ttm));
 }
 
 // MovePicker constructor for ProbCut: we generate captures with Static Exchange
 // Evaluation (SEE) greater than or equal to the given threshold.
 MovePicker::MovePicker(
-  const Position& p, Move ttm, int th, const CapturePieceToHistory* cph, ExtMove* buf, Move* scratch) :
+  const Position& p, Move ttm, int th, const CapturePieceToHistory* cph, ExtMove** at, Move* scratch) :
     pos(p),
     captureHistory(cph),
     ttMove(ttm),
     threshold(th),
-    moves(buf),
+    arenaTop(at),
+    moves(*at),
     genScratch(scratch) {
 
-    stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm));
+    *arenaTop += MAX_MOVES;
+
+    stage = PROBCUT_TT
+          + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm)
+              && !is_useless_spell(pos, ttm));
 }
 
 // Assigns a numerical value to each move in a list, used for sorting.
@@ -316,6 +330,10 @@ top:
 
     case GOOD_CAPTURE :
         if (select([&]() {
+                // A gated capture with an irrelevant gate is dominated by
+                // the bare capture: drop it entirely (not even "bad")
+                if (is_useless_spell(pos, *cur))
+                    return false;
                 if (pos.see_ge(*cur, -cur->value / 18))
                     return true;
                 std::swap(*endBadCaptures++, *cur);
@@ -335,12 +353,40 @@ top:
 
             partial_insertion_sort(cur, endCur, -3560 * depth);
         }
+        else
+            endCur = endGenerated = cur;  // empty base-quiet segment
 
         ++stage;
         [[fallthrough]];
 
     case GOOD_QUIET :
         if (!skipQuiets && select([&]() { return cur->value > goodQuietThreshold; }))
+            return *(cur - 1);
+
+        ++stage;
+        [[fallthrough]];
+
+    case SPELL_INIT :
+        // Gated quiets, generated only now: most nodes never get here.
+        // The stage deliberately ignores skipQuiets — spells are the
+        // tactical resource of the variant and late-move counting says
+        // little about them (reference behavior).
+        cur = endCur = endSpells = endGenerated;
+        if (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
+            || pos.can_cast(pos.side_to_move(), SPELL_JUMP))
+        {
+            const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
+
+            endCur = endSpells = score<QUIETS>(genScratch, endGen);
+
+            partial_insertion_sort(cur, endCur, -3560 * depth);
+        }
+
+        ++stage;
+        [[fallthrough]];
+
+    case SPELL :
+        if (select([&]() { return !is_useless_spell(pos, *cur); }))
             return *(cur - 1);
 
         // Prepare the pointers to loop over the bad captures
@@ -354,7 +400,7 @@ top:
         if (select([]() { return true; }))
             return *(cur - 1);
 
-        // Prepare the pointers to loop over quiets again
+        // Prepare the pointers to loop over the base quiets again
         cur    = endCaptures;
         endCur = endGenerated;
 
@@ -379,11 +425,14 @@ top:
     }
 
     case EVASION :
-    case QCAPTURE :
         return select([]() { return true; });
 
+    case QCAPTURE :
+        return select([&]() { return !is_useless_spell(pos, *cur); });
+
     case PROBCUT :
-        return select([&]() { return pos.see_ge(*cur, threshold); });
+        return select(
+          [&]() { return !is_useless_spell(pos, *cur) && pos.see_ge(*cur, threshold); });
     }
 
     assert(false);
