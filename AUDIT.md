@@ -244,9 +244,16 @@ main-search pruning (review P1: with value 0 the game-winning capture ordered la
 move-count pruned). npm keeps excluding kings on both put and capture sides.
 
 **Fixed-nodes probe trail** (120k nodes/move, 60 games): pre-staging -290 · staged flood
--458 (depth 12.4!) · +r-clamp -417 · +contHist rule -325 · (+king value: pending). The staged
+-458 (depth 12.4!) · +r-clamp -417 · +contHist rule -325 · (+king value: below). The staged
 line still trails the unstaged -290 at EQUAL nodes but runs ~1.85x more nodes per second —
-the VSTC A/B (300 games, running) is the deciding measurement.
+the VSTC A/B is the deciding measurement.
+
+**VSTC A/B (300 games, 2000+20ms, run5rl both sides): -169.9 ±43.3 (W76 L212 D12, time
+losses 1-0, draw rate 4%)** — from -524 at the previous checkpoint: **+354 Elo in one
+iteration cycle**. The staging's NPS advantage (now ~1.5x the baseline) plus the r-clamp and
+the policy ports convert. Decision: phase 4.3 accepted, keep iterating (next: qsearch spell
+stage at the first ply — the reference's QPOTION with an impact threshold; spell-stage hard
+cap probe; gating without regenerating base quiets).
 
 ---
 
