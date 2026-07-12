@@ -457,4 +457,55 @@ the pseudo_legal + promotion partition fixes; NPS = 208k incremental minus ~4% a
 - Baseline's depth-13 startpos choice is `f@e7,e2e4` — freeze the enemy king area + take the
   center. Spell tempo is real.
 
+## S5/S7 — pair-runner, signature gate, OpenBench routing (2026-07-12)
+
+**Hypothesis**: S7's first work-order item (a UCI pair runner with real time controls whose
+stdout/PGN are byte-compatible with the OpenBench worker's cutechess parser) plus the S5
+signature gate can be built and validated while the run6a farm generates.
+
+**Changes**:
+- `tools/uci_pair_runner.py`: real-TC UCI pair runner (tc=[moves/]base+inc, st=, nodes/depth;
+  per-game ms clocks, timemargin forfeit semantics, -repeat color-swapped pairs, EPD spell books,
+  -resign/-draw cutechess adjudication, optional symmetric --adj-cp, engine reuse with
+  ucinewgame + restart-on-crash per -recover). Emits ONLY worker-parseable lines
+  ("Finished game N (W vs B): RES {reason}"; ASCII, non-blank, flushed) and a per-game PGN with
+  cutechess-style move comments + Termination headers for anomalous games.
+- `tests/signature_test.py` + CI: bench-signature gate (`bench 16 1 10 default depth`);
+  registration mode when no expected signature is provided. `.github/workflows/spell_ci.yml`
+  now runs `run_suite.py --quick` + the signature step (vars.SPELL_BENCH_SIG).
+- OpenBench fork (`../openbench-spell`, branch `spell-runner`, 2b8720c): VARIANTS routing table
+  (book-name token → (runner, variant)); SPELL → `Client/uci_pair_runner.py`, everything
+  cutechess knows natively (shatranj/atomic/FRC) keeps cutechess-ob. Parser untouched.
+- `docs/openbench-server-runbook.md` (local Django deploy: pins for Py3.12, engine JSON,
+  book pipeline, worker auth) and `docs/xboard-port-plan.md` (S6 surface: notation cost ZERO —
+  gated moves identical in CECP; ~550-line external adapter, no search.cpp changes).
+
+**Validation**:
+- Review of the generated runner found 3 real bugs before any game was played: MOVE_RE rejected
+  gated moves (no comma, max 8 chars → every spell move would count as an "illegal move" loss);
+  `_fen_fields` read the spell `{...}` state token as the side-to-move field; crash attribution
+  by name-substring misfires in self-play (names dedupe to `X`/`X-2`). All three fixed.
+- Smoke: 8 self-play games (run5rl, tc=2+0.02, concurrency 2, 36948-FEN spell book) piped
+  through a replica of worker.py's exact parsing (tokens[2]/tokens[6]/split(':')[1] + pgn_util
+  regexes): 25 stdout lines, pentanomial consistent, 0 crashes/timelosses/illegals, PGN valid,
+  66 gated moves played.
+- Signatures registered in BENCH_LOG: 2,395,529 (16/1/10 run5rl) / 2,785,455 (netless) /
+  13,456,297 (plain `bench`, the OpenBench worker protocol, 36s < 60s client timeout).
+
+**Learnings**:
+- The OpenBench worker parses ONLY "Finished game" lines positionally (tokens[6]) and stops at
+  the FIRST blank stdout line; engine names must be single tokens; errors are counted by reason
+  substrings ('disconnect', 'stalls', 'on time', 'illegal') and re-scanned from the PGN's
+  Termination headers, so the PGN file must exist even with zero errors.
+- Private-engine flow does NOT compile on workers: the server locates GitHub Actions artifacts
+  (workflow `openbench.yml`, artifact names `<tag>-<os>-<vector>-<bitop>`). With Actions
+  billing-blocked, S7's remote-worker milestone needs billing, a public repo, or a local patch.
+- Client bench protocol is plain `bench` (no args, 60s): OpenBench commit discipline is
+  `Bench: <plain-bench-nodes>`, distinct from our S5 signature command.
+- select_best_artifact forces has_bmi2=False on AMD/Ryzen: ship popcnt artifacts, not just pext.
+
+**Decision**: S7 step 1-2 done (runner + routing); step 3 next (local server bring-up per
+runbook). S5 signature gate in place; instrumented/debug suite still queued behind the farm
+(src/stockfish.exe is exe-locked by 12 workers).
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).

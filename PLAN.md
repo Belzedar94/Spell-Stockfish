@@ -29,9 +29,9 @@ Decisiones de alcance (propietario):
 | S2 | NNUE legacy `0x7AF32F20` (paridad exacta, incremental+Finny, export byte-idéntico) | ✅ |
 | S3 | Búsqueda fuerte (de -568 a LTC -105 / nodos-fijos -17 con red idéntica) | 🔶 pausado; se retoma vía OpenBench |
 | S4 | Pipeline end-to-end: datagen nativo ✅ formato-verificado, granja ✅, loader ✅, paso GPU ✅, serializador byte-idéntico ✅ → **run6 real: generar datos + entrenar + cargar + jugar** | ⏭ EN CURSO |
-| S5 | Suite obligatoria: spell_tests ampliado (release+debug), perft.sh, protocol.sh (UCI+XBoard), reprosearch.sh, signature.sh (corpus spell), instrumented (ASan/UBSan), pipeline-CI; sin skips nuevos sin justificar | ⏳ |
+| S5 | Suite obligatoria: spell_tests ampliado (release+debug), perft ✅, protocolo UCI ✅, repro ✅, signature ✅ (2,395,529 run5rl; registrada en BENCH_LOG), orquestador run_suite ✅, CI yml ✅ (bloqueado por billing); pendiente: instrumented (asserts/debug — espera fin de granja por exe-lock; ASan/UBSan en Linux CI), suite completa no-quick, sección XBoard | 🔶 |
 | S6 | Protocolos y bindings: XBoard/CECP; API compartida; wheel pyffish-spell; ffish.js CJS+ESM; WASM ligero y NNUE; tests de paridad native/Python/JS/WASM | ⏳ |
-| S7 | OpenBench multi-proyecto (torre de control para Spell-Stockfish, Atomic-Stockfish y sucesivos): servidor + workers multi-máquina, SPRT, SPSA, redes por SHA; ruteo variante→runner (cutechess para variantes que conoce, p.ej. atomic; uci-pair-runner para spell y exóticas) — ver docs/openbench-spell.md | ⏳ |
+| S7 | OpenBench multi-proyecto (torre de control para Spell-Stockfish, Atomic-Stockfish y sucesivos): servidor + workers multi-máquina, SPRT, SPSA, redes por SHA; ruteo variante→runner — ver docs/openbench-spell.md. Pasos 1-2 ✅: `tools/uci_pair_runner.py` (TC real, salida compatible-worker, smoke 8 partidas PASS) + tabla VARIANTS en el fork (rama `spell-runner` @2b8720c). Paso 3 (servidor local): runbook en docs/openbench-server-runbook.md; OJO flujo private-engine requiere Actions (billing) | 🔶 |
 | S8 | Molino de ideas: búsqueda (candidatos en AUDIT: dominancia del base, descomposición aditiva del producto base×gate, forense de derrotas) y redes (arquitecturas, datos, distill) con gates SPRT | ⏳ |
 
 Orden propuesto: S4 → S5 → S7 → S6 → S8 (OpenBench antes que bindings para desbloquear el

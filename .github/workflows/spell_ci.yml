@@ -1,5 +1,8 @@
 name: Spell CI
 
+# NOTE: Actions is currently blocked by billing; this workflow must stay
+# correct so it runs unchanged once the account is unblocked.
+
 on:
   push:
     branches:
@@ -34,9 +37,27 @@ jobs:
           echo "$out"
           echo "$out" | grep -q 'Nodes searched: 3287752'
 
-      - name: Rule unit tests + suite d1 parity
+      # run_suite --quick orchestrates: spell_tests.py (units + suite d1),
+      # protocol_test.py, repro_test.py and compare_perft.py at depth 1.
+      # --net "" skips EvalFile loading (the spell net is not in the repo;
+      # the embedded/default net covers the runs). --baseline points at our
+      # own binary: the reference oracle only lives locally, and the quick
+      # perft gate validates totals against perft_spell.csv anyway — the
+      # baseline engine is only consulted to isolate diffs after a FAIL.
+      # Absolute engine path: run_suite launches compare_perft.py from
+      # tests/reference, so relative paths would resolve differently there.
+      - name: S5 suite (units + protocolo + repro + perft d1)
         working-directory: tests
-        run: python3 spell_tests.py ../src/stockfish
+        run: python3 run_suite.py --quick --engine "$GITHUB_WORKSPACE/src/stockfish" --baseline "$GITHUB_WORKSPACE/src/stockfish" --net ""
 
       - name: Bench sanity
         run: ./stockfish bench 16 1 8 default depth
+
+      # Registration mode unless the repo defines the SPELL_BENCH_SIG
+      # variable (Settings > Secrets and variables > Actions > Variables);
+      # once set, any signature drift fails the job.
+      - name: Bench signature
+        working-directory: tests
+        env:
+          SPELL_BENCH_SIG: ${{ vars.SPELL_BENCH_SIG }}
+        run: python3 signature_test.py ../src/stockfish ""
