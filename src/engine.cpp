@@ -129,10 +129,16 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
 
     options.add("UCI_ShowWDL", Option(false));
 
+    // Standard-chess tablebases don't describe Spell Chess (hands, zones,
+    // cooldowns, capture-the-king), so the path is accepted for GUI
+    // compatibility but never loaded — TB::MaxCardinality stays 0 and the
+    // search never probes.
     options.add(  //
       "SyzygyPath", Option("", [](const Option& o) {
-          Tablebases::init(o);
-          return std::nullopt;
+          if (!std::string(o).empty() && std::string(o) != "<empty>")
+              return std::optional<std::string>(
+                "info string SyzygyPath ignored: no tablebases exist for Spell Chess");
+          return std::optional<std::string>(std::nullopt);
       }));
 
     options.add("SyzygyProbeDepth", Option(1, 1, 100));

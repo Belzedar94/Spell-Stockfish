@@ -181,6 +181,10 @@ Search::Worker::Worker(SharedState&                    sharedState,
     tt(sharedState.tt),
     network(sharedState.network),
     refreshTable(network[token]) {
+    // Raw new[]: ExtMove/Move are trivially constructible, so the arena
+    // pages stay untouched (hence uncommitted) until a ply first uses them
+    movesArena.reset(new ExtMove[usize(2) * (MAX_PLY + 10) * MAX_MOVES]);
+    genScratch.reset(new Move[MAX_MOVES]);
     clear();
 }
 
@@ -1065,7 +1069,8 @@ Value Search::Worker::search(
     {
         assert(probCutBeta < VALUE_INFINITE && probCutBeta > beta);
 
-        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory);
+        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory,
+                      moves_buffer(ss->ply, 1), gen_scratch());
         Depth      probCutDepth = depth - 4 - improving;
 
         while ((move = mp.next_move()) != Move::none())
@@ -1115,7 +1120,7 @@ moves_loop:  // When in check, search starts here
 
 
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &captureHistory, contHist,
-                  &sharedHistory, ss->ply);
+                  &sharedHistory, ss->ply, moves_buffer(ss->ply, 0), gen_scratch());
 
     value = bestValue;
 
@@ -1778,7 +1783,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     // the moves. We presently use two stages of move generator in quiescence search:
     // captures, or evasions only when in check.
     MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &captureHistory,
-                  contHist, &sharedHistory, ss->ply);
+                  contHist, &sharedHistory, ss->ply, moves_buffer(ss->ply, 0), gen_scratch());
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain or a beta
     // cutoff occurs.

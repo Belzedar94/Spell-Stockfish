@@ -990,8 +990,10 @@ bool Position::pseudo_legal(const Move m) const {
     if (pc == NO_PIECE || color_of(pc) != us)
         return false;
 
-    // The destination square cannot be occupied by a friendly piece
-    if (pieces(us) & to)
+    // The destination square cannot be occupied by a friendly piece — except
+    // for a pawn push onto a friendly piece standing on a jump-transparent
+    // square, which the phase-flip rule resolves as a self-capture
+    if (type_of(pc) != PAWN && (pieces(us) & to))
         return false;
 
     // Sliding sight: active jump zones are transparent, and so is the
@@ -1007,20 +1009,33 @@ bool Position::pseudo_legal(const Move m) const {
         if ((Rank8BB | Rank1BB) & to)
             return false;
 
-        // Check if it's a valid capture, single push, or double push.
-        // The intermediate square of a double push only needs to be
-        // transparent (a piece may be jumped over), the destination must be
-        // physically empty.
+        // Pushes use the phase-flipped occupancy, mirroring the generator:
+        // jump-transparent squares invert their state, so an empty one blocks
+        // the push (and the intermediate square of a double push) while an
+        // occupied one may be landed on (a capture, even of an own piece) or
+        // jumped over. A candidate jump cast extends the transparency by its
+        // gate (the gated double push over the gate); landing on the gate
+        // itself is rejected by legal().
+        Bitboard flipOcc = pieces() ^ jump_transparent();
+        if (m.is_spell() && m.spell_type() == SPELL_JUMP)
+            flipOcc ^= square_bb(m.gate_sq());
+
         const bool isCapture    = bool(attacks_bb<PAWN>(from, us) & pieces(~us) & to);
-        const bool isSinglePush = (from + pawn_push(us) == to) && empty(to);
+        const bool isSinglePush = (from + pawn_push(us) == to) && !(flipOcc & to);
         const bool isDoublePush = (from + 2 * pawn_push(us) == to)
-                               && (relative_rank(us, from) == RANK_2) && empty(to)
-                               && !(occSliding & (to - pawn_push(us)));
+                               && (relative_rank(us, from) == RANK_2) && !(flipOcc & to)
+                               && !(flipOcc & (to - pawn_push(us)));
 
         if (!(isCapture || isSinglePush || isDoublePush))
             return false;
     }
     else if (!(attacks_bb(type_of(pc), from, occSliding) & to))
+        return false;
+
+    // Pieces may not land quietly on jump-transparent squares (the generator
+    // excludes empty transparent squares from every piece target; pawn pushes
+    // are governed by the phase-flip rule above)
+    else if (empty(to) && (jump_transparent() & to))
         return false;
 
     return true;
