@@ -95,6 +95,117 @@ options, and a combo-option duplicate-token bug in the (otherwise unused) SF com
 
 ---
 
+## Phase 3 — Variant-NNUE port + eval parity (2026-07-12)
+
+**Goal**: load the reference nets (run5rl) and produce identical evaluations, isolating search from
+eval for the M1 A/B loop.
+
+**Done**:
+- `src/spellnnue/spell_nnue.{h,cpp}`: self-contained loader + evaluator for the reference format
+  (version `0x7AF32F20`, chained section hashes, FT 512 + 8 layer stacks 16→32→1, PSQT buckets).
+  Feature geometry hardcoded from first principles (96,256 dims; plane order P N B R Q F J K with
+  a colorless king plane; pockets at 960, zone planes at 1184, cooldown-bit planes at 1440; king
+  stride 1504) — the file's own hash chain acts as a checksum of the derivation, and run5rl's
+  101 MB size matches the computed dimensions exactly.
+- Evaluation by full accumulator refresh (~46 active features/perspective); incremental updates
+  deliberately deferred to Phase 4 (parity first).
+- `EvalFile` now loads variant nets (harness-compatible); the embedded stock chess networks remain
+  the spell-blind fallback; SF's `verify_network` made tolerant of the spell path.
+- `evalspell` debug command (exact integers) + `tests/reference/eval_parity.py` harness.
+
+**Validation**:
+- **Eval parity: raw 61/61 within ±2** (exactly the reference printout's 2-decimal rounding) and
+  **final/scaled 59/59 within ±1** after adding the reference's outer scale
+  (`903 + 32·pawns + 32·npm/1024`, where its npm includes the commoners at CommonerValueMg=700).
+  The 2 skipped positions are in-check FENs the reference `eval` COMMAND refuses to print
+  (its search still evaluates them via the same non-check policy — no in-game divergence).
+- Startpos raw = 132 = the baseline's own "+0.63" printout.
+- bench (spell net) `16 1 10`: 881,768 nodes @ **113k NPS** — the expected refresh-eval cost
+  (chess-net incremental path benches 292-352k; the baseline runs 262k). Closing this gap via
+  incremental accumulators is the core of Phase 4.
+- Perft parity re-run 61/61; rule tests 21/21.
+
+**Learnings**:
+- The reference hybrid/classical eval branch is DEAD for spell (`pure = !check_counting()` is
+  always true) — pure NNUE everywhere; no need to port the classical eval.
+- FSF's `non_pawn_material()` includes commoners (700); SF's excludes kings — the scale formula
+  needs the correction or evals drift proportionally to |eval|.
+- SF's `go` re-verifies `EvalFile` as a stock net and *terminates* the engine on mismatch;
+  any alternative eval source must bypass that check.
+
+**Decision**: Phase 3 accepted. Next: A/B baseline match with identical net (search delta
+measurement), then Phase 4 (incremental accumulator + search iteration to M1).
+
+**A/B datapoint (identical net, 300 VSTC games)**: **-568 Elo** (W7 L285 D8) vs the frozen
+baseline, both on run5rl. With eval parity verified, this is the pure search/speed gap Phase 4
+must close: ~2.3x NPS deficit from refresh-only eval (113k vs 262k) plus the reference's tuned
+spell ordering/selectivity (its movepick gate scoring alone was worth ~+100 Elo). Time losses
+were symmetric (12 vs 11) — VSTC harness tightness, though our default Move Overhead deserves a
+bump. GitHub Actions note: CI jobs on the private repo fail at start due to account billing
+("payments have failed / spending limit") — validation continues locally; owner decides on
+billing vs public repo.
+
+## Phase 4.1 — Incremental spell accumulator (2026-07-12)
+
+**Hypothesis**: refresh-only eval (rebuilding all ~46 piece features + zone/cooldown/hand planes
+per node) is the dominant share of the -568 Elo A/B gap; incremental updates recover most of it.
+
+**Changes**:
+- `StateInfo` gains `boardOps[4]` (add/remove piece ops recorded by `do_move`: generic moves,
+  captures incl. self-captures, castling) and a per-state `SpellAccumulator`
+  (`i16 acc[2][512]` + `i32 psqt[2][8]` + computed flags), reset on `do_move`/`do_null_move`.
+- `spell_nnue.cpp`: `ensure_accumulator()` walks back up to 6 states to a computed ancestor
+  (refresh barriers: root, king-of-perspective moved, unknown ops), collecting board-op deltas
+  plus `spell_state_deltas()` (zone bitboard diffs, cooldown bit diffs, hand slot diffs vs
+  `st->previous`), then applies one batched add/sub pass per perspective.
+  Spell ticks change features every ply, so pure "board delta" updating is not enough — the
+  zone/cooldown/hand planes are diffed alongside board ops each step of the walk-back.
+
+**Validation**:
+- Bench signature with run5rl (`bench 16 1 10 default depth`): **881,768 nodes — identical to
+  the refresh build**. Every eval in the ~880k-node tree matches; a single divergent value
+  would fork the tree. Strongest equivalence check available.
+- NPS 113k → **208k (+84%)**. Still below the 262k baseline — remaining gap is search-side
+  (ordering/selectivity) plus eval hot paths for later profiling.
+- eval-parity vs baseline: raw 61/61 (±2), scaled 59/59 (±1). Perft suite 61/61 d2. Unit tests
+  21/21.
+
+**Decision**: accepted. Next: third-round Codex findings on PR #2 (MAX_MOVES P1 + pseudo_legal
+transparency holes), then movepick spell ordering and the A/B re-measurement.
+
+## Review rounds 3 (PR #2) & 1 (PR #3) — robustness batch (2026-07-12)
+
+**PR #2 round 3** (fixed): `MAX_MOVES` 8192→32768 (P1: promoted material + freeze in hand
+overflows 8192). Naive bump cost **-42% NPS** (342k→197k: 256KB stack-local MovePicker buffers
+page-probe every frame) → MovePicker buffers moved to a per-thread heap arena (2 ExtMove slots
+per ply + one shared generation scratch consumed within each next_move(); MoveLists in movepick
+replaced by direct generate<> into the scratch). 323k NPS restored, tree byte-identical.
+128MB pthread stacks everywhere (Linux included) for the remaining transient MoveList frames.
+Also: pseudo_legal now mirrors phase-flip pushes (incl. self-capture pushes + candidate-gate
+double push) and bans quiet landings on empty transparent squares (two TT-move legality holes);
+promotion pushes onto occupied transparent squares emit all 4 promotions in CAPTURES; SyzygyPath
+accepted-but-ignored. Rejected with rationale: qsearch in-check terminal special-casing
+(reference parity — `needsEvasion` is constant-false in spell; the non-check policy is load-bearing).
+
+**PR #3 round 1** (fixed): EvalFile resolves bare filenames against the binary directory;
+reverting EvalFile to default unloads the spell net; a failed spell load with no active net makes
+verify_network refuse to search with a clear error instead of letting the stock verifier
+reinterpret the path; read_le zero-initializes on truncated files (+ descSize cap); eval_parity
+now exits non-zero on scaled divergence or unexpected coverage loss (the 2 in-check positions the
+reference's `eval` declines by rule are recognized as such, not silently passed). Rejected with
+rationale: "bucket must count holdings" — the reference's bucket line
+(`evaluate_nnue.cpp:163`) uses `pos.count<ALL_PIECES>()`, which is board-only in FSF
+(`pieceCountInHand` is a separate array), and the exact 59/59 raw parity on full-hand positions
+would be impossible otherwise.
+
+**Validation**: perft 61/61 d2, tests 21/21, eval-parity 59/59 raw / 59/59 scaled (2 excluded by
+rule, exit code now honest), bench spell-net new signature 819,199 @ 200k NPS (tree changed by
+the pseudo_legal + promotion partition fixes; NPS = 208k incremental minus ~4% arena cost).
+
+---
+
+---
+
 ## Phase 0 — Setup, frozen baseline & spec (2026-07-11)
 
 **Goal**: reproducible baseline, behavioral spec, perft parity suite, working match harness.

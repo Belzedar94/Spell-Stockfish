@@ -97,6 +97,7 @@ class Engine {
     // utility functions
 
     void trace_eval() const;
+    void trace_spell_eval() const;
 
     const OptionsMap& get_options() const;
     OptionsMap&       get_options();

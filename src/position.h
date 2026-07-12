@@ -72,6 +72,25 @@ struct StateInfo {
     Bitboard   checkSquares[PIECE_TYPE_NB];
     Piece      capturedPiece;
     int        repetition;
+
+    // Board delta of the move leading to this state, for the spell-NNUE
+    // incremental accumulator (spell-state deltas are derived by comparing
+    // with the previous state; board changes need explicit ops).
+    struct BoardOp {
+        u8 add;  // 1 = feature added, 0 = removed
+        u8 pc;   // Piece
+        u8 sq;   // Square
+    };
+    BoardOp boardOps[4];
+    u8      boardOpCount;  // 0xFF marks "unknown, refresh required" (e.g. after set())
+
+    // Spell-NNUE accumulator cache (lazily computed at evaluation)
+    struct SpellAccumulator {
+        alignas(64) i16 acc[COLOR_NB][512];
+        i32  psqt[COLOR_NB][8];
+        bool computed[COLOR_NB];
+    };
+    SpellAccumulator spellAcc;
 };
 
 
