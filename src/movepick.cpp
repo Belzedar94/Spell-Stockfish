@@ -169,11 +169,9 @@ MovePicker::MovePicker(const Position&              p,
     depth(d),
     ply(pl) {
 
-    if (pos.checkers())
-        stage = EVASION_TT + !(ttm && pos.pseudo_legal(ttm));
-
-    else
-        stage = (depth > 0 ? MAIN_TT : QSEARCH_TT) + !(ttm && pos.pseudo_legal(ttm));
+    // Spell chess: no evasion staging — self-check is legal, so "in check"
+    // nodes are ordered and pruned exactly like normal ones (reference policy)
+    stage = (depth > 0 ? MAIN_TT : QSEARCH_TT) + !(ttm && pos.pseudo_legal(ttm));
 }
 
 // MovePicker constructor for ProbCut: we generate captures with Static Exchange
@@ -183,7 +181,6 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
     captureHistory(cph),
     ttMove(ttm),
     threshold(th) {
-    assert(!pos.checkers());
 
     stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm));
 }

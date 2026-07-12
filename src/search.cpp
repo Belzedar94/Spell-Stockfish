@@ -42,6 +42,7 @@
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
 #include "position.h"
+#include "spell_params.h"
 #include "syzygy/tbprobe.h"
 #include "thread.h"
 #include "timeman.h"
@@ -205,8 +206,13 @@ void Search::Worker::start_searching() {
 
     if (rootMoves.empty())
     {
+        // Spell chess: no moves at the root also happens when our king has
+        // already been captured (terminal loss); stalemate stays a draw.
         main_manager()->updates.onUpdateNoMoves(
-          {0, {rootPos.checkers() ? -VALUE_MATE : VALUE_DRAW, rootPos}});
+          {0,
+           {!rootPos.count<KING>(rootPos.side_to_move()) || rootPos.checkers() ? -VALUE_MATE
+                                                                               : VALUE_DRAW,
+            rootPos}});
         main_manager()->updates.onBestmove(UCIEngine::move(Move::none()), "");
         return;
     }
@@ -744,7 +750,12 @@ Value Search::Worker::search(
     SearchedList quietsSearched;
 
     // Step 1. Initialize node
-    ss->inCheck   = pos.checkers();
+    // Spell chess (reference policy): self-check is legal, so kings are
+    // "attacked" in a large share of normal positions. Treating that as being
+    // in check would disable static eval, stand-pat and most pruning and the
+    // tree explodes; instead every node is treated as a normal one and the
+    // extinction scoring punishes a hanging king one ply deeper.
+    ss->inCheck   = false;
     priorCapture  = pos.captured_piece();
     Color us      = pos.side_to_move();
     ss->moveCount = 0;
@@ -766,6 +777,13 @@ Value Search::Worker::search(
 
     if (!rootNode)
     {
+        // Spell chess: a captured king ends the game immediately (extinction),
+        // before any draw rule, TT probe or evaluation can apply.
+        if (!pos.count<KING>(us))
+            return mated_in(ss->ply);
+        if (!pos.count<KING>(~us))
+            return mate_in(ss->ply);
+
         // Step 2. Check for aborted search and immediate draw
         if (threads.stop.load(std::memory_order_relaxed) || pos.is_draw(ss->ply)
             || ss->ply >= MAX_PLY)
@@ -1136,6 +1154,18 @@ moves_loop:  // When in check, search starts here
 
         // Calculate new depth for this move
         newDepth = depth - 1;
+
+        // Spell chess: gated moves multiply the branching factor enormously,
+        // so they are searched shallower (the reference's PotionDepthPenalty
+        // policy, worth a large amount of its Elo): quiet casts two plies,
+        // tactical casts one.
+        if (move.is_spell())
+            newDepth =
+              std::max(1,
+                       newDepth
+                         - (pos.capture_stage(move) || pos.gives_check(move)
+                              ? SpellDepthPenaltyTactical
+                              : SpellDepthPenaltyQuiet));
 
         int delta = beta - alpha;
 
@@ -1649,12 +1679,19 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     }
 
     bestMove    = Move::none();
-    ss->inCheck = pos.checkers();
+    // Spell chess: same non-check policy as the main search (see Step 1 there)
+    ss->inCheck = false;
     moveCount   = 0;
 
     // Used to send selDepth info to GUI (selDepth counts from 1, ply from 0)
     if (PvNode && selDepth < ss->ply + 1)
         selDepth = ss->ply + 1;
+
+    // Spell chess: a captured king ends the game immediately (extinction)
+    if (!pos.count<KING>(pos.side_to_move()))
+        return mated_in(ss->ply);
+    if (!pos.count<KING>(~pos.side_to_move()))
+        return mate_in(ss->ply);
 
     // Step 2. Check for an immediate draw or maximum ply reached
     if (pos.is_draw(ss->ply) || ss->ply >= MAX_PLY)

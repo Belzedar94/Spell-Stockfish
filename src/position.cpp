@@ -1686,7 +1686,8 @@ void Position::do_castling(Color               us,
 // the side to move without executing any move on the board.
 void Position::do_null_move(StateInfo& newSt) {
 
-    assert(!checkers());
+    // Spell chess: null moves are allowed even with the king attacked
+    // (self-check is legal; the search treats these as normal nodes)
     assert(&newSt != st);
 
     std::memcpy(&newSt, st, sizeof(StateInfo));
@@ -1706,6 +1707,37 @@ void Position::do_null_move(StateInfo& newSt) {
 
     st->capturedPiece = NO_PIECE;
 
+    // Spell chess: a null move still ticks the spell clock exactly like a
+    // real non-casting move, so the searched position stays reachable
+    // (otherwise e.g. a freeze zone would survive into its caster's turn).
+    {
+        const Color them = ~sideToMove;
+
+        for (Color c : {WHITE, BLACK})
+            for (int sp = 0; sp < SPELL_NB; ++sp)
+                st->key ^= spell_state_key(c, SpellType(sp), Square(st->spellGate[c][sp]),
+                                           st->spellCooldown[c][sp], st->spellHand[c][sp]);
+
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+        {
+            if (st->spellCooldown[sideToMove][sp] == 0)
+                st->spellGate[sideToMove][sp] = SQ_NONE;
+
+            if (st->spellCooldown[them][sp] > 0)
+            {
+                if (--st->spellCooldown[them][sp] <= SPELL_ZONE_LIFETIME)
+                    st->spellGate[them][sp] = SQ_NONE;
+            }
+            else
+                st->spellGate[them][sp] = SQ_NONE;
+        }
+
+        for (Color c : {WHITE, BLACK})
+            for (int sp = 0; sp < SPELL_NB; ++sp)
+                st->key ^= spell_state_key(c, SpellType(sp), Square(st->spellGate[c][sp]),
+                                           st->spellCooldown[c][sp], st->spellHand[c][sp]);
+    }
+
     sideToMove = ~sideToMove;
 
     set_check_info();
@@ -1718,8 +1750,6 @@ void Position::do_null_move(StateInfo& newSt) {
 
 // Must be used to undo a "null move"
 void Position::undo_null_move() {
-
-    assert(!checkers());
 
     st         = st->previous;
     sideToMove = ~sideToMove;

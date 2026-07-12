@@ -18,6 +18,7 @@
 
 #include "movegen.h"
 
+#include <algorithm>
 #include <cassert>
 #include <initializer_list>
 
@@ -25,6 +26,7 @@
 #include "bitboard.h"
 #include "position.h"
 #include "spell.h"
+#include "spell_params.h"
 
 namespace Stockfish {
 
@@ -98,16 +100,25 @@ Move* generate_pawn_moves(const Position& pos, Move* moveList, Bitboard target) 
     Bitboard pawnsOn7    = movablePawns & TRank7BB;
     Bitboard pawnsNotOn7 = movablePawns & ~TRank7BB;
 
-    // Single and double pawn pushes, no promotions. No color-target masking:
-    // under the phase-flip rule a push may land on ANY piece standing on a
-    // transparent square (even an own one), which ~pieces(Us) would strip.
-    if constexpr (Type != CAPTURES)
+    // Single and double pawn pushes, no promotions. Under the phase-flip rule
+    // a push may land on ANY piece standing on a transparent square (even an
+    // own one, resolved as a self-capture), so pushes landing on a physically
+    // occupied square belong to the CAPTURES partition and the rest are true
+    // quiets. Both partitions together preserve the legal universe.
     {
-        Bitboard b1 = shift<Up>(pawnsNotOn7) & emptySquares;
-        Bitboard b2 = shift<Up>(b1 & TRank3BB) & emptySquares;
+        const Bitboard step1 = shift<Up>(pawnsNotOn7) & emptySquares;
+        const Bitboard step2 = shift<Up>(step1 & TRank3BB) & emptySquares;
 
-        moveList = splat_pawn_moves<Up>(moveList, b1);
-        moveList = splat_pawn_moves<Up + Up>(moveList, b2);
+        if constexpr (Type != CAPTURES)
+        {
+            moveList = splat_pawn_moves<Up>(moveList, step1 & ~pos.pieces());
+            moveList = splat_pawn_moves<Up + Up>(moveList, step2 & ~pos.pieces());
+        }
+        if constexpr (Type == CAPTURES || Type == EVASIONS || Type == NON_EVASIONS)
+        {
+            moveList = splat_pawn_moves<Up>(moveList, step1 & pos.pieces());
+            moveList = splat_pawn_moves<Up + Up>(moveList, step2 & pos.pieces());
+        }
     }
 
     // Promotions and underpromotions
@@ -186,16 +197,114 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
         return Type == CAPTURES ? isCapture : Type == QUIETS ? !isCapture : true;
     };
 
+    // Search policy (not a rule): the QUIETS stage considers only the top
+    // few gates by impact score. The full universe stays available to
+    // LEGAL/NON_EVASIONS (perft, UCI) and to EVASIONS (in check), and the
+    // limit is lifted while an enemy freeze zone is active.
+    const bool limitGates = Type == QUIETS && !pos.spell_zone(~Us, SPELL_FREEZE);
+
+    const Square   eksq = pos.count<KING>(~Us) ? pos.square<KING>(~Us) : SQ_NONE;
+    const Bitboard eRing =
+      eksq != SQ_NONE ? Attacks::attacks_bb<KING>(eksq) | square_bb(eksq) : Bitboard(0);
+
+    // Squares revealed to each own slider by lifting one blocker, scored once
+    int  jumpScore[SQUARE_NB];
+    bool jumpScoreReady = false;
+
     for (SpellType sp : {SPELL_FREEZE, SPELL_JUMP})
     {
         if (!pos.can_cast(Us, sp))
             continue;
 
-        Bitboard gates = sp == SPELL_FREEZE ? ~Bitboard(0) : occupied;
+        Bitboard allGates = sp == SPELL_FREEZE ? ~Bitboard(0) : occupied;
 
-        while (gates)
+        Square gateList[SQUARE_NB];
+        int    gateCount = 0;
+
+        if (!limitGates)
         {
-            const Square gate = pop_lsb(gates);
+            for (Bitboard b = allGates; b;)
+                gateList[gateCount++] = pop_lsb(b);
+        }
+        else
+        {
+            struct GateScore {
+                Square g;
+                int    score;
+            };
+            GateScore scored[SQUARE_NB];
+            int       n = 0, ringCount = 0;
+
+            if (sp == SPELL_JUMP && !jumpScoreReady)
+            {
+                std::fill_n(jumpScore, SQUARE_NB, 0);
+                Bitboard sliders = pos.pieces(Us, BISHOP, ROOK, QUEEN) & ~frozenUs;
+                while (sliders)
+                {
+                    const Square    from = pop_lsb(sliders);
+                    const PieceType pt   = type_of(pos.piece_on(from));
+                    const Bitboard  seen = Attacks::attacks_bb(pt, from, occSliding);
+
+                    Bitboard blockers = seen & occupied;
+                    while (blockers)
+                    {
+                        const Square   b = pop_lsb(blockers);
+                        const Bitboard reveal =
+                          Attacks::attacks_bb(pt, from, occSliding ^ square_bb(b)) & ~seen;
+
+                        int s = 0;
+                        for (Bitboard t = reveal & pos.pieces(~Us); t;)
+                            s += PieceValue[pos.piece_on(pop_lsb(t))];
+                        if (eksq != SQ_NONE && (reveal & square_bb(eksq)))
+                            s += SpellGateKingBonus;
+                        jumpScore[b] += s;
+                    }
+                }
+                jumpScoreReady = true;
+            }
+
+            for (Bitboard b = allGates; b;)
+            {
+                const Square g = pop_lsb(b);
+                int          s = 0;
+
+                if (sp == SPELL_FREEZE)
+                {
+                    const Bitboard zone = FreezeZoneBB[g];
+                    for (Bitboard t = zone & pos.pieces(~Us); t;)
+                        s += PieceValue[pos.piece_on(pop_lsb(t))];
+                    if (eksq != SQ_NONE && (zone & square_bb(eksq)))
+                        s += SpellGateKingBonus;
+                    if (zone & eRing)
+                    {
+                        s += SpellGateKingRingBonus;
+                        ++ringCount;
+                    }
+                }
+                else
+                    s = jumpScore[g];
+
+                scored[n++] = {g, s};
+            }
+
+            int limit = sp == SPELL_FREEZE ? MaxFreezeGates : MaxJumpGates;
+            if (sp == SPELL_FREEZE && ringCount > limit)
+                limit = ringCount;
+            if (n > limit)
+            {
+                std::partial_sort(scored, scored + limit, scored + n,
+                                  [](const GateScore& a, const GateScore& b) {
+                                      return a.score > b.score;
+                                  });
+                n = limit;
+            }
+            for (int i = 0; i < n; ++i)
+                gateList[gateCount++] = scored[i].g;
+        }
+
+        for (int gi = 0; gi < gateCount; ++gi)
+        {
+            const Square gate = gateList[gi];
 
             if (sp == SPELL_FREEZE)
             {
@@ -353,7 +462,6 @@ template<GenType Type>
 Move* generate(const Position& pos, Move* moveList) {
 
     static_assert(Type != LEGAL, "Unsupported type in generate()");
-    assert((Type == EVASIONS) == bool(pos.checkers()));
 
     Color us = pos.side_to_move();
 

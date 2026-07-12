@@ -49,6 +49,46 @@ comparator against the frozen binary was the key tool; 10 iterations from 4/61 t
 
 ---
 
+## Phase 2 — Playable search on the SF skeleton (2026-07-12)
+
+**Goal**: a stable, non-exploding search over the spell move universe; provisional eval = stock SF
+chess networks (spell-blind, bootstrap only).
+
+**Done**:
+- Extinction terminals in search/qsearch/root (captured king = mate score, before draw rules/TT/eval).
+- **Non-check policy** (the decisive piece, mirroring reference commits `54c94133`/`62a76e01`):
+  self-check being legal means kings are "attacked" in a huge share of normal positions; treating
+  that as in-check disabled static eval/stand-pat/pruning and the tree exploded (depth 6 ceiling,
+  benches ran for hours). Search and MovePicker now treat every node as a normal one — no evasion
+  staging — and hanging kings are punished by extinction scoring one ply deeper.
+- **Spell depth penalties** (reference `PotionDepthPenalty*`): gated moves searched 2 plies
+  shallower (quiet) / 1 ply (tactical). Constants in the new `spell_params.h`.
+- **QUIETS gate limiting** in movegen (search policy only; legal universe untouched): gates scored
+  by impact (zone material + king/king-ring bonuses; jump reveal values via lifted-blocker
+  attacks), top 12 freeze / 6 jump kept, king-ring override, unlimited while an enemy freeze is
+  active. In-check nodes use the full universe via the normal stages.
+- Null move ticks the spell clock (Codex review find) and is allowed with the king attacked.
+- Phase-flip pawn pushes landing on occupied squares now emitted in the CAPTURES partition
+  (Codex review find — they were missing from qsearch/ProbCut lists).
+- 256 MB stack reserve for Windows builds (64 KiB MovePicker frames × deep searches).
+- Spell bench: 21 suite positions replace the chess Defaults.
+
+**Validation**: bench `16 1 13 default depth` = 2,217,852 nodes, 6.28 s, **352,936 NPS** (faster
+than the frozen baseline's 262k, still with the 106 MiB chess net); depth 12 from startpos in
+0.94 s with coherent all-spell PVs; perft parity re-run **61/61**; unit tests **20/20**.
+
+**Learnings**:
+- The reference's self-check search philosophy is not optional: without the non-check policy the
+  spell tree is unsearchable regardless of depth penalties.
+- Zombie engine processes on Windows block relinking (`Permission denied`) — always kill strays
+  before building, and never leave engines reading a closed stdin (EOF acts as quit; keep the pipe
+  open until `bestmove`).
+
+**Decision**: Phase 2 accepted pending the VSTC stability run. Next: stability matches, then
+Phase 3 (variant-NNUE + eval parity with run5rl).
+
+---
+
 ## Phase 0 — Setup, frozen baseline & spec (2026-07-11)
 
 **Goal**: reproducible baseline, behavioral spec, perft parity suite, working match harness.
