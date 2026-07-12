@@ -43,6 +43,7 @@
 #include "nnue/nnue_accumulator.h"
 #include "position.h"
 #include "spell_params.h"
+#include "spellnnue/spell_nnue.h"
 #include "syzygy/tbprobe.h"
 #include "thread.h"
 #include "timeman.h"
@@ -1906,6 +1907,13 @@ TimePoint Search::Worker::elapsed() const {
 }
 
 Value Search::Worker::evaluate(const Position& pos) {
+    // With a spell net loaded (EvalFile), evaluation matches the reference
+    // engine exactly (including its outer scaling); the stock chess networks
+    // remain the spell-blind bootstrap fallback.
+    if (SpellNNUE::loaded())
+        return std::clamp(SpellNNUE::evaluate_scaled(pos), VALUE_TB_LOSS_IN_MAX_PLY + 1,
+                          VALUE_TB_WIN_IN_MAX_PLY - 1);
+
     return Eval::evaluate(network[numaAccessToken], pos, accumulatorStack, refreshTable,
                           optimism[pos.side_to_move()]);
 }

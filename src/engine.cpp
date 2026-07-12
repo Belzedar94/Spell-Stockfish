@@ -35,6 +35,7 @@
 #include "nnue/network.h"
 #include "nnue/nnue_common.h"
 #include "numa.h"
+#include "spellnnue/spell_nnue.h"
 #include "perft.h"
 #include "position.h"
 #include "search.h"
@@ -142,7 +143,20 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
 
     options.add(  //
       "EvalFile", Option(EvalFileDefaultName, [this](const Option& o) {
-          load_network(path_from_utf8(std::string(o)));
+          // Spell chess: EvalFile points at a reference variant net
+          // (e.g. spell-chess_run5rl_e10_l07.nnue). The stock chess networks
+          // stay embedded as the spell-blind fallback, so a failed load only
+          // reports and keeps the previous evaluation source.
+          const std::string path = std::string(o);
+          if (path != EvalFileDefaultName)
+          {
+              const bool ok = SpellNNUE::load(path);
+              sync_cout << "info string "
+                        << (ok ? "Spell NNUE loaded: " : "ERROR: spell NNUE failed to load: ")
+                        << path << sync_endl;
+              return std::nullopt;
+          }
+          load_network(path_from_utf8(path));
           return std::nullopt;
       }));
 
@@ -271,7 +285,11 @@ void Engine::set_ponderhit(bool b) { threads.main_manager()->ponder = b; }
 // network related
 
 void Engine::verify_network() const {
-    const auto file = path_from_utf8(std::string(options["EvalFile"]));
+    // With a spell net active, EvalFile names the variant net; the embedded
+    // stock networks (the fallback evaluation) verify against their default.
+    const auto file = SpellNNUE::loaded()
+                      ? path_from_utf8(std::string(EvalFileDefaultName))
+                      : path_from_utf8(std::string(options["EvalFile"]));
     network->verify(onVerifyNetwork, networkFile, file);
 
     auto statuses = network.get_status_and_errors();
@@ -336,6 +354,23 @@ void Engine::trace_eval() const {
     verify_network();
 
     sync_cout << "\n" << Eval::trace(p, *network) << sync_endl;
+}
+
+void Engine::trace_spell_eval() const {
+    if (!SpellNNUE::loaded())
+    {
+        sync_cout << "info string no spell NNUE loaded (set EvalFile first)" << sync_endl;
+        return;
+    }
+
+    StateListPtr trace_states(new std::deque<StateInfo>(1));
+    Position     p;
+    p.set(pos.fen(), options["UCI_Chess960"], &trace_states->back());
+
+    // Exact integers for the eval-parity harness (side to move perspective)
+    sync_cout << "spellnnue raw " << int(SpellNNUE::evaluate(p, false)) << " adjusted "
+              << int(SpellNNUE::evaluate(p, true)) << " scaled "
+              << int(SpellNNUE::evaluate_scaled(p)) << sync_endl;
 }
 
 const OptionsMap& Engine::get_options() const { return options; }

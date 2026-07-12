@@ -95,6 +95,51 @@ options, and a combo-option duplicate-token bug in the (otherwise unused) SF com
 
 ---
 
+## Phase 3 — Variant-NNUE port + eval parity (2026-07-12)
+
+**Goal**: load the reference nets (run5rl) and produce identical evaluations, isolating search from
+eval for the M1 A/B loop.
+
+**Done**:
+- `src/spellnnue/spell_nnue.{h,cpp}`: self-contained loader + evaluator for the reference format
+  (version `0x7AF32F20`, chained section hashes, FT 512 + 8 layer stacks 16→32→1, PSQT buckets).
+  Feature geometry hardcoded from first principles (96,256 dims; plane order P N B R Q F J K with
+  a colorless king plane; pockets at 960, zone planes at 1184, cooldown-bit planes at 1440; king
+  stride 1504) — the file's own hash chain acts as a checksum of the derivation, and run5rl's
+  101 MB size matches the computed dimensions exactly.
+- Evaluation by full accumulator refresh (~46 active features/perspective); incremental updates
+  deliberately deferred to Phase 4 (parity first).
+- `EvalFile` now loads variant nets (harness-compatible); the embedded stock chess networks remain
+  the spell-blind fallback; SF's `verify_network` made tolerant of the spell path.
+- `evalspell` debug command (exact integers) + `tests/reference/eval_parity.py` harness.
+
+**Validation**:
+- **Eval parity: raw 61/61 within ±2** (exactly the reference printout's 2-decimal rounding) and
+  **final/scaled 59/59 within ±1** after adding the reference's outer scale
+  (`903 + 32·pawns + 32·npm/1024`, where its npm includes the commoners at CommonerValueMg=700).
+  The 2 skipped positions are in-check FENs the reference `eval` COMMAND refuses to print
+  (its search still evaluates them via the same non-check policy — no in-game divergence).
+- Startpos raw = 132 = the baseline's own "+0.63" printout.
+- bench (spell net) `16 1 10`: 881,768 nodes @ **113k NPS** — the expected refresh-eval cost
+  (chess-net incremental path benches 292-352k; the baseline runs 262k). Closing this gap via
+  incremental accumulators is the core of Phase 4.
+- Perft parity re-run 61/61; rule tests 21/21.
+
+**Learnings**:
+- The reference hybrid/classical eval branch is DEAD for spell (`pure = !check_counting()` is
+  always true) — pure NNUE everywhere; no need to port the classical eval.
+- FSF's `non_pawn_material()` includes commoners (700); SF's excludes kings — the scale formula
+  needs the correction or evals drift proportionally to |eval|.
+- SF's `go` re-verifies `EvalFile` as a stock net and *terminates* the engine on mismatch;
+  any alternative eval source must bypass that check.
+
+**Decision**: Phase 3 accepted. Next: A/B baseline match with identical net (search delta
+measurement), then Phase 4 (incremental accumulator + search iteration to M1).
+
+---
+
+---
+
 ## Phase 0 — Setup, frozen baseline & spec (2026-07-11)
 
 **Goal**: reproducible baseline, behavioral spec, perft parity suite, working match harness.
