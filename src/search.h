@@ -33,6 +33,7 @@
 
 #include "history.h"
 #include "misc.h"
+#include "movegen.h"
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
 #include "numa.h"
@@ -407,6 +408,21 @@ class Worker {
     // Used by NNUE
     Eval::NNUE::AccumulatorStack  accumulatorStack;
     Eval::NNUE::AccumulatorCaches refreshTable;
+
+    // Spell chess: MovePicker buffers live off the C++ stack. With
+    // MAX_MOVES-sized arrays (the gated-move universe) a stack-local buffer
+    // would force the compiler to page-probe ~256KB per search frame, which
+    // costs ~40% NPS. Each ply gets two ExtMove slots (main/qsearch picker
+    // and the ProbCut picker) and the whole thread shares one generation
+    // scratch, consumed within each next_move() call. Pages are only
+    // committed when touched, so the large reservation is virtual.
+    std::unique_ptr<ExtMove[]> movesArena;
+    std::unique_ptr<Move[]>    genScratch;
+
+    ExtMove* moves_buffer(int ply, int slot) {
+        return movesArena.get() + (usize(2) * ply + slot) * MAX_MOVES;
+    }
+    Move* gen_scratch() { return genScratch.get(); }
 
     friend class Stockfish::ThreadPool;
     friend class SearchManager;

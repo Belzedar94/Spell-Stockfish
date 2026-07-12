@@ -21,13 +21,15 @@
 
 #include <thread>
 
-// On OSX threads other than the main thread are created with a reduced stack
-// size of 512KB by default, this is too low for deep searches, which require
-// somewhat more than 1MB stack, so adjust it to TH_STACK_SIZE.
-// The implementation calls pthread_create() with the stack size parameter
-// equal to the Linux 8MB default, on platforms that support it.
+// Spell chess: every search ply holds a MovePicker frame with a MAX_MOVES
+// (32k) move buffer, so a deep search needs MAX_PLY * ~264KB ≈ 64MB of
+// stack — far beyond the 512KB (macOS) / 1MB (Windows) / 8MB (Linux)
+// defaults. Search threads are therefore created with an explicit 128MB
+// stack on every platform that supports pthreads (the memory is reserved
+// lazily, only pages actually touched are committed).
 
-#if defined(__APPLE__) || defined(__MINGW32__) || defined(__MINGW64__) || defined(USE_PTHREADS)
+#if defined(__APPLE__) || defined(__MINGW32__) || defined(__MINGW64__) || defined(__linux__) \
+  || defined(USE_PTHREADS)
 
     #include <pthread.h>
     #include <functional>
@@ -37,7 +39,7 @@ namespace Stockfish {
 class NativeThread {
     pthread_t thread;
 
-    static constexpr usize TH_STACK_SIZE = 8 * 1024 * 1024;
+    static constexpr usize TH_STACK_SIZE = 128 * 1024 * 1024;
 
    public:
     template<class Function, class... Args>

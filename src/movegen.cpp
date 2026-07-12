@@ -75,8 +75,11 @@ Move* make_promotions(Move* moveList, [[maybe_unused]] Square to) {
 }
 
 
+// Pawns ignore the generic target: their pushes are governed by the
+// phase-flipped occupancy and their captures by physical enemies, both
+// computed here (EVASIONS equals NON_EVASIONS in Spell Chess).
 template<Color Us, GenType Type>
-Move* generate_pawn_moves(const Position& pos, Move* moveList, Bitboard target) {
+Move* generate_pawn_moves(const Position& pos, Move* moveList) {
 
     constexpr Color     Them     = ~Us;
     constexpr Bitboard  TRank7BB = (Us == WHITE ? Rank7BB : Rank2BB);
@@ -121,12 +124,17 @@ Move* generate_pawn_moves(const Position& pos, Move* moveList, Bitboard target) 
         }
     }
 
-    // Promotions and underpromotions
+    // Promotions and underpromotions. A promotion push landing on a
+    // physically occupied transparent square is a capture under the
+    // phase-flip rule, so all four promotions belong to the CAPTURES
+    // partition (Enemy=true), like promotion captures.
     if (pawnsOn7)
     {
-        Bitboard b1 = shift<UpRight>(pawnsOn7) & enemies;
-        Bitboard b2 = shift<UpLeft>(pawnsOn7) & enemies;
-        Bitboard b3 = shift<Up>(pawnsOn7) & emptySquares;
+        Bitboard b1  = shift<UpRight>(pawnsOn7) & enemies;
+        Bitboard b2  = shift<UpLeft>(pawnsOn7) & enemies;
+        Bitboard b3  = shift<Up>(pawnsOn7) & emptySquares;
+        Bitboard b3c = b3 & pos.pieces();
+        Bitboard b3q = b3 & ~pos.pieces();
 
         while (b1)
             moveList = make_promotions<Type, UpRight, true>(moveList, pop_lsb(b1));
@@ -134,8 +142,11 @@ Move* generate_pawn_moves(const Position& pos, Move* moveList, Bitboard target) 
         while (b2)
             moveList = make_promotions<Type, UpLeft, true>(moveList, pop_lsb(b2));
 
-        while (b3)
-            moveList = make_promotions<Type, Up, false>(moveList, pop_lsb(b3));
+        while (b3c)
+            moveList = make_promotions<Type, Up, true>(moveList, pop_lsb(b3c));
+
+        while (b3q)
+            moveList = make_promotions<Type, Up, false>(moveList, pop_lsb(b3q));
     }
 
     // Standard and en passant captures
@@ -428,7 +439,7 @@ Move* generate_all(const Position& pos, Move* moveList) {
 
     Move* cur = moveList;
 
-    moveList = generate_pawn_moves<Us, Type>(pos, moveList, target);
+    moveList = generate_pawn_moves<Us, Type>(pos, moveList);
     moveList = generate_moves<Us, KNIGHT>(pos, moveList, pieceTarget, occSliding);
     moveList = generate_moves<Us, BISHOP>(pos, moveList, pieceTarget, occSliding);
     moveList = generate_moves<Us, ROOK>(pos, moveList, pieceTarget, occSliding);

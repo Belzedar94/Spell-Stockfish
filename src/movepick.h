@@ -38,6 +38,11 @@ class MovePicker {
    public:
     MovePicker(const MovePicker&)            = delete;
     MovePicker& operator=(const MovePicker&) = delete;
+    // Spell chess: the caller provides the buffers (a MAX_MOVES ExtMove slot
+    // for the scored moves and a MAX_MOVES Move generation scratch, consumed
+    // within each next_move() call). Keeping them off the C++ stack keeps
+    // search frames small — a stack-local MAX_MOVES array would page-probe
+    // ~256KB on every construction.
     MovePicker(const Position&,
                Move,
                Depth,
@@ -46,8 +51,10 @@ class MovePicker {
                const CapturePieceToHistory*,
                const PieceToHistory**,
                const SharedHistories*,
-               int);
-    MovePicker(const Position&, Move, int, const CapturePieceToHistory*);
+               int,
+               ExtMove*,
+               Move*);
+    MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove*, Move*);
     Move next_move();
     void skip_quiet_moves();
 
@@ -55,7 +62,7 @@ class MovePicker {
     template<typename Pred>
     Move select(Pred);
     template<GenType T>
-    ExtMove* score(const MoveList<T>&);
+    ExtMove* score(const Move* begin, const Move* end);
 
     const Position&              pos;
     const ButterflyHistory*      mainHistory;
@@ -70,7 +77,8 @@ class MovePicker {
     Depth                        depth;
     int                          ply;
     bool                         skipQuiets = false;
-    ExtMove                      moves[MAX_MOVES];
+    ExtMove*                     moves;
+    Move*                        genScratch;
 };
 
 }  // namespace Stockfish

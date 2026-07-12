@@ -114,9 +114,12 @@ using Key      = u64;
 using Bitboard = u64;
 
 // Spell chess: the gated-move universe is huge (startpos has 1878 legal moves,
-// mid-game positions can exceed 3500). The reference implementation ships with
-// 8192 and has never overflowed in practice.
-constexpr int MAX_MOVES = 8192;
+// mid-game positions can exceed 3500). The bound must cover the worst case,
+// not the common one: a side with heavy promoted material and a freeze in
+// hand can exceed 8192 pseudo-legal moves (~250 base moves x ~60 freeze
+// gates plus jump copies), so size for ~32k. Thread stacks must fit one
+// MovePicker buffer (MAX_MOVES x 8 bytes) per ply — see thread_win32_osx.h.
+constexpr int MAX_MOVES = 32768;
 constexpr int MAX_PLY   = 246;
 
 // The two spell types of Spell Chess. Values are used as array indices;
