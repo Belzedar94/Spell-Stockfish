@@ -216,6 +216,14 @@ class SpellRules(unittest.TestCase):
         moves = moves_at(fen)
         self.assertIn("j@d6,d7d5", moves)
 
+    def test_king_captures_defended_king(self):
+        # A king may capture the ENEMY KING even onto a defended square: the
+        # royal capture ends the game, nothing gets to recapture (found in
+        # match play, verified against the reference binary)
+        fen = "8/8/8/8/1k6/2K5/8/1N6[] {F@-:0,J@-:0,f@-:0,j@-:0} b - - 0 1"
+        moves = moves_at(fen)
+        self.assertIn("b4c3", moves)
+
     def test_perft_suite_depth1(self):
         # Every suite position must reproduce its recorded d1 count (the full
         # d2 cross-check against the reference binary runs locally via

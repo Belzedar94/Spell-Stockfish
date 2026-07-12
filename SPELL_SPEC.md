@@ -34,6 +34,10 @@ Spell Chess is standard chess plus two spell types per player:
   (attackers evaluated spell-aware: frozen attackers — including those frozen by the very cast
   carried by the king move — do not count, and jump transparency can open new attack lines).
   Self-check by any other means (breaking a pin, zone expiry, discovered attacks) is legal.
+  **Sub-exception (found in match play, verified against the reference binary): a king move that
+  CAPTURES the enemy king is legal even onto a defended square** — the game ends with the royal
+  capture, nothing gets to recapture (e.g. adjacent kings: Kb4xc3 with a white knight guarding
+  c3 is legal and immediately winning, gated copies included).
 
 ## 2. Spell state model
 

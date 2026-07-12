@@ -28,8 +28,15 @@ import time
 MATE_ISH = 25000  # internal units: forced win found (VALUE_MATE family)
 
 
+class EngineDied(RuntimeError):
+    pass
+
+
 class Engine:
-    def __init__(self, path, options):
+    def __init__(self, path, options, name):
+        self.name = name
+        self.path = path
+        self.options = options
         self.proc = subprocess.Popen(
             [path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -40,8 +47,12 @@ class Engine:
         self.sync()
 
     def send(self, cmd):
-        self.proc.stdin.write(cmd + "\n")
-        self.proc.stdin.flush()
+        try:
+            self.proc.stdin.write(cmd + "\n")
+            self.proc.stdin.flush()
+        except OSError as exc:
+            raise EngineDied(f"{self.name} died (write: {exc}, "
+                             f"exit={self.proc.poll()})") from exc
 
     def read_until(self, token, timeout=120):
         deadline = time.time() + timeout
@@ -49,12 +60,12 @@ class Engine:
         while time.time() < deadline:
             line = self.proc.stdout.readline()
             if not line:
-                raise RuntimeError("engine died")
+                raise EngineDied(f"{self.name} died (EOF, exit={self.proc.poll()})")
             line = line.rstrip("\n")
             lines.append(line)
             if line.startswith(token):
                 return lines
-        raise RuntimeError(f"timeout waiting for {token}")
+        raise EngineDied(f"{self.name}: timeout waiting for {token}")
 
     def sync(self):
         self.send("isready")
@@ -96,12 +107,17 @@ def play_game(white, black, fen, nodes, adj_cp, adj_plies, ply_cap):
     leader = 0   # +1 white better, -1 black better
     depth_sum = {white: 0, black: 0}
     move_cnt = {white: 0, black: 0}
+    white_at_0 = " w " in fen  # the lone 'w' token is the side to move
 
     for ply in range(ply_cap):
-        stm_white = (ply % 2 == 0)
+        stm_white = (ply % 2 == 0) == white_at_0
         eng = white if stm_white else black
 
-        best, score, depth = eng.go_nodes(fen, moves, nodes)
+        try:
+            best, score, depth = eng.go_nodes(fen, moves, nodes)
+        except EngineDied as exc:
+            exc.moves = list(moves)  # attach the repro line
+            raise
         depth_sum[eng] += depth
         move_cnt[eng] += 1
 
@@ -173,8 +189,8 @@ def main():
              "d1": 0, "m1": 0, "d2": 0, "m2": 0}
 
     def worker():
-        e1 = Engine(args.engine1, opts1)
-        e2 = Engine(args.engine2, opts2)
+        e1 = Engine(args.engine1, opts1, "e1")
+        e2 = Engine(args.engine2, opts2, "e2")
         while True:
             try:
                 fen, e1_white = jobs.get_nowait()
@@ -185,6 +201,19 @@ def main():
                 res, plies, dsum, mcnt = play_game(
                     white, black, fen, args.nodes, args.adj_cp,
                     args.adj_plies, args.ply_cap)
+            except EngineDied as exc:
+                # Log a self-contained repro and restart both engines
+                print(f"ENGINE CRASH: {exc}", flush=True)
+                with lock, open("fixed_nodes_crashes.log", "a",
+                                encoding="utf-8") as f:
+                    f.write(f"{exc}\nfen {fen}\nmoves "
+                            f"{' '.join(getattr(exc, 'moves', []))}\n\n")
+                for e in (e1, e2):
+                    e.quit()
+                e1 = Engine(args.engine1, opts1, "e1")
+                e2 = Engine(args.engine2, opts2, "e2")
+                jobs.task_done()
+                continue
             except Exception as exc:
                 print(f"game error: {exc}", flush=True)
                 jobs.task_done()

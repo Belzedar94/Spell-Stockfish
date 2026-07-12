@@ -899,7 +899,11 @@ bool Position::legal(Move m) const {
     // The king may not move into an attacked square. This is the one
     // remaining king-safety rule: all other forms of self-check (breaking a
     // pin, zone expiry, ...) are legal and punished by king capture.
-    if (m.type_of() != CASTLING && type_of(moved_piece(m)) == KING)
+    // Exception (verified against the reference): capturing the enemy KING
+    // ends the game immediately, so that move is legal even onto a defended
+    // square — nothing gets to recapture.
+    if (m.type_of() != CASTLING && type_of(moved_piece(m)) == KING
+        && type_of(piece_on(to)) != KING)
     {
         const Bitboard transparent = jump_transparent() | castTransparent;
         const Bitboard occSliding  = (pieces() ^ from) & ~transparent;
