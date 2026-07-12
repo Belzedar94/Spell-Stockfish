@@ -618,4 +618,35 @@ binary) — all fixed and regression-tested**:
 regressions) PASS 18/18 checks; xboard_test.py conformance PASS; bench signature still
 2,395,529 (search untouched). Both wired into run_suite.
 
+## S4 CLOSED — run6a: first net from our own data, pipeline validated (2026-07-12)
+
+**Setup**: farm stopped early by owner decision at 1,912,205 positions (12 shards, all
+76-byte aligned, 0 structurally bad records; concatenated to spell-data/run6a/run6a_full.bin,
+145MB). Training per the owner's distilled Discord guide (docs/nnue-training-guide.md):
+lambda sweep {0.25, 0.75, 1.0} x 4 epochs (epoch-size 20M, batch 16384, random-fen-skipping
+3) on the RTX 3080 — ~2 min/epoch, ~8 min per net. Serialized with serialize.py (97MB each);
+all three load and play in the engine.
+
+**Selection (owner's bracket method: farthest lambdas first, LOS 0/100 early stop,
+3 TCs in parallel)**:
+- R1 λ0.25 vs λ1.0: λ1.0 crushes — LOS 0.0% for λ0.25 on all TCs (VSTC -406, STC -458,
+  LTC -325), stopped at 30-34 games each.
+- R2 λ1.0 vs λ0.75: λ1.0 ahead everywhere (VSTC +106 LOS 100% at 118 games, STC +191
+  LOS 99.9%, LTC 6-2) — stopped early by owner, verdict clear.
+- Monotonic λ1.0 > λ0.75 > λ0.25 on THIS dataset. Reading: the 1.9M positions carry
+  run5rl evals at 5000 nodes — with small data, distilling the teacher's eval (λ=1) beats
+  learning from short noisy game results. The guide's low-lambda regime applies to the
+  full RL loop (100M fresh positions per iteration), which comes later.
+
+**Pipeline verdict (final vs NO-NET engine, owner's bar for a first small dataset)**:
+λ1.0 vs engine without a spell net (embedded standard-chess fallback): VSTC +179 Elo
+LOS 100.0% (38 games) · STC -17 LOS 37.9% (42, even) · LTC +102 LOS 86.8% (14). Owner
+called it: **pipeline GOOD** — the net trained on our own data demonstrably learned spell
+knowledge (decisive at fast TC; the STC evening-out is the classic young-net pattern:
+deeper search + real chess knowledge in the fallback net compensate).
+
+**S4 = CLOSED**: datagen nativo → farm → loader → GPU → serialize → engine → measured
+Elo, end to end on own data. The serious dataset (RL loop, 100M/iteration) is future work
+(S8 era). Winner net: spell-data/run6a/spell_run6a_l10.nnue.
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).
