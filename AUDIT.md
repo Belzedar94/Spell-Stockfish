@@ -266,6 +266,12 @@ We score -200 at 27k nodes/move and -52 at 120k: **our search scales BETTER with
 baseline's** — the opposite of the earlier hypothesis. The M1 gate's STC (10s+100ms ≈ 300k)
 and LTC (30s+300ms ≈ 1M nodes/move) should favor us; STC A/B running to verify.
 
+**STC verdict (10s+100ms, 300 games): -161.2 ±43.0** (zero time losses) vs VSTC -203 ±46:
+direction consistent, magnitude modest. Extra learning: the equal-nodes probe (-52) flatters us
+by ~100 Elo against the real harness (adjudication and opening sampling differ) — probes stay
+for RELATIVE comparisons between our own builds; harness numbers are the truth for gates.
+SPSA session (600 pairs, 150k nodes/move ≈ our STC budget, 10 params) launched.
+
 **SPSA infrastructure**: spell_params.h constants → plain globals registered with SF's native
 TUNE machinery (10 UCI options, incl. the previously hardcoded LMR moveCount cap, tactical-spell
 LMR bonus and both GateHistory weights). Bench signature unchanged (2,707,081 — defaults
