@@ -266,6 +266,11 @@ We score -200 at 27k nodes/move and -52 at 120k: **our search scales BETTER with
 baseline's** — the opposite of the earlier hypothesis. The M1 gate's STC (10s+100ms ≈ 300k)
 and LTC (30s+300ms ≈ 1M nodes/move) should favor us; STC A/B running to verify.
 
+**Protocol correction (owner)**: measurement checkpoints run the FULL three-TC panel
+(2000+20 / 10000+100 / 30000+300, >100 games each) — the LOS-0/100 early stop was hiding the
+LTC scaling data point, which is exactly where the gate will be decided. Fixed-node and
+self-play probes remain iteration-only tools.
+
 **STC verdict (10s+100ms, 300 games): -161.2 ±43.0** (zero time losses) vs VSTC -203 ±46:
 direction consistent, magnitude modest. Extra learning: the equal-nodes probe (-52) flatters us
 by ~100 Elo against the real harness (adjudication and opening sampling differ) — probes stay
