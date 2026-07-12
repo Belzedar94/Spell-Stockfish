@@ -257,6 +257,26 @@ cap probe; gating without regenerating base quiets).
 
 ---
 
+## Phase 4.6 — SPSA checkpoint: the full three-TC panel (2026-07-12)
+
+First complete panel (300 games per TC, run5rl both sides, tuned defaults):
+
+| TC | pre-SPSA | post-SPSA |
+|----|----------|-----------|
+| VSTC 2000+20 | -203 ±46 | **-168 ±43** |
+| STC 10000+100 | -161 ±43 | **-142 ±42** (-132 over 372 games incl. the preserved partial) |
+| LTC 30000+300 | (first measurement) | **-105 ±41** (W105 L193 D2) |
+
+Two clean signals: the SPSA session bought ~+20-35 Elo across TCs, and the node-scaling ladder
+holds — every ~3x time step recovers ~+30 Elo (the SF-master core outscales the FSF11 baseline
+with depth, the project's strategic bet). Time losses: none on our side across the panel.
+
+Decision: keep iterating F4 with (1) SPSA session 2 at a NEAR-LTC node budget (the
+depth-dependent parameters deserve tuning where the gate plays), (2) the remaining policy
+candidates. Parallel F6 progress logged separately (datagen farm at ~20 pos/s/worker).
+
+---
+
 ## Phase 5 GATE PASSED + Phase 6 mechanics proven (2026-07-12)
 
 **F5 (native data generator) — complete.** The byte contract was reverse-verified against the
