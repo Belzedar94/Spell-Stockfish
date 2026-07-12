@@ -381,19 +381,20 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 constexpr Bitboard  TRank2  = (Us == WHITE ? Rank2BB : Rank7BB);
                 const Bitboard      midGate = square_bb(gate) & (Us == WHITE ? Rank3BB : Rank6BB);
 
-                if (midGate && keep(false) && (occSliding & gate))
+                if (midGate && (occSliding & gate))
                 {
                     const Square mid  = gate;
                     const Square from = mid - Up;
                     const Square to   = mid + Up;
 
                     // Landing uses the phase-flipped occupancy incl. the
-                    // candidate gate (occupied, so flipped out)
+                    // candidate gate (occupied, so flipped out); the landing
+                    // classifies as capture/quiet by physical occupancy
                     const Bitboard flipOcc =
                       (occupied ^ pos.jump_transparent()) ^ square_bb(gate);
 
                     if ((pos.pieces(Us, PAWN) & ~frozenUs & square_bb(from)) && (TRank2 & from)
-                        && !(flipOcc & to))
+                        && !(flipOcc & to) && keep(bool(occupied & to)))
                         *cur++ = Move::make_spell(Move(from, to), SPELL_JUMP, gate);
                 }
             }

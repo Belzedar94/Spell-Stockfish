@@ -206,13 +206,15 @@ void Search::Worker::start_searching() {
 
     if (rootMoves.empty())
     {
-        // Spell chess: no moves at the root also happens when our king has
-        // already been captured (terminal loss); stalemate stays a draw.
-        main_manager()->updates.onUpdateNoMoves(
-          {0,
-           {!rootPos.count<KING>(rootPos.side_to_move()) || rootPos.checkers() ? -VALUE_MATE
-                                                                               : VALUE_DRAW,
-            rootPos}});
+        // Spell chess: no moves at the root also happens on terminal
+        // positions — our king captured (loss) or the enemy king captured
+        // (win); a stall while attacked is a mate, otherwise stalemate.
+        const Value terminal =
+          !rootPos.count<KING>(rootPos.side_to_move())  ? -VALUE_MATE
+          : !rootPos.count<KING>(~rootPos.side_to_move()) ? VALUE_MATE
+          : rootPos.checkers()                            ? -VALUE_MATE
+                                                          : VALUE_DRAW;
+        main_manager()->updates.onUpdateNoMoves({0, {terminal, rootPos}});
         main_manager()->updates.onBestmove(UCIEngine::move(Move::none()), "");
         return;
     }
@@ -1158,10 +1160,11 @@ moves_loop:  // When in check, search starts here
         // Spell chess: gated moves multiply the branching factor enormously,
         // so they are searched shallower (the reference's PotionDepthPenalty
         // policy, worth a large amount of its Elo): quiet casts two plies,
-        // tactical casts one.
+        // tactical casts one. The penalty may drop the move straight into
+        // quiescence (floor at 0, not 1).
         if (move.is_spell())
             newDepth =
-              std::max(1,
+              std::max(0,
                        newDepth
                          - (pos.capture_stage(move) || pos.gives_check(move)
                               ? SpellDepthPenaltyTactical
@@ -1559,8 +1562,11 @@ moves_loop:  // When in check, search starts here
     if (bestValue >= beta && !is_decisive(bestValue) && !is_decisive(alpha))
         bestValue = (bestValue * depth + beta) / (depth + 1);
 
+    // Spell chess: ss->inCheck is pinned to false (non-check policy), so the
+    // stalled-while-attacked terminal must consult the real checkers — a
+    // checkmate-like stall is a loss, a quiet stall is a stalemate draw.
     if (!moveCount)
-        bestValue = excludedMove ? alpha : ss->inCheck ? mated_in(ss->ply) : VALUE_DRAW;
+        bestValue = excludedMove ? alpha : pos.checkers() ? mated_in(ss->ply) : VALUE_DRAW;
 
     // If there is a move that produces search value greater than alpha,
     // we update the stats of searched moves.

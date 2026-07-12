@@ -1740,6 +1740,13 @@ void Position::do_null_move(StateInfo& newSt) {
 
     sideToMove = ~sideToMove;
 
+    // The spell tick above can expire a freeze zone and (un)freeze an
+    // attacker, so the checkers of the new side to move are recomputed
+    // from scratch exactly like in do_move()
+    st->checkersBB = both_kings_on_board()
+                     ? attackers_to(square<KING>(sideToMove)) & pieces(~sideToMove)
+                     : Bitboard(0);
+
     set_check_info();
 
     st->repetition = 0;
