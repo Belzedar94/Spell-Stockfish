@@ -32,16 +32,17 @@ from fixed_nodes_match import Engine, EngineDied, play_game  # noqa: E402
 
 # name, default, min, max
 PARAMS = [
-    ("MaxFreezeGates",            12,     2,     32),
-    ("MaxJumpGates",              6,      1,     20),
-    ("SpellGateKingBonus",        10000,  1000,  30000),
-    ("SpellGateKingRingBonus",    50000,  5000,  120000),
+    # defaults = session-1 results (see spell_params.cpp)
+    ("MaxFreezeGates",            9,      2,     32),
+    ("MaxJumpGates",              4,      1,     20),
+    ("SpellGateKingBonus",        11418,  1000,  30000),
+    ("SpellGateKingRingBonus",    57185,  5000,  120000),
     ("SpellDepthPenaltyTactical", 1,      0,     3),
-    ("SpellDepthPenaltyQuiet",    2,      0,     4),
-    ("SpellTacticalLmrBonus",     1024,   0,     3072),
-    ("SpellLmrMoveCountCap",      24,     4,     96),
-    ("SpellGateHistOrderWeight",  2,      0,     8),
-    ("SpellGateHistStatWeight",   2,      0,     8),
+    ("SpellDepthPenaltyQuiet",    3,      0,     4),
+    ("SpellTacticalLmrBonus",     1272,   0,     3072),
+    ("SpellLmrMoveCountCap",      43,     4,     96),
+    ("SpellGateHistOrderWeight",  1,      0,     8),
+    ("SpellGateHistStatWeight",   1,      0,     8),
 ]
 
 ALPHA, GAMMA = 0.602, 0.101
