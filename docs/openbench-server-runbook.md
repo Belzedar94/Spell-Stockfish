@@ -31,7 +31,7 @@ Origen del fork: `https://github.com/sscg13/OpenBench` (rama `shatranj` checked-
 | `Django==4.2.1` | Problemático: Django 4.2 solo soporta 3.12 oficialmente desde **4.2.8**. 4.2.1 arranca casi siempre, pero hay avisos/roturas menores. | Instalar `Django>=4.2.8,<5` (p. ej. 4.2.20). Misma serie 4.2, sin cambios de código. |
 | `django-htmlmin==0.11.0` | Puro Python (html5lib + beautifulsoup4), proyecto abandonado (2019) pero funcional. | Mantener. Plan B si fallara: en `OpenSite/settings.py` quitar las dos líneas `htmlmin.middleware.*` de `MIDDLEWARE` y poner `HTML_MINIFY = False`. |
 | `requests` | Sin pin, OK. | Mantener. |
-| `scipy==1.11.1` | **Bloqueante**: no existen wheels cp312 (los primeros son de scipy 1.11.3). En Windows pip intentaría compilar desde fuente (meson + fortran) y falla. | Instalar `scipy>=1.11.3` (p. ej. 1.12.x/1.13.x). `OpenBench/stats.py` solo usa APIs estables de `scipy.stats`/`optimize`. |
+| `scipy==1.11.1` | **Bloqueante**: 1.11.1 no tiene wheels cp312 (los primeros cp312 son de 1.11.2). En Windows pip intentaría compilar desde fuente (meson + fortran) y falla. | Instalar `scipy>=1.11.3` (desplegado con 1.18.0). `OpenBench/stats.py` solo usa APIs estables de `scipy.stats`/`optimize`. |
 
 El **worker** (`Client/requirements.txt`) pide `requests`, `psutil>=5.9.5`, `py-cpuinfo>=9.0.0` — todos compatibles con 3.12 en Windows sin cambios.
 
@@ -236,7 +236,7 @@ Notas obligatorias sobre este JSON:
 
 - **Tokens para workers**: con `"private": true`, además de `Config/credentials.spell-stockfish` en el server, **cada worker** necesita un fichero `credentials.spell-stockfish` (una línea con el PAT) en su directorio de trabajo (`Client/`). El server además rechaza tests desde forks del repo (`requests_illegal_fork`): los tests solo pueden apuntar a `https://github.com/Belzedar94/Spell-Stockfish`.
 - **Rama base**: `base_branch: "master"` según lo pedido.
-- **Bench**: el cliente ejecuta el binario con el subcomando **`bench` sin argumentos** (`Client/bench.py`, `cmd = ['./binario', 'bench']`) y compara el resultado con el bench declarado en el test. Por tanto, el default interno de `bench` en Spell-Stockfish debe equivaler exactamente a `bench 16 1 10 default depth` (hash 16, 1 hilo, depth 10). La firma se parsea de la última línea que case con `nodes searched\s+\d+` (case-insensitive, puntuación eliminada) → el `Nodes searched: N` estándar de Stockfish vale tal cual. Timeout de bench: 60 s.
+- **Bench**: para un engine SIN red el cliente ejecuta **`bench` sin argumentos** (`Client/bench.py:73`); para un engine privado CON red asignada (nuestro caso) ejecuta `['./bin', 'setoption name EvalFile value <red>', 'bench', 'quit']` (`Client/bench.py:76-78`) — la firma que cuenta es la del bench **con la red cargada**. Medido en el 5950X: default embebida 13.456.297 (36 s) · con run5rl **11.477.541** (53 s, 223k NPS) → disciplina de commits: `Bench: 11477541` mientras la red asignada sea run5rl. La firma se parsea de la última línea que case `nodes searched\s+\d+` (case-insensitive) → el `Nodes searched: N` estándar vale tal cual. OJO: el cliente lanza UN BENCH POR HILO del worker EN PARALELO; con el timeout original de 60 s el bench de 53 s moriría — subido a `MAX_BENCH_TIME_SECONDS = 300` en nuestro fork.
 - **`nps: 800000` es un placeholder**: mídelo en el 5950X (p. ej. con `Scripts/bench_engine.py` o mirando el NPS que reporta el propio worker) y actualiza el JSON; ese número escala los TCs entre máquinas.
 - El `make -j build ARCH=x86-64-bmi2 COMP=mingw` (Windows) / `COMP=gcc` (Linux) debe implementarse en `.github/workflows/openbench.yml` del repo del motor, subiendo artifacts llamados p. ej. `${{ github.sha }}-windows-avx2-pext`, `${{ github.sha }}-windows-avx2-popcnt`, `${{ github.sha }}-linux-avx2-pext`, `${{ github.sha }}-linux-avx2-popcnt` (cada artifact contiene solo el binario). Hay una plantilla mínima en `Documentation/openbench.yml` (basada en Ethereal, hay que adaptarla).
 
@@ -259,7 +259,7 @@ Mecanismo (en `OpenBench/config.py::load_book_config` y `Client/utils.py::downlo
 Detalles críticos:
 
 - `source` debe ser un **ZIP** que contenga el fichero llamado exactamente `spell_2moves.epd`; el worker lo descarga **sin autenticación** (no puede vivir en un repo privado). Opciones: repo público de libros (estilo `AndyGrant/openbench-books` vía raw.githubusercontent), un release público, o un HTTP server local accesible por los workers.
-- El `sha` es el sha256 del **contenido de texto del .epd extraído** (leído como utf-8), no del zip. Cálculo: `python -c "import hashlib;print(hashlib.sha256(open('spell_2moves.epd','rb').read()).hexdigest())"`.
+- El `sha` es el sha256 del **contenido de texto del .epd extraído** con newlines universales (`Client/utils.py:255-257` abre en modo TEXTO: CRLF→LF antes de hashear), no del zip ni de los bytes crudos. Cálculo correcto: `python -c "import hashlib;print(hashlib.sha256(open('spell_openings.epd').read().encode('utf-8')).hexdigest())"` — ¡NO usar `'rb'`: con un .epd CRLF el sha binario NO coincide con el que computa el worker! (Nuestro libro es CRLF: texto `bd3296aa...` ≠ binario `ec838062...`.)
 - **El nombre del libro decide la variante de cutechess** (`Client/worker.py::Cutechess.basic_settings`): si contiene `SHATRANJ` → `-variant shatranj`; si contiene `FRC`/`960`/`FISCHER` → `fischerandom`; si no → `standard`. Hoy el fork NO conoce ninguna variante "spell": habrá que extender ese mapeo en el cliente y dotar a `cutechess-ob`/`cutechess-ob.exe` de soporte para la variante spell (mismo patrón que usó sscg13 para shatranj).
 
 ---
@@ -286,8 +286,8 @@ Ver lista estructurada abajo (sección `risks`). Los tres mayores: (1) el client
 - SECRET_KEY hardcodeada en OpenSite/settings.py + DEBUG=True + ALLOWED_HOSTS=['*']: solo aceptable en red local; si se expone el server (aunque sea a workers remotos por internet), rotar SECRET_KEY vía variable de entorno, DEBUG=False y restringir ALLOWED_HOSTS.
 - DB por defecto SQLite (db.sqlite3): con varios workers reportando concurrentemente puede dar 'database is locked'. Suficiente para 1-3 workers locales; migrar a PostgreSQL si crece la flota. Hacer backup del fichero antes de migraciones.
 - Pin scipy==1.11.1 no instala en Python 3.12 (sin wheels cp312; en Windows intenta compilar y falla). Usar scipy>=1.11.3. Django 4.2.1 tampoco soporta 3.12 oficialmente: usar >=4.2.8,<5. django-htmlmin está abandonado: si rompe, retirar su middleware.
-- Bench: el worker ejecuta 'bench' SIN argumentos y exige determinismo entre hilos y coincidencia exacta con el bench declarado. El default interno de Spell-Stockfish debe equivaler a 'bench 16 1 10 default depth' y la firma imprimirse como 'Nodes searched: N'; benchs no deterministas o >60s abortan el workload.
-- Selección de artifacts en Ryzen: select_best_artifact excluye 'pext' en CPUs AMD/Ryzen (el 5950X elegirá popcnt). Publicar artifacts popcnt además de pext, o el binario bmi2 no se usará en tu propia máquina.
+- Bench: el worker exige determinismo entre hilos y coincidencia exacta con el bench declarado; con red asignada el bench corre con `setoption EvalFile` previo (firma = 11.477.541 con run5rl). Los benches corren en paralelo (uno por hilo): timeout del fork subido a 300 s.
+- Selección de artifacts en Ryzen: select_best_artifact fuerza has_bmi2=False en CPUs AMD/Ryzen, así que el 5950X PREFIERE popcnt; si solo existieran artifacts pext, el fallback `options[artifacts[0]]` usaría el pext igualmente (funciona, pero con pext lento de Zen3 en movegen crítico). Publicar ambos: pext y popcnt.
 - Los libros se descargan sin autenticación desde book.source: deben alojarse en URL pública (repo/release público o HTTP local accesible), con sha256 del .epd extraído exacto o el worker borra la descarga y falla.
 - El repo no trae migraciones de la app OpenBench: hay que ejecutar makemigrations OpenBench antes de migrate; saltárselo deja la DB sin tablas del modelo (Profile, Test, Machine, Network...).
 
@@ -302,3 +302,21 @@ Ver lista estructurada abajo (sección `risks`). Los tres mayores: (1) el client
 - Portar la variante spell al cliente: extender Cutechess.basic_settings en Client/worker.py (mapeo nombre-de-libro→variante, patrón shatranj) y compilar un cutechess-ob(.exe) con soporte spell; después apuntar client_repo_url/ref a vuestro fork y subir client_version.
 - Medir el NPS real de referencia en el 5950X (Scripts/bench_engine.py o NPS reportado por el worker) y actualizar el campo nps del JSON.
 - Prueba de humo end-to-end: runserver, registrar usuario y habilitarlo (enabled+approver) en /admin, subir una red por /networks o Scripts/upload_net.py, lanzar un test STC master-vs-master y conectar un worker local con credentials.spell-stockfish en Client/.
+
+---
+
+## Estado tras el despliegue + ronda de verificación adversarial (2026-07-12)
+
+Completado (el cuerpo de arriba se conserva como referencia; estos puntos ya no están pendientes):
+- venv 3.12 + deps ✅ (Django 4.2.30, scipy 1.18.0) · makemigrations+migrate ✅ · superusuario `belzedar` con Profile enabled+approver ✅ · runserver HTTP 200 ✅ · red run5rl subida por SHA vía `Scripts/upload_net.py` ✅.
+- `Config/config.json`: engines=["Spell-Stockfish"], libro `spell_openings.epd` añadido, `client_repo_url→https://github.com/Belzedar94/OpenBench` + `client_repo_ref→spell-runner` (pendiente: publicar el fork en GitHub antes de instalar workers limpios remotos).
+- `Engines/Spell-Stockfish.json` con nps=380000 y presets sobre `spell_openings.epd`; `Books/spell_openings.epd.json` con el sha de TEXTO (`bd3296aa...`); `Config/credentials.spell-stockfish` = PLACEHOLDER (sustituir por PAT real).
+- La sección 4 quedó obsoleta en un punto: el mapeo variante→runner YA está implementado (tabla `VARIANTS` + fallback `ENGINE_VARIANTS` por nombre de engine para DATAGEN con book='None', rama `spell-runner`); no hace falta portar spell a cutechess-ob — SPELL rutea al `uci_pair_runner.py`.
+
+Fixes derivados de la verificación adversarial (rama `spell-runner` del fork):
+- `Client/pgn_util.py`: REGEX_MOVE_AND_COMMENT ahora admite `@` y `,` — sin esto la subida de PGNs truncaba cada gated move (`f@e4,d2d4`→`d2d4`).
+- `Client/bench.py`: `MAX_BENCH_TIME_SECONDS` 60→300 (bench con run5rl = 53 s en solitario y corre uno-por-hilo en paralelo).
+- `Client/worker.py`: SPELL primero en la tabla (gana a FRC/960 en nombres combinados); short-path 8.3 para `sys.executable` con espacios (nuestro venv vive bajo "Fairy-Stockfish organization").
+- Pendientes conocidos del flujo de aborto: `kill_everything` no mata al runner por nombre — el runner se autoprotege (pipe-muerto → exit duro matando motores; circuit breaker tras 3 muertes instantáneas consecutivas), y al empaquetar para workers remotos debe llamarse `cutechess-ob` (pyinstaller) para entrar en el kill-by-name.
+- Gotcha del auto-update del cliente (`Client/client.py:146`): el zip descargado debe extraer una carpeta raíz llamada exactamente `OpenBench-<ref>` — al publicar el fork, mantener el nombre de repo `OpenBench`.
+- Matiz de validación al arranque: `verify_general_config` es un no-op (bug de paréntesis `assert type(x == int)` upstream); la validación real que aborta es la de `Engines/*.json`/`Books/*.json`/credentials. No confiar en que el server valide claves de `Config/config.json`.

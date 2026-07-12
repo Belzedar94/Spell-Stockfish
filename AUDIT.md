@@ -508,4 +508,53 @@ signature gate can be built and validated while the run6a farm generates.
 runbook). S5 signature gate in place; instrumented/debug suite still queued behind the farm
 (src/stockfish.exe is exe-locked by 12 workers).
 
+## S7 step 3 + adversarial verification round + S5 instrumented (2026-07-12)
+
+**Server bring-up (step 3 DONE)**: venv Py3.12 (Django 4.2.30, scipy 1.18.0), migrations
+generated (repo ships none — startup config validation passed implicitly), superuser
+`belzedar` with Profile enabled+approver, runserver HTTP 200, run5rl uploaded by SHA via
+Scripts/upload_net.py. Engine json (nps 380000), book json (spell_openings.epd, 36948 FENs),
+credentials placeholder. Fork commits 2b8720c + 405f23f (branch spell-runner).
+
+**Adversarial verification (4 refutation agents over the deliverables) — real findings, all
+fixed**:
+- Runner CRITICAL: on worker abort ('stop' ends every SPRT), kill_everything() kills engines
+  by name but never the python runner; -recover then RESURRECTED the engines and kept playing
+  the whole batch as an orphan, stealing CPU from the next workload. Fixed threefold: live
+  process registry + atexit kill; emit() hard-exits (killing engines) when the stdout pipe
+  dies; circuit breaker aborts after 3 consecutive <5s engine deaths.
+- Runner MAJOR: engine process leaks when boot fails (ctor Popen ok but handshake dies; or
+  second engine of the pair fails leaving the first orphaned). Fixed: ctor kills its proc on
+  handshake failure; boot_pair() quits the half-booted first engine.
+- Fork MAJOR: pgn_util REGEX_MOVE_AND_COMMENT lacked '@'/',' — every uploaded PGN silently
+  truncated gated moves ('f@e4,d2d4'→'d2d4'). Fixed the character class.
+- Fork CRITICAL: DATAGEN uses book='None' → routing fell to cutechess/standard. Added
+  ENGINE_VARIANTS fallback (dev engine name → runner). Also SPELL now first in VARIANTS
+  (beats FRC/960 in combined names), client_repo_url/ref → Belzedar94/OpenBench@spell-runner
+  (auto-update would have reverted the fork), 8.3 short-path for spaced venv python.
+- Book sha semantics: worker hashes the epd as TEXT (universal newlines, utf-8) — our CRLF
+  book's binary sha was wrong; corrected to the text sha (bd3296aa...).
+- Bench protocol correction: with a net assigned the client runs setoption EvalFile + bench →
+  run5rl plain-bench = 11,477,541 (53s solo, 223k NPS). One bench PER WORKER THREAD runs
+  concurrently → fork MAX_BENCH_TIME_SECONDS 60→300. Minor runner fixes: draw adjudication
+  now counts plies since the opening (cutechess plyCount semantics, not FEN fullmove);
+  resign streak resets on scoreless moves; -variant forwarded to engines as UCI_Variant.
+- Re-smoke after fixes: 6 games through the worker-parser replica, 0 anomalies.
+
+**S5 instrumented PASS**: exe-lock sidestepped by building debug=yes (asserts +
+_GLIBCXX_DEBUG) to a clean scratchpad build room (stale release .o were LTO bytecode from
+g++11 — the OTHER MSYS2 toolchain — vs g++15.2: full recompile required, never mix). Suite
+quick 4/4 PASS on the assert binary (units 2s, protocol 4s, repro 31s, perft-d1 3s).
+
+**Learnings**:
+- PowerShell here-string pipes prepend a UTF-8 BOM that silently kills the FIRST UCI command
+  ("Unknown command: '﻿setoption...'") — pipe engine stdin from files or Python only.
+  This invalidated two earlier bench measurements (both had run on the default net).
+- The embedded default net nn-0ee0657fb25e.nnue IS a spell net (106MiB); the engine works
+  net-less out of the box, which is what CI exercises.
+
+**Decision**: S7 steps 1-3 closed and verified. Step 4 (worker E2E SPRT) blocked on user
+input: Actions billing or public repo + real PAT. Next parallel work: S6 XBoard adapter
+(plan verified), run6 training when the farm lands.
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).
