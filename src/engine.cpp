@@ -150,19 +150,34 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     options.add(  //
       "EvalFile", Option(EvalFileDefaultName, [this](const Option& o) {
           // Spell chess: EvalFile points at a reference variant net
-          // (e.g. spell-chess_run5rl_e10_l07.nnue). The stock chess networks
-          // stay embedded as the spell-blind fallback, so a failed load only
-          // reports and keeps the previous evaluation source.
-          const std::string path = std::string(o);
-          if (path != EvalFileDefaultName)
+          // (e.g. spell-chess_run5rl_e10_l07.nnue). A failed load keeps a
+          // previously loaded net if one is active; otherwise the engine
+          // refuses to search (see verify_network) rather than silently
+          // playing with the spell-blind stock networks.
+          const std::string evalPath = std::string(o);
+          if (evalPath != EvalFileDefaultName)
           {
-              const bool ok = SpellNNUE::load(path);
+              bool ok = SpellNNUE::load(evalPath);
+
+              // GUIs often pass a bare filename while launching the engine
+              // from a different working directory: fall back to the binary
+              // directory, like the stock network loader does
+              if (!ok && !binaryDirectory.empty() && path_from_utf8(evalPath).is_relative())
+              {
+                  const auto alt = binaryDirectory / path_from_utf8(evalPath);
+                  if (std::filesystem::exists(alt))
+                      ok = SpellNNUE::load(alt.string());
+              }
+
               sync_cout << "info string "
                         << (ok ? "Spell NNUE loaded: " : "ERROR: spell NNUE failed to load: ")
-                        << path << sync_endl;
+                        << evalPath << sync_endl;
               return std::nullopt;
           }
-          load_network(path_from_utf8(path));
+          // Back to the default: drop any active spell net so the stock
+          // networks become the evaluation source again
+          SpellNNUE::unload();
+          load_network(path_from_utf8(evalPath));
           return std::nullopt;
       }));
 
@@ -291,6 +306,18 @@ void Engine::set_ponderhit(bool b) { threads.main_manager()->ponder = b; }
 // network related
 
 void Engine::verify_network() const {
+    // A spell EvalFile that failed to load (with no previous net active)
+    // must not silently fall back to the spell-blind stock networks:
+    // refuse to search, like the stock verifier does for a broken net.
+    if (SpellNNUE::load_failed())
+    {
+        sync_cout << "info string ERROR: the spell NNUE could not be loaded: "
+                  << SpellNNUE::failed_path()
+                  << ". Fix the EvalFile option (or reset it to the default) before searching."
+                  << sync_endl;
+        std::exit(EXIT_FAILURE);
+    }
+
     // With a spell net active, EvalFile names the variant net; the embedded
     // stock networks (the fallback evaluation) verify against their default.
     const auto file = SpellNNUE::loaded()

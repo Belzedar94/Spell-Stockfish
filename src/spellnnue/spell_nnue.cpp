@@ -86,7 +86,9 @@ constexpr int piece_hand_base(bool enemy, int slot) {
 
 template<typename IntType>
 IntType read_le(std::istream& stream) {
-    IntType result;
+    // Zero-initialized so a failed read on a truncated file compares
+    // deterministically against the expected header constants (none is 0)
+    IntType result{};
     stream.read(reinterpret_cast<char*>(&result), sizeof(IntType));
     return result;
 }
@@ -102,8 +104,8 @@ void read_le(std::istream& stream, IntType* out, size_t count) {
 
 struct AffineLayer {
     int                 inDims, paddedIn, outDims;
-    std::vector<i32>    biases;
-    std::vector<i8>     weights;  // plain row-major [out][paddedIn], file order
+    std::vector<i32>    biases  = {};
+    std::vector<i8>     weights = {};  // plain row-major [out][paddedIn], file order
 
     bool read(std::istream& s) {
         biases.resize(outDims);
@@ -417,7 +419,9 @@ Value network_output(const Position& pos, bool adjusted) {
 // Public interface
 // ---------------------------------------------------------------------------
 
-bool load(const std::string& path) {
+namespace {
+
+bool load_impl(const std::string& path) {
 
     std::ifstream stream(path, std::ios::binary);
     if (!stream)
@@ -431,6 +435,8 @@ bool load(const std::string& path) {
     if (read_le<u32>(stream) != OverallHash)
         return false;
     const u32 descSize = read_le<u32>(stream);
+    if (descSize > 4096)  // reference descriptions are ~100 bytes
+        return false;
     candidate->description.resize(descSize);
     stream.read(candidate->description.data(), descSize);
 
@@ -463,7 +469,30 @@ bool load(const std::string& path) {
     return true;
 }
 
+// Non-empty while the last requested spell net could not be loaded and no
+// previous net remains active — the engine must refuse to search rather
+// than silently fall back to the spell-blind stock networks
+std::string failedPath;
+
+}  // namespace
+
+bool load(const std::string& path) {
+    const bool ok = load_impl(path);
+    failedPath    = ok || loaded() ? "" : path;
+    return ok;
+}
+
+void unload() {
+    net.reset();
+    netFileName.clear();
+    failedPath.clear();
+}
+
 bool loaded() { return net != nullptr; }
+
+bool load_failed() { return !failedPath.empty(); }
+
+const std::string& failed_path() { return failedPath; }
 
 const std::string& file_name() { return netFileName; }
 

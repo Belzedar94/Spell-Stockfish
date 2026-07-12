@@ -31,15 +31,25 @@ class Position;
 // (Fairy-Stockfish spell/nnue-potions nets such as spell-chess_run5rl_*.nnue).
 // Feature set: HalfKAv2Variants with potion zone/cooldown planes and
 // spells-in-hand pockets; network: 512x2 -> 16 -> 32 -> 1 with 8 PSQT buckets
-// and 8 layer stacks. The evaluation is computed by full accumulator refresh
-// (no incremental updates yet) — see SPELL_SPEC.md §6.
+// and 8 layer stacks. Accumulators update incrementally along the search
+// path (walk-back with board-op and spell-plane deltas) and refresh at
+// barriers (root, king moves) — see SPELL_SPEC.md §6.
 namespace SpellNNUE {
 
 // Load a network file; returns false (and keeps the previous net) on any
 // version/hash/size mismatch.
 bool load(const std::string& path);
 
+// Drop the active net (reverting EvalFile to the stock default).
+void unload();
+
 bool loaded();
+
+// True while the last requested net failed to load and no previous net is
+// active: the engine refuses to search in that state (see verify_network).
+bool load_failed();
+
+const std::string& failed_path();
 
 const std::string& file_name();
 

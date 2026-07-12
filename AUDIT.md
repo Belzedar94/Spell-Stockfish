@@ -173,6 +173,35 @@ per node) is the dominant share of the -568 Elo A/B gap; incremental updates rec
 **Decision**: accepted. Next: third-round Codex findings on PR #2 (MAX_MOVES P1 + pseudo_legal
 transparency holes), then movepick spell ordering and the A/B re-measurement.
 
+## Review rounds 3 (PR #2) & 1 (PR #3) — robustness batch (2026-07-12)
+
+**PR #2 round 3** (fixed): `MAX_MOVES` 8192→32768 (P1: promoted material + freeze in hand
+overflows 8192). Naive bump cost **-42% NPS** (342k→197k: 256KB stack-local MovePicker buffers
+page-probe every frame) → MovePicker buffers moved to a per-thread heap arena (2 ExtMove slots
+per ply + one shared generation scratch consumed within each next_move(); MoveLists in movepick
+replaced by direct generate<> into the scratch). 323k NPS restored, tree byte-identical.
+128MB pthread stacks everywhere (Linux included) for the remaining transient MoveList frames.
+Also: pseudo_legal now mirrors phase-flip pushes (incl. self-capture pushes + candidate-gate
+double push) and bans quiet landings on empty transparent squares (two TT-move legality holes);
+promotion pushes onto occupied transparent squares emit all 4 promotions in CAPTURES; SyzygyPath
+accepted-but-ignored. Rejected with rationale: qsearch in-check terminal special-casing
+(reference parity — `needsEvasion` is constant-false in spell; the non-check policy is load-bearing).
+
+**PR #3 round 1** (fixed): EvalFile resolves bare filenames against the binary directory;
+reverting EvalFile to default unloads the spell net; a failed spell load with no active net makes
+verify_network refuse to search with a clear error instead of letting the stock verifier
+reinterpret the path; read_le zero-initializes on truncated files (+ descSize cap); eval_parity
+now exits non-zero on scaled divergence or unexpected coverage loss (the 2 in-check positions the
+reference's `eval` declines by rule are recognized as such, not silently passed). Rejected with
+rationale: "bucket must count holdings" — the reference's bucket line
+(`evaluate_nnue.cpp:163`) uses `pos.count<ALL_PIECES>()`, which is board-only in FSF
+(`pieceCountInHand` is a separate array), and the exact 59/59 raw parity on full-hand positions
+would be impossible otherwise.
+
+**Validation**: perft 61/61 d2, tests 21/21, eval-parity 59/59 raw / 59/59 scaled (2 excluded by
+rule, exit code now honest), bench spell-net new signature 819,199 @ 200k NPS (tree changed by
+the pseudo_legal + promotion partition fixes; NPS = 208k incremental minus ~4% arena cost).
+
 ---
 
 ---
