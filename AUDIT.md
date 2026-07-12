@@ -706,4 +706,27 @@ baseline read VSTC -306 / STC -252 / LTC -381 — impossibly worse than the hist
 - Every panel since the toolchain switch must be re-run; VSTC re-baseline with the sane
   binary in flight.
 
+## Night campaign checkpoints (2026-07-13, madrugada)
+
+- **VSTC re-baseline (sane plain-g++15 binary, 200 games)**: **-181.7 ±54.1** vs the FSF
+  baseline (both run5rl) — statistically compatible with the historical -168 ±43. World
+  coherent again; the -306 reading was pure crippled-PGO artifact. Baseline had 7 time
+  losses, we had 0.
+- **Relevance gate A/B at TC (self-play, margin 400 vs 2000, 400 games VSTC)**: +9.79 for
+  the gate — the fixed-nodes +35 does NOT translate to TC Elo, but the gate is
+  neutral-to-mildly-positive AND saves the expansion work. KEPT at 400 (SPSA continues to
+  explore the margin).
+- **C9 SpellQuietMinDepth=3 A/B (self-play, 400 games VSTC)**: **-20.77 → REFUTED as a
+  fixed default**. Quiet spells near the horizon apparently matter more than the
+  tempo-value argument suggested (consistent with the variant being spell-tempo-driven).
+  Param stays at 0 with the TUNE hook so the tower SPSA can probe small values.
+- **Tower SPSA launched (test #2)**: 12 params (the 11 session-1 knobs + SpellQuietMinDepth),
+  fishtest hyperparams (alpha .602, gamma .101, A 10%), 1200 iterations x 8 pairs = 19,200
+  games at 2.0+0.02, book spell_openings.epd, worker -T 8 grinding overnight. First real
+  workload of the control tower beyond the smoke.
+- S6 bindings surface analysis committed (docs/bindings-port-plan.md): notation.{h,cpp}
+  extraction is step 0; replicate pyffish/ffish.js API (drop-in ecosystem compat);
+  ~1.5k lines over 2-3 sessions. Implementation deliberately NOT started tonight —
+  Elo campaign takes the CPU/GPU budget.
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).
