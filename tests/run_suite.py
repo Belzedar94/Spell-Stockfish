@@ -60,7 +60,7 @@ def main():
 
     if not args.quick:
         results.append(run("eval-parity vs oraculo",
-                           [py, os.path.join("reference", "eval_parity.py"),
+                           [py, "eval_parity.py",
                             args.engine, args.baseline, args.net],
                            cwd=os.path.join(HERE, "reference"), timeout=3600))
 
