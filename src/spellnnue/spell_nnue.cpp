@@ -326,10 +326,9 @@ void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateIn
     {
         auto& e = cache->entries[persp][pos.square<KING>(persp)];
 
-        if (e.gen != netGeneration)
-            e.valid = false;
-
-        if (!e.valid)
+        // valid is checked FIRST: gen is only meaningful (initialized) on
+        // valid entries, and a stale generation invalidates the entry
+        if (!e.valid || e.gen != netGeneration)
         {
             // Seed the entry with a full rebuild
             int       indices[128];

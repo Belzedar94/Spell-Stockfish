@@ -184,9 +184,11 @@ MovePicker::MovePicker(const Position&              p,
     *arenaTop += MAX_MOVES;
 
     // Spell chess: no evasion staging — self-check is legal, so "in check"
-    // nodes are ordered and pruned exactly like normal ones (reference policy)
+    // nodes are ordered and pruned exactly like normal ones (reference policy).
+    // The useless-spell filter never applies at the root (ply 0): searchmoves
+    // may legitimately force a dominated-but-legal spell move.
     stage = (depth > 0 ? MAIN_TT : QSEARCH_TT)
-          + !(ttm && pos.pseudo_legal(ttm) && !is_useless_spell(pos, ttm));
+          + !(ttm && pos.pseudo_legal(ttm) && (ply == 0 || !is_useless_spell(pos, ttm)));
 }
 
 // MovePicker constructor for ProbCut: we generate captures with Static Exchange
@@ -331,8 +333,9 @@ top:
     case GOOD_CAPTURE :
         if (select([&]() {
                 // A gated capture with an irrelevant gate is dominated by
-                // the bare capture: drop it entirely (not even "bad")
-                if (is_useless_spell(pos, *cur))
+                // the bare capture: drop it entirely (not even "bad") —
+                // except at the root, where searchmoves may force it
+                if (ply != 0 && is_useless_spell(pos, *cur))
                     return false;
                 if (pos.see_ge(*cur, -cur->value / 18))
                     return true;
@@ -386,7 +389,7 @@ top:
         [[fallthrough]];
 
     case SPELL :
-        if (select([&]() { return !is_useless_spell(pos, *cur); }))
+        if (select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); }))
             return *(cur - 1);
 
         // Prepare the pointers to loop over the bad captures
@@ -428,7 +431,7 @@ top:
         return select([]() { return true; });
 
     case QCAPTURE :
-        return select([&]() { return !is_useless_spell(pos, *cur); });
+        return select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); });
 
     case PROBCUT :
         return select(

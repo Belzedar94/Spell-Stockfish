@@ -40,6 +40,8 @@ class Engine:
         self.proc = subprocess.Popen(
             [path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, bufsize=1)
+        self._lines = queue.Queue()
+        threading.Thread(target=self._pump, daemon=True).start()
         self.send("uci")
         self.read_until("uciok")
         for k, v in options:
@@ -54,18 +56,30 @@ class Engine:
             raise EngineDied(f"{self.name} died (write: {exc}, "
                              f"exit={self.proc.poll()})") from exc
 
+    def _pump(self):
+        # Reader thread: timeouts must interrupt reads even when the engine
+        # stays alive but silent
+        for line in self.proc.stdout:
+            self._lines.put(line)
+        self._lines.put(None)  # EOF marker
+
     def read_until(self, token, timeout=120):
         deadline = time.time() + timeout
         lines = []
-        while time.time() < deadline:
-            line = self.proc.stdout.readline()
-            if not line:
-                raise EngineDied(f"{self.name} died (EOF, exit={self.proc.poll()})")
+        while True:
+            try:
+                line = self._lines.get(timeout=max(0.05, deadline - time.time()))
+            except queue.Empty:
+                raise EngineDied(f"{self.name}: timeout waiting for {token}")
+            if line is None:
+                # Keep the tail: assertion/crash messages precede the EOF
+                tail = " | ".join(lines[-4:])
+                raise EngineDied(
+                    f"{self.name} died (EOF, exit={self.proc.poll()}) last: {tail}")
             line = line.rstrip("\n")
             lines.append(line)
             if line.startswith(token):
                 return lines
-        raise EngineDied(f"{self.name}: timeout waiting for {token}")
 
     def sync(self):
         self.send("isready")
@@ -122,8 +136,11 @@ def play_game(white, black, fen, nodes, adj_cp, adj_plies, ply_cap):
         move_cnt[eng] += 1
 
         if best in ("(none)", "0000", "none"):
-            # No legal move: in capture-the-king spell chess this is a loss
-            # for the side to move (king captured or stalled while attacked)
+            # No legal move. Spell chess terminals: king captured or stalled
+            # while attacked = loss; a quiet stall = draw. The engine's own
+            # root score encodes which of the two this position is.
+            if score is not None and abs(score) < adj_cp:
+                return 0, ply, depth_sum, move_cnt
             return (-1 if stm_white else 1), ply, depth_sum, move_cnt
 
         if score is not None and abs(score) >= adj_cp:
@@ -141,9 +158,11 @@ def play_game(white, black, fen, nodes, adj_cp, adj_plies, ply_cap):
 
 
 def elo_stats(w, losses, d):
+    # All-loss samples must report their (large negative) Elo — the score
+    # clip below keeps the log finite
     n = w + losses + d
-    if n == 0 or w + d == 0 or losses + d == 0 and w == 0:
-        return 0.0, 0.0
+    if n == 0:
+        return 0.0, 50.0
     score = (w + d / 2) / n
     score = min(max(score, 1e-9), 1 - 1e-9)
     elo = -400 * math.log10(1 / score - 1)
@@ -198,6 +217,9 @@ def main():
                 break
             white, black = (e1, e2) if e1_white else (e2, e1)
             try:
+                for e in (e1, e2):  # fresh TT per game, like the TC harness
+                    e.send("ucinewgame")
+                    e.sync()
                 res, plies, dsum, mcnt = play_game(
                     white, black, fen, args.nodes, args.adj_cp,
                     args.adj_plies, args.ply_cap)
