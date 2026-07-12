@@ -649,4 +649,61 @@ deeper search + real chess knowledge in the fallback net compensate).
 Elo, end to end on own data. The serious dataset (RL loop, 100M/iteration) is future work
 (S8 era). Winner net: spell-data/run6a/spell_run6a_l10.nnue.
 
+## S7 CLOSED — control tower E2E (2026-07-12/13 night)
+
+**The full OpenBench cycle ran hands-off**: test #1 (GAMES 32, dev=base=phase-4-strength
+@72f3f871, Bench 13456297, book spell_openings.epd) created via /scripts/ → local worker
+(-T 8) registered (g++ 15.2.0 auto-detected) → zipball of the PUBLIC repo downloaded →
+built natively through the Makefile default-goal shim → bench gate passed → book fetched
+from the GitHub release (text-sha verified) → **40 games of spell chess arbitrated by
+uci_pair_runner via the VARIANTS routing** → PGNs written, trinomial reported, test
+FINISHED 19-20-1 (Elo ~0 between identical binaries, as a smoke must read). Zero errors.
+
+Also live this session: repo public, Actions green (Spell CI + Clang-Format), fork
+published as Belzedar94/OpenBench@spell-runner (only branch, default), web exposed via
+ephemeral TryCloudflare tunnel (stable hosting deliberately deferred by owner; Vercel
+evaluated and rejected — serverless mismatch).
+
+**Deployment bug found by testing the worst case**: EVALFILE with spaces in the path
+(our own Networks dir lives under "Fairy-Stockfish organization") broke the compile
+line — the -D define must be single-quoted in the Makefile. Caught before any worker hit
+it because the mechanism was validated with the spaced path deliberately.
+
+**Decision**: S7 done except stable hosting (owner: "ya veremos"). Remote workers need
+only the AGENTS.md quickstart. Next: net-assigned tests once SPELL_EVALFILE_DEFAULT
+lands (validation build in flight).
+
+## The night's two real bugs: eval-in-check assert + BROKEN g++15 PGO (2026-07-13)
+
+**Bug 1 (caught by the new sanitizer CI on its FIRST run)**: `evaluate.cpp:48
+assert(!pos.checkers())` aborts any assert-enabled binary during bench — spell chess
+evaluates in-check nodes statically BY DESIGN (self-check legal, inCheck pinned false),
+so the stock invariant does not apply. Removed with rationale. Coverage gap exposed: the
+local instrumented battery never ran `bench` (units/protocol/repro/perft only) — debug
+bench d5/d10 now pass and CI keeps bench-under-sanitizers permanently.
+
+**Bug 2 (found via a catastrophic re-baseline panel)**: the fresh 3-TC panel vs the FSF
+baseline read VSTC -306 / STC -252 / LTC -381 — impossibly worse than the historical
+-168/-142/-105. Forensics chain:
+- Gate-off A/B (SpellStageMargin=2000 via UCI): -241 at VSTC → the relevance gate explains
+  only ~-60, not ~-140.
+- Clean-CPU NPS of the official binary: **135k** vs the 397k recorded for the g++11-era
+  build — same bench signature (2,395,529), so identical tree, 3x slower walls.
+- Three-way build comparison (identical sources): PGO g++15.2 = 135k · **plain g++15.2 =
+  444k** · PGO g++11.2 (historical) = 397k. **`profile-build` under g++ 15.2 produces a
+  3.3x SLOWER binary than a plain `build`** (suspected: the PGO profile stage exercises
+  the stock-net bench path and -fprofile-use pessimizes the spell paths; g++11 behaved).
+- Official binary rebuilt as plain g++15: 415k NPS, signature intact, suite 6/6.
+
+**Learnings**:
+- Harness numbers are the truth, and a "measurement" is only as good as the BINARY: NPS
+  must be checked against BENCH_LOG whenever the toolchain or build recipe changes.
+- New build rule (recorded in the org memory): plain `make build` with g++15; never
+  profile-build without an NPS check against the plain build; never mix .o across
+  toolchains (LTO bytecode incompatibility).
+- The earlier bracket/final results (run6a nets) were RELATIVE matches on the same
+  crippled binary — internally consistent, conclusions unaffected.
+- Every panel since the toolchain switch must be re-run; VSTC re-baseline with the sane
+  binary in flight.
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).
