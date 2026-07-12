@@ -43,16 +43,16 @@ constexpr int WeightScaleBits = 6;
 // reference Variant::conclude()): 8 piece types (P N B R Q F J K), the king
 // (commoner) on a single colorless plane, 16-slot pockets, potion zone and
 // cooldown planes.
-constexpr int NumPieceTypeSlots = 8;                             // P N B R Q F J K
+constexpr int NumPieceTypeSlots = 8;  // P N B R Q F J K
 constexpr int SquaresNB         = 64;
-constexpr int PocketSlots       = 16;                            // 2 * files
-constexpr int CooldownBits      = 16;                            // reference POTION_COOLDOWN_BITS
-constexpr int NonDropIndices    = (2 * NumPieceTypeSlots - 1) * SquaresNB;          // 960
-constexpr int HandBase          = NonDropIndices;                                   // 960
-constexpr int ZoneBase = HandBase + 2 * (NumPieceTypeSlots - 1) * PocketSlots;      // 1184
-constexpr int CooldownBase = ZoneBase + SquaresNB * COLOR_NB * SPELL_NB;            // 1440
-constexpr int PieceIndices = CooldownBase + COLOR_NB * SPELL_NB * CooldownBits;     // 1504
-constexpr int Dimensions   = SquaresNB * PieceIndices;                              // 96256
+constexpr int PocketSlots       = 16;  // 2 * files
+constexpr int CooldownBits      = 16;  // reference POTION_COOLDOWN_BITS
+constexpr int NonDropIndices    = (2 * NumPieceTypeSlots - 1) * SquaresNB;               // 960
+constexpr int HandBase          = NonDropIndices;                                        // 960
+constexpr int ZoneBase          = HandBase + 2 * (NumPieceTypeSlots - 1) * PocketSlots;  // 1184
+constexpr int CooldownBase      = ZoneBase + SquaresNB * COLOR_NB * SPELL_NB;            // 1440
+constexpr int PieceIndices      = CooldownBase + COLOR_NB * SPELL_NB * CooldownBits;     // 1504
+constexpr int Dimensions        = SquaresNB * PieceIndices;                              // 96256
 
 constexpr int HalfDims    = 512;
 constexpr int PSQTBuckets = 8;
@@ -69,7 +69,8 @@ constexpr u32 affine_hash(u32 prev, u32 out) {
 constexpr u32 relu_hash(u32 prev) { return 0x538D24C7u + prev; }
 
 constexpr u32 SliceHash = 0xEC42E90Du ^ (HalfDims * 2);
-constexpr u32 NetHash = affine_hash(relu_hash(affine_hash(relu_hash(affine_hash(SliceHash, 16)), 32)), 1);
+constexpr u32 NetHash =
+  affine_hash(relu_hash(affine_hash(relu_hash(affine_hash(SliceHash, 16)), 32)), 1);
 constexpr u32 OverallHash = FtHash ^ NetHash;
 
 // Piece-type slot i in the feature layout: P=0 N=1 B=2 R=3 Q=4 F=5 J=6 K=7
@@ -124,9 +125,9 @@ void read_le(std::istream& stream, IntType* out, size_t count) {
 // ---------------------------------------------------------------------------
 
 struct AffineLayer {
-    int                 inDims, paddedIn, outDims;
-    std::vector<i32>    biases  = {};
-    std::vector<i8>     weights = {};  // plain row-major [out][paddedIn], file order
+    int              inDims, paddedIn, outDims;
+    std::vector<i32> biases  = {};
+    std::vector<i8>  weights = {};  // plain row-major [out][paddedIn], file order
 
     bool read(std::istream& s) {
         biases.resize(outDims);
@@ -175,9 +176,9 @@ struct LayerStack {
 };
 
 struct SpellNet {
-    std::vector<i16> ftBiases;      // [512]
-    std::vector<i16> ftWeights;     // [Dimensions][512]
-    std::vector<i32> psqtWeights;   // [Dimensions][8]
+    std::vector<i16> ftBiases;     // [512]
+    std::vector<i16> ftWeights;    // [Dimensions][512]
+    std::vector<i32> psqtWeights;  // [Dimensions][8]
     LayerStack       stacks[LayerStacks];
     std::string      description;
 };
@@ -225,8 +226,8 @@ int active_features(const Position& pos, Color persp, int kingBase, int* out) {
 
             Bitboard zone = pos.spell_zone(c, SpellType(sp));
             while (zone)
-                out[n++] = kingBase + ZoneBase + potionIndex * SquaresNB
-                         + orient(persp, pop_lsb(zone));
+                out[n++] =
+                  kingBase + ZoneBase + potionIndex * SquaresNB + orient(persp, pop_lsb(zone));
 
             const unsigned cooldown = unsigned(pos.spell_cooldown(c, SpellType(sp)));
             for (int bit = 0; bit < CooldownBits; ++bit)
@@ -242,8 +243,13 @@ int active_features(const Position& pos, Color persp, int kingBase, int* out) {
 }
 
 // Spell-state feature deltas between a state and its predecessor
-void spell_state_deltas(const StateInfo* st, Color persp, int kingBase,
-                        int* added, int& nAdded, int* removed, int& nRemoved) {
+void spell_state_deltas(const StateInfo* st,
+                        Color            persp,
+                        int              kingBase,
+                        int*             added,
+                        int&             nAdded,
+                        int*             removed,
+                        int&             nRemoved) {
 
     const StateInfo* prev = st->previous;
 
@@ -256,11 +262,11 @@ void spell_state_deltas(const StateInfo* st, Color persp, int kingBase,
             const Bitboard prevZone = spell_zone_bb(SpellType(sp), Square(prev->spellGate[c][sp]));
 
             for (Bitboard b = curZone & ~prevZone; b;)
-                added[nAdded++] = kingBase + ZoneBase + potionIndex * SquaresNB
-                                + orient(persp, pop_lsb(b));
+                added[nAdded++] =
+                  kingBase + ZoneBase + potionIndex * SquaresNB + orient(persp, pop_lsb(b));
             for (Bitboard b = prevZone & ~curZone; b;)
-                removed[nRemoved++] = kingBase + ZoneBase + potionIndex * SquaresNB
-                                    + orient(persp, pop_lsb(b));
+                removed[nRemoved++] =
+                  kingBase + ZoneBase + potionIndex * SquaresNB + orient(persp, pop_lsb(b));
 
             const unsigned curCd  = unsigned(st->spellCooldown[c][sp]);
             const unsigned prevCd = unsigned(prev->spellCooldown[c][sp]);
@@ -274,9 +280,9 @@ void spell_state_deltas(const StateInfo* st, Color persp, int kingBase,
                         removed[nRemoved++] = idx;
                 }
 
-            const int curHand  = st->spellHand[c][sp];
-            const int prevHand = prev->spellHand[c][sp];
-            const bool enemy   = c != persp;
+            const int  curHand  = st->spellHand[c][sp];
+            const int  prevHand = prev->spellHand[c][sp];
+            const bool enemy    = c != persp;
             for (int i = curHand; i < prevHand; ++i)
                 removed[nRemoved++] = kingBase + piece_hand_base(enemy, SpellSlot[sp]) + i;
             for (int i = prevHand; i < curHand; ++i)
@@ -292,8 +298,8 @@ void spell_state_deltas(const StateInfo* st, Color persp, int kingBase,
 // (~46 active features vs steps * ~8 delta features)
 constexpr int MaxWalk = 6;
 
-void apply_deltas(i16* acc, i32* psqt, const int* added, int nAdded, const int* removed,
-                  int nRemoved) {
+void apply_deltas(
+  i16* acc, i32* psqt, const int* added, int nAdded, const int* removed, int nRemoved) {
 
     for (int k = 0; k < nAdded; ++k)
     {
@@ -315,8 +321,8 @@ void apply_deltas(i16* acc, i32* psqt, const int* added, int nAdded, const int* 
     }
 }
 
-void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateInfo* st,
-                         RefreshCache* cache) {
+void refresh_accumulator(
+  const Position& pos, Color persp, int kingBase, StateInfo* st, RefreshCache* cache) {
 
     auto& a = st->spellAcc;
 
@@ -369,11 +375,11 @@ void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateIn
                     const Bitboard oldZone = spell_zone_bb(SpellType(sp), Square(e.gate[c][sp]));
 
                     for (Bitboard b = curZone & ~oldZone; b;)
-                        added[nAdded++] = kingBase + ZoneBase + potionIndex * SquaresNB
-                                        + orient(persp, pop_lsb(b));
+                        added[nAdded++] =
+                          kingBase + ZoneBase + potionIndex * SquaresNB + orient(persp, pop_lsb(b));
                     for (Bitboard b = oldZone & ~curZone; b;)
-                        removed[nRemoved++] = kingBase + ZoneBase + potionIndex * SquaresNB
-                                            + orient(persp, pop_lsb(b));
+                        removed[nRemoved++] =
+                          kingBase + ZoneBase + potionIndex * SquaresNB + orient(persp, pop_lsb(b));
 
                     const unsigned curCd = unsigned(st->spellCooldown[c][sp]);
                     const unsigned oldCd = unsigned(e.cooldown[c][sp]);
@@ -447,8 +453,8 @@ void ensure_accumulator(const Position& pos, Color persp, int kingBase, RefreshC
     const Piece kingPc = make_piece(persp, KING);
 
     StateInfo* chain[MaxWalk];
-    int        steps = 0;
-    StateInfo* s     = st;
+    int        steps       = 0;
+    StateInfo* s           = st;
     bool       mustRefresh = false;
 
     while (!(s->spellAcc.computed[persp] && s->spellAcc.gen == netGeneration))

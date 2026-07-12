@@ -195,8 +195,12 @@ MovePicker::MovePicker(const Position&              p,
 
 // MovePicker constructor for ProbCut: we generate captures with Static Exchange
 // Evaluation (SEE) greater than or equal to the given threshold.
-MovePicker::MovePicker(
-  const Position& p, Move ttm, int th, const CapturePieceToHistory* cph, ExtMove** at, Move* scratch) :
+MovePicker::MovePicker(const Position&              p,
+                       Move                         ttm,
+                       int                          th,
+                       const CapturePieceToHistory* cph,
+                       ExtMove**                    at,
+                       Move*                        scratch) :
     pos(p),
     captureHistory(cph),
     ttMove(ttm),
@@ -207,9 +211,9 @@ MovePicker::MovePicker(
 
     *arenaTop += MAX_MOVES;
 
-    stage = PROBCUT_TT
-          + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm)
-              && !is_useless_spell(pos, ttm));
+    stage =
+      PROBCUT_TT
+      + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm) && !is_useless_spell(pos, ttm));
 }
 
 // Assigns a numerical value to each move in a list, used for sorting.

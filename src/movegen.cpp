@@ -275,10 +275,9 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 limit = ringCount;
             if (n > limit)
             {
-                std::partial_sort(scored, scored + limit, scored + n,
-                                  [](const GateScore& a, const GateScore& b) {
-                                      return a.score > b.score;
-                                  });
+                std::partial_sort(
+                  scored, scored + limit, scored + n,
+                  [](const GateScore& a, const GateScore& b) { return a.score > b.score; });
                 n = limit;
             }
             for (int i = 0; i < n; ++i)
@@ -373,8 +372,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                     // Landing uses the phase-flipped occupancy incl. the
                     // candidate gate (occupied, so flipped out); the landing
                     // classifies as capture/quiet by physical occupancy
-                    const Bitboard flipOcc =
-                      (occupied ^ pos.jump_transparent()) ^ square_bb(gate);
+                    const Bitboard flipOcc = (occupied ^ pos.jump_transparent()) ^ square_bb(gate);
 
                     if ((pos.pieces(Us, PAWN) & ~frozenUs & square_bb(from)) && (TRank2 & from)
                         && !(flipOcc & to) && keep(bool(occupied & to)))

@@ -251,9 +251,10 @@ enum Piece : u8 {
 };
 // clang-format on
 
-constexpr Value PieceValue[PIECE_NB] = {
-  VALUE_ZERO, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, CommonerValue, VALUE_ZERO,
-  VALUE_ZERO, PawnValue, KnightValue, BishopValue, RookValue, QueenValue, CommonerValue, VALUE_ZERO};
+constexpr Value PieceValue[PIECE_NB] = {VALUE_ZERO, PawnValue,  KnightValue,   BishopValue,
+                                        RookValue,  QueenValue, CommonerValue, VALUE_ZERO,
+                                        VALUE_ZERO, PawnValue,  KnightValue,   BishopValue,
+                                        RookValue,  QueenValue, CommonerValue, VALUE_ZERO};
 
 using Depth = int;
 

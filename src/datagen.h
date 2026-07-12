@@ -34,9 +34,9 @@ namespace Datagen {
 // binary — see SPELL_SPEC.md §7 and tools/psv_decode.py.
 struct PackedSfenValue {
     u8  sfen[64];
-    i16 score;      // search value, side-to-move POV, internal units
-    u16 _pad = 0;   // natural alignment of the u32 move
-    u32 move;       // PV first move (our 32-bit encoding incl. spell payload)
+    i16 score;     // search value, side-to-move POV, internal units
+    u16 _pad = 0;  // natural alignment of the u32 move
+    u32 move;      // PV first move (our 32-bit encoding incl. spell payload)
     u16 gamePly;
     i8  gameResult;  // +1 side to move eventually wins, -1 loses, 0 draw
     u8  padding = 0;

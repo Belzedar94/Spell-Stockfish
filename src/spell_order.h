@@ -63,8 +63,7 @@ inline bool is_useless_spell(const Position& pos, Move m) {
     if (m.spell_type() == SPELL_FREEZE)
         return !(FreezeZoneBB[m.gate_sq()] & pos.pieces(~pos.side_to_move()));
 
-    const Bitboard path =
-      Attacks::between_bb(m.from_sq(), m.to_sq()) & ~square_bb(m.to_sq());
+    const Bitboard path = Attacks::between_bb(m.from_sq(), m.to_sq()) & ~square_bb(m.to_sq());
     return !(path & square_bb(m.gate_sq()));
 }
 
@@ -74,8 +73,8 @@ inline bool is_useless_spell(const Position& pos, Move m) {
 // freeze), or freezes an enemy piece that is major-valued, attacked by us,
 // or attacking our king. ourRoyalAttackers/enemyRoyal/ourRoyal are
 // precomputed once per node.
-inline bool is_tactical_spell(const Position& pos, Move m, Bitboard ourRoyalAttackers,
-                              Square enemyRoyal, Square ourRoyal) {
+inline bool is_tactical_spell(
+  const Position& pos, Move m, Bitboard ourRoyalAttackers, Square enemyRoyal, Square ourRoyal) {
 
     if (!m.is_spell() || m.spell_type() != SPELL_FREEZE)
         return false;
@@ -107,8 +106,8 @@ inline bool is_tactical_spell(const Position& pos, Move m, Bitboard ourRoyalAtta
             return true;
         if (ourRoyal != SQ_NONE)
         {
-            const Bitboard att = pt == PAWN ? Attacks::attacks_bb<PAWN>(s, them)
-                                            : Attacks::attacks_bb(pt, s, occ);
+            const Bitboard att =
+              pt == PAWN ? Attacks::attacks_bb<PAWN>(s, them) : Attacks::attacks_bb(pt, s, occ);
             if (att & square_bb(ourRoyal))
                 return true;
         }

@@ -46,16 +46,16 @@ namespace SpellNNUE {
 // device: corrections are exact integer math, results are bit-identical.
 struct RefreshCache {
     struct Entry {
-        alignas(64) i16 acc[512];         // HalfDims
-        i32      psqt[8];                 // PSQTBuckets
-        Bitboard pieces[COLOR_NB][8];     // board snapshot by piece type
-        u8       gate[COLOR_NB][2];       // spell-state snapshot (SPELL_NB)
+        alignas(64) i16 acc[512];      // HalfDims
+        i32      psqt[8];              // PSQTBuckets
+        Bitboard pieces[COLOR_NB][8];  // board snapshot by piece type
+        u8       gate[COLOR_NB][2];    // spell-state snapshot (SPELL_NB)
         u8       cooldown[COLOR_NB][2];
         u8       hand[COLOR_NB][2];
-        u32      gen;                     // net generation the entry was built with
+        u32      gen;  // net generation the entry was built with
         bool     valid;
     };
-    Entry entries[COLOR_NB][SQUARE_NB];   // [perspective][own king square]
+    Entry entries[COLOR_NB][SQUARE_NB];  // [perspective][own king square]
 
     void clear() {
         for (auto& row : entries)

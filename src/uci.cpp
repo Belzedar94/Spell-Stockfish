@@ -352,10 +352,10 @@ void UCIEngine::bench(std::istream& args) {
 // output files and seeds.
 void UCIEngine::datagen(std::istringstream& args) {
 
-    std::string out        = "spell_data.bin";
-    u64         count      = 10000;
-    u64         nodesLimit = 40000;
-    u64         seed       = u64(now());
+    std::string out         = "spell_data.bin";
+    u64         count       = 10000;
+    u64         nodesLimit  = 40000;
+    u64         seed        = u64(now());
     int         randomPlies = 8, evalLimit = 3000, plyLimit = 400;
 
     std::string token;
@@ -392,8 +392,8 @@ void UCIEngine::datagen(std::istringstream& args) {
     PRNG rng(seed);
 
     // Silence the engine's search output and capture what we need
-    int  lastValue = 0;
-    bool lastIsMate = false, haveScore = false;
+    int         lastValue  = 0;
+    bool        lastIsMate = false, haveScore = false;
     std::string bestmoveStr;
 
     engine.set_on_iter([](const auto&) {});
@@ -409,12 +409,11 @@ void UCIEngine::datagen(std::istringstream& args) {
         else
             lastIsMate = true;
     });
-    engine.set_on_bestmove([&](std::string_view bm, std::string_view) {
-        bestmoveStr = std::string(bm);
-    });
+    engine.set_on_bestmove(
+      [&](std::string_view bm, std::string_view) { bestmoveStr = std::string(bm); });
 
-    u64        written = 0, games = 0;
-    TimePoint  t0      = now();
+    u64       written = 0, games = 0;
+    TimePoint t0 = now();
 
     while (written < count)
     {
@@ -423,7 +422,7 @@ void UCIEngine::datagen(std::istringstream& args) {
         pos.set(StartFEN, false, &states->back());
 
         std::vector<Datagen::PackedSfenValue> buf;
-        int result = 0;  // white POV: +1 / -1 / 0
+        int                                   result = 0;  // white POV: +1 / -1 / 0
 
         for (int ply = 0; ply < plyLimit; ++ply)
         {

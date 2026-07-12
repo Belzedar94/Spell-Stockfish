@@ -332,9 +332,8 @@ void Engine::verify_network() const {
 
     // With a spell net active, EvalFile names the variant net; the embedded
     // stock networks (the fallback evaluation) verify against their default.
-    const auto file = SpellNNUE::loaded()
-                      ? path_from_utf8(std::string(EvalFileDefaultName))
-                      : path_from_utf8(std::string(options["EvalFile"]));
+    const auto file = SpellNNUE::loaded() ? path_from_utf8(std::string(EvalFileDefaultName))
+                                          : path_from_utf8(std::string(options["EvalFile"]));
     network->verify(onVerifyNetwork, networkFile, file);
 
     auto statuses = network.get_status_and_errors();

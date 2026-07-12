@@ -314,13 +314,13 @@ void XBoardEngine::on_update_full(const Engine::InfoFull& info) {
 
     std::stringstream ss;
 
-    ss << info.depth << " "                  //
-       << format_xboard_score(info.score)    //
-       << " " << info.timeMs / 10 << " "     //
-       << info.nodes << " "                  //
-       << info.selDepth << " "               //
-       << info.nps << " "                    //
-       << info.tbHits << "\t " << info.pv;   //
+    ss << info.depth << " "                 //
+       << format_xboard_score(info.score)   //
+       << " " << info.timeMs / 10 << " "    //
+       << info.nodes << " "                 //
+       << info.selDepth << " "              //
+       << info.nps << " "                   //
+       << info.tbHits << "\t " << info.pv;  //
 
     sync_cout << ss.str() << sync_endl;
 }
@@ -371,8 +371,8 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
     if (token == "protover")
         send_features();
 
-    else if (token == "accepted" || token == "rejected" || token == "computer"
-             || token == "random" || token == "post" || token == "nopost")
+    else if (token == "accepted" || token == "rejected" || token == "computer" || token == "random"
+             || token == "post" || token == "nopost")
     {}  // Ignored: negotiation echos and toggles we always satisfy
 
     else if (token == "ping")
@@ -396,7 +396,7 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
 
     else if (token == ".")
     {}  // Optional analysis stat update; must never disturb the search
-        // (WinBoard sends it every ~2s with Periodic Updates, the default)
+    // (WinBoard sends it every ~2s with Periodic Updates, the default)
 
     else if (token == "new")
     {
@@ -461,7 +461,7 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
             double inc = 0;
             is >> inc;
             limits.inc[WHITE] = limits.inc[BLACK] = TimePoint(inc * 1000);
-            clocksInitialized = true;
+            clocksInitialized                     = true;
         }
         else if (token == "sd")
             is >> limits.depth;
@@ -471,7 +471,7 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
             is >> secs;
             limits.movetime    = TimePoint(secs * 1000);
             limits.time[WHITE] = limits.time[BLACK] = 0;
-            clocksInitialized  = false;
+            clocksInitialized                       = false;
         }
         // Note: 'time'/'otim' are in centi-, not milliseconds, and they
         // arrive before the usermove they refer to, so they are assigned by

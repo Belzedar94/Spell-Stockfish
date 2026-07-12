@@ -78,16 +78,16 @@ class MovePicker {
     const PieceToHistory**       continuationHistory;
     const SharedHistories*       sharedHistory;
     Move                         ttMove;
-    ExtMove *cur, *endCur, *endBadCaptures, *endCaptures, *endGenerated, *endSpells;
-    int                          stage;
-    int                          threshold;
-    Depth                        depth;
-    int                          ply;
-    bool                         skipQuiets = false;
-    bool                         allowSpells = true;
-    ExtMove**                    arenaTop;
-    ExtMove*                     moves;
-    Move*                        genScratch;
+    ExtMove * cur, *endCur, *endBadCaptures, *endCaptures, *endGenerated, *endSpells;
+    int       stage;
+    int       threshold;
+    Depth     depth;
+    int       ply;
+    bool      skipQuiets  = false;
+    bool      allowSpells = true;
+    ExtMove** arenaTop;
+    ExtMove*  moves;
+    Move*     genScratch;
 };
 
 }  // namespace Stockfish
