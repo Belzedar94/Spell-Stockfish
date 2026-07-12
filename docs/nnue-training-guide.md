@@ -57,6 +57,30 @@ loop:     regenerar 100M con la red nueva y repetir; el nombre runNrl = iteraci�
 Hiperparámetros base que usaba como referencia del trainer estándar SF (2022-03-20):
 batch 16384, random-fen-skipping 3, gamma 0.995, lr 4.375e-4.
 
+## Generación de datos (oro de ubdip + historia propia, del vault)
+
+- **Filtrar posiciones NO-quietas EN EL GENERADOR** (ubdip 2021-08-22 → 2022-03-29): una
+  asimetría de eval entera desapareció al filtrarlas, y midió **STC +89 (LOS 100%) / LTC
+  +47**. Clave: en variantes el filtro vive en el GENERADOR (qsearch-based), porque el
+  trainer no tiene conocimiento del juego (el smart-skipping del trainer oficial asume
+  ajedrez). Nuestro datagen run6a NO filtraba quietud → upside directo para el dataset serio.
+- **La lección del filtro TT del pato** (ubdip 2023-01-03; incluida en la red duck +90
+  publicada): si el dedup/filtrado del generador distingue posiciones por un estado que la
+  red NO ve, el training promedia evals contradictorias "favoreciendo al blunder". Regla:
+  coherencia total entre la clave de dedup del generador y las features de la red. (Spell
+  hoy: la red VE zonas/cooldowns/manos → dedup por posición completa es lo correcto.)
+- **Robustez** (ubdip 2022-04-19): filtrado de eval por qsearch + "lambda bajo pero no
+  cero"; lambda dependiente de fase de juego = idea abierta.
+- **Velocidad en branching enorme** (duck→spell, 2026-01-10): `generate_training_data_nonpv`
+  con nodos capados es mucho más rápido y sigue siendo entrenable.
+- Perillas de la receta extinction del propietario aún no portadas a nuestro datagen:
+  `random_multi_pv 4 random_multi_pv_diff 100`, `write_min_ply 5`, `eval_diff_limit 500`.
+- **Historia con moraleja** (2025-09-30/10-01, canal development): el primer intento de
+  NNUE spell con el pipeline FSF viejo produjo un dataset SIN potions ni potion moves
+  (holdings `[]`, variant.h en modo chess: PIECE_TYPES 6, POCKETS false) — no era un
+  filtro, era el bug. El pipeline actual (compat-first, formato byte-verificado contra el
+  oráculo) existe precisamente por esto: validar SIEMPRE el .plain/decode antes de entrenar.
+
 ## Aplicación a Spell-Stockfish run6a (2026-07-12)
 
 Dataset propio de 1.912.205 posiciones a 5000 nodos (E2E; dataset serio vendrá después).
