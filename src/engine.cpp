@@ -113,6 +113,13 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
 
     options.add("UCI_Chess960", Option(false));
 
+    // Spell chess: GUI/harness compatibility options. The engine plays only
+    // spell-chess; UCI_Variant accepts that single value and VariantPath is
+    // accepted and ignored (the variant is hardcoded).
+    options.add("UCI_Variant", Option("spell-chess var spell-chess", "spell-chess"));
+
+    options.add("VariantPath", Option("<empty>"));
+
     options.add("UCI_LimitStrength", Option(false));
 
     options.add("UCI_Elo",

@@ -84,8 +84,14 @@ than the frozen baseline's 262k, still with the 106 MiB chess net); depth 12 fro
   before building, and never leave engines reading a closed stdin (EOF acts as quit; keep the pipe
   open until `bestmove`).
 
-**Decision**: Phase 2 accepted pending the VSTC stability run. Next: stability matches, then
-Phase 3 (variant-NNUE + eval parity with run5rl).
+**Stability gate**: 300 VSTC games vs the frozen baseline (ours: embedded chess nets; baseline:
+run5rl): 300/300 completed, **0 time losses on either side, 0 illegal moves, 0 crashes**. Score
+0-300 as expected with a spell-blind provisional eval — the gate is operational cleanliness, not
+strength. Harness compatibility fixes found on the way: UCI_Variant/VariantPath compatibility
+options, and a combo-option duplicate-token bug in the (otherwise unused) SF combo path that
+`std::exit`ed the engine on `setoption UCI_Variant` mid-handshake.
+
+**Decision**: Phase 2 accepted. Next: Phase 3 (variant-NNUE + eval parity with run5rl).
 
 ---
 
