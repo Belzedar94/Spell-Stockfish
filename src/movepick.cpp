@@ -55,15 +55,10 @@ enum Stages {
     PROBCUT_INIT,
     PROBCUT,
 
-    // generate qsearch moves. On the FIRST qsearch ply, tactical spells
-    // (reference QPOTION stage) follow the captures: a freeze that saves
-    // the king or hits heavy material is a tactical resource the leaf
-    // evaluation cannot see
+    // generate qsearch moves
     QSEARCH_TT,
     QCAPTURE_INIT,
-    QCAPTURE,
-    QSPELL_INIT,
-    QSPELL
+    QCAPTURE
 };
 
 #ifdef USE_AVX512
@@ -436,47 +431,7 @@ top:
         return select([]() { return true; });
 
     case QCAPTURE :
-        if (select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); }))
-            return *(cur - 1);
-
-        ++stage;
-        [[fallthrough]];
-
-    case QSPELL_INIT :
-        // First qsearch ply only (depth == DEPTH_QS; deeper plies pass
-        // DEPTH_QS - 1): generate the gated quiets and keep the tactical
-        // ones, compacted before scoring (the royal context is computed
-        // once here rather than per select call)
-        if (depth == DEPTH_QS
-            && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
-                || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
-        {
-            const Color us   = pos.side_to_move();
-            Square      oR   = SQ_NONE, eR = SQ_NONE;
-            Bitboard    oAtk = 0;
-            if (pos.count<KING>(us))
-            {
-                oR   = pos.square<KING>(us);
-                oAtk = pos.attackers_to(oR) & pos.pieces(~us);
-            }
-            if (pos.count<KING>(~us))
-                eR = pos.square<KING>(~us);
-
-            Move*       w      = genScratch;
-            const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
-            for (const Move* g = genScratch; g != endGen; ++g)
-                if (!is_useless_spell(pos, *g) && is_tactical_spell(pos, *g, oAtk, eR, oR))
-                    *w++ = *g;
-
-            endCur = score<QUIETS>(genScratch, w);
-            partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
-        }
-
-        ++stage;
-        [[fallthrough]];
-
-    case QSPELL :
-        return select([]() { return true; });
+        return select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); });
 
     case PROBCUT :
         return select(

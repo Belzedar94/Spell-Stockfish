@@ -359,11 +359,9 @@ class Worker {
     Value
     search(Position& pos, Stack* ss, Value alpha, Value beta, Depth depth, const bool cutNode);
 
-    // Quiescence search function, which is called by the main search.
-    // qsPly counts plies inside quiescence: the first one may search
-    // tactical spells (see MovePicker's QSPELL stage)
+    // Quiescence search function, which is called by the main search
     template<NodeType nodeType>
-    Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, int qsPly = 0);
+    Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
 
     int reduction(bool i, Depth d, int mn, int delta) const;
 

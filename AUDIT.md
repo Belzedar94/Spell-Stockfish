@@ -276,13 +276,16 @@ release builds identically), our reached depth now ABOVE the baseline's (16-18 v
 useless-filter at the root; gen initialization order; driver reader-thread timeouts, ucinewgame
 isolation, stall-draw resolution, all-loss Elo reporting.
 
-**QSPELL** (reference QPOTION): tactical spells searched at the FIRST qsearch ply only (qsPly
-threaded through qsearch), exempt from the capture-only pruning there. Exposed a latent OOB:
-qsearch's contHist array had one entry but score<QUIETS> (newly reachable from qsearch) reads
-six — the garbage pointers looped the picker forever. qsearch now builds the six-entry array
-like the main search. Debugging trail: assert build clean (logic bug, not corruption) →
-stage-disable bisect → step tracing landed on score<QUIETS>. Bench 2,815,402 @ 352k NPS,
-battery green. Fixed-nodes probe pending.
+**REFUTED: QSPELL** (reference QPOTION): tactical spells searched at the FIRST qsearch ply,
+exempt from the capture-only pruning there. Fixed-nodes probe: **-163 vs -52.5 without it**
+(80 games) — the leaf spells eat nodes without paying off, consistent with the reference's own
+tuning history ("potion checks in qsearch" lost there too). REVERTED; untested variant for the
+blacklist notes: a much tighter filter (enemy-king-zone freezes only) plus no pruning exemption.
+KEPT from the work: the latent OOB it exposed — qsearch's contHist array had ONE entry but
+score<QUIETS> reads six; garbage pointers looped the picker forever. qsearch now builds the
+six-entry array like the main search (stack has seven sentinels below root, ss-6 always valid).
+Debugging trail: assert build clean (logic bug, not corruption) → stage-disable bisect → step
+tracing landed on score<QUIETS>.
 
 ---
 
