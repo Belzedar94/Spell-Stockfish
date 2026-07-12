@@ -206,6 +206,50 @@ moves shares the base-move slot (19 copies tie).
 
 ---
 
+## Phase 4.3 — lazy spell staging, the moveCount blowup, policy ports (2026-07-12)
+
+**Rule discovery (match play)**: the fixed-nodes probe crashed our engine on the reference's
+`b4c3` — king CAPTURES king onto a defended square is LEGAL (the royal capture ends the game;
+nothing recaptures). Verified against the reference binary, fixed in legal(), documented in
+SPELL_SPEC §1, unit test added (22 tests now).
+
+**Diagnosis tooling**: `tools/fixed_nodes_match.py` (equal `go nodes` per move ⇒ pure
+tree-quality measurement + average reached depth). Baseline picture at 120k nodes/move:
+we lost ~-300 Elo at EQUAL compute with the baseline reaching depth ~27 vs our ~18 —
+two thirds of the -524 VSTC gap was tree quality, not speed.
+
+**THE bug — LMR moveCount blowup**: SF master's `r -= moveCount * 62` (chess-tuned, mn ≤ ~60)
+overwhelms the logarithmic `reductions[]` at spell move counts (500–3000): r goes hugely
+negative and every late move was *extended* by 2 plies. Capped at mn 24. Nodes-to-depth-10
+halved instantly. This distortion affected every previous measurement.
+
+**Lazy spell staging** (reference design): QUIETS emits base moves only; a new SPELL stage
+generates gated quiets only when the base quiets didn't cut off, filtered by
+`is_useless_spell` (freeze with no enemy in zone; jump whose gate is off the base move's
+path — kills the vast majority of the gated universe; the reference drops the same moves).
+NPS with the spell net: 217k → **~400k** (baseline: 262k). Plus the reference's
+double-negative continuation-history prune for quiet spells (its CounterMovePruneThreshold
+rule; our depth-scaled threshold never fired at spell counts).
+
+**Reference policy ports**: `tacticalSpell` (freeze touching enemy king / silencing our
+king's attackers / freezing attacked-or-major-or-king-attacking pieces) treated like
+captures/checks in pruning, LMR (r -= 1024) and check-like extensions; **GateHistory**
+`[color][gate-or-none]` learned table in quiet ordering and LMR statScore (the learned
+counterpart of the refuted static impact ordering); spell depth penalties aligned to the
+reference exactly (depth ≥ 3, after extensions, tactical tier includes tactical freezes).
+
+**King commoner value**: PieceValue[KING] = 700 (reference CommonerValueMg) so MVV, capture
+futility and SEE see king captures as material events; royal captures exempt from qsearch and
+main-search pruning (review P1: with value 0 the game-winning capture ordered last and was
+move-count pruned). npm keeps excluding kings on both put and capture sides.
+
+**Fixed-nodes probe trail** (120k nodes/move, 60 games): pre-staging -290 · staged flood
+-458 (depth 12.4!) · +r-clamp -417 · +contHist rule -325 · (+king value: pending). The staged
+line still trails the unstaged -290 at EQUAL nodes but runs ~1.85x more nodes per second —
+the VSTC A/B (300 games, running) is the deciding measurement.
+
+---
+
 ## Review rounds 3 (PR #2) & 1 (PR #3) — robustness batch (2026-07-12)
 
 **PR #2 round 3** (fixed): `MAX_MOVES` 8192→32768 (P1: promoted material + freeze in hand
