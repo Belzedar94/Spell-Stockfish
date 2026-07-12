@@ -20,12 +20,14 @@
 #define UCI_H_INCLUDED
 
 #include <iostream>
+#include <memory>
 #include <string>
 #include <string_view>
 
 #include "engine.h"
 #include "misc.h"
 #include "search.h"
+#include "xboard.h"
 
 namespace Stockfish {
 
@@ -62,6 +64,10 @@ class UCIEngine {
     Engine      engine;
     CommandLine cli;
     std::string currentCmd;
+
+    // XBoard/CECP adapter, created by the first 'xboard' command; while it
+    // exists, loop() delegates every command line to it (except 'quit').
+    std::unique_ptr<XBoardEngine> xbAdapter;
 
     static void print_info_string(std::string_view str);
 

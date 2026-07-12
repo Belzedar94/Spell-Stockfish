@@ -557,4 +557,34 @@ quick 4/4 PASS on the assert binary (units 2s, protocol 4s, repro 31s, perft-d1 
 input: Actions billing or public repo + real PAT. Next parallel work: S6 XBoard adapter
 (plan verified), run6 training when the farm lands.
 
+## S6 — XBoard/CECP adapter (2026-07-12)
+
+**Changes**: src/xboard.{h,cpp} (external adapter: Engine& + Position mirror + StateListPtr +
+moveList, datagen listener pattern; search.cpp untouched) + 20 integration lines
+(uci.h/uci.cpp dispatch on 'xboard' token, Makefile). Features negotiated as the oracle minus
+highlight; 'setup (PNBRQ...k) 8x8+0_spell-chess <startFen>' + Betza piece lines emitted on
+'variant spell-chess', captured verbatim from the frozen baseline. Notation reuses
+UCIEngine::move/to_move (gated moves identical in CECP — zero conversion). CECP mate score
+uses FSF's exact formula ((200000+plies+1)/2 → mate-in-1 = 100001). Clocks: level (m:ss,
+fractional inc), st, sd, time/otim centiseconds by playColor with stm fallback in force,
+only after level initialized. discardBestmove/moveAfterSearch atomics; analyze relaunches
+go-infinite after move/undo/setboard; setboard validates on a scratch Position
+(tellusererror, never terminate_on_critical_error); spell game-end claims (capture-the-king:
+no king → loss; no legal moves → in-check loss else draw).
+
+**Validation**: built clean-room release (0 warnings); tests/xboard_test.py PASS 0 fails
+(handshake vs golden transcript, gated usermove, Illegal move on frozen origin, setboard
+with active zones, undo/remove, analyze restart, level/time/otim → move in 0.2s, clean
+quit); UCI regression: run_suite --quick 4/4 on the same binary; bench signature UNCHANGED
+(2,395,529) proving zero search impact. xboard_test wired into run_suite (NOTE: suite now
+requires an xboard-capable binary; the pre-S6 farm binary predates it).
+
+**Known limits (documented, FSF-parity)**: no CECP ponder ('hard' only sets the option), no
+highlight/bughouse/SAN; mirror touched from the search thread in on_bestmove (serial GUI
+traffic assumption, FSF's model); engine banner + TUNE dump print before 'xboard' (GUIs
+tolerate pre-handshake text).
+
+**Decision**: S6 XBoard half done; bindings (Python/JS/WASM) remain. Adversarial verify
+round on the adapter queued.
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).

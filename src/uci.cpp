@@ -110,6 +110,18 @@ void UCIEngine::loop() {
         if (token == "quit" || token == "stop")
             engine.stop();
 
+        // 'xboard' switches the session to the XBoard/CECP protocol: the
+        // adapter installs its own search listeners and, from then on,
+        // every command line is delegated to it ('quit' above stays global).
+        else if (token == "xboard")
+        {
+            if (!xbAdapter)
+                xbAdapter = std::make_unique<XBoardEngine>(engine);
+        }
+
+        else if (xbAdapter)
+            xbAdapter->process_command(token, is);
+
         // The GUI sends 'ponderhit' to tell that the user has played the expected move.
         // So, 'ponderhit' is sent if pondering was done on the same move that the user
         // has played. The search should continue, but should also switch from pondering
