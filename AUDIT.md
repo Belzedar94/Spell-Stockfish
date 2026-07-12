@@ -257,6 +257,32 @@ cap probe; gating without regenerating base quiets).
 
 ---
 
+## Phase 5 GATE PASSED + Phase 6 mechanics proven (2026-07-12)
+
+**F5 (native data generator) — complete.** The byte contract was reverse-verified against the
+reference tools binaries found in `Spell Project/variant-nnue-tools` (the very generators that
+produced run5rl's data): record layout in SPELL_SPEC §6b, decoder/validator in
+`tools/psv_decode.py` (oracle sample: 200/200). The engine's `datagen` command produces valid
+data (smoke: 472 positions / 13 games, 0 bad records, coherent spell states). **Gate evidence**:
+the trainer's REAL C++ loader — rebuilt in spell mode — reads both the oracle and our native
+.bin identically (128-position batches, 366 active-feature slots = 46 pieces + 256 zone + 64
+cooldown, buckets and scores sane).
+
+**F6 mechanics — all links proven in parallel with the F4 panel:**
+- Trainer configured for spell (variant.py/.h: PIECE_TYPES 8, pockets, HAS_POTIONS,
+  PIECE_COUNT 46): halfka_v2 derives exactly the engine's geometry (planes 960/1184/1440/1504,
+  NUM_INPUTS 96256, hash 0x6a8f3c12).
+- Data loader DLL built (statically linked; loads without MinGW on PATH).
+- One full GPU training step on OUR native data (`fast_dev_run`, "Using c++ data loader").
+- **Serializer parity: run5rl .nnue → .pt → .nnue is BYTE-IDENTICAL** (same sha256 over
+  101,788,576 bytes) — the trainer reads and writes the exact network format the engine loads.
+
+Remaining for the real F6/M2: bulk data generation (parallel datagen processes; current
+single-thread throughput ~8 pos/s at 20k nodes — needs the multi-process recipe), full training
+runs (run6+), and the M2 gate. The three-TC F4 panel keeps running meanwhile.
+
+---
+
 ## Phase 4.5 — SPSA infrastructure and the scaling insight (2026-07-12)
 
 **VSTC confirmation of the king-value package: -203.4 ±45.6** (300 games, time losses 0-2 in
