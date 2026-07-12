@@ -175,19 +175,20 @@ inline int piece_slot(PieceType pt) {
     return pt == KING ? 7 : int(pt) - int(PAWN);
 }
 
+inline int piece_index(Color persp, int kingBase, Piece pc, Square s) {
+    return kingBase + piece_square_base(color_of(pc) != persp, piece_slot(type_of(pc)))
+         + orient(persp, s);
+}
+
 // Appends the active feature indices for one perspective; returns the count
-int active_features(const Position& pos, Color persp, int* out) {
-    const int  kingBase = orient(persp, pos.count<KING>(persp) ? pos.square<KING>(persp) : SQ_NONE)
-                        * PieceIndices;
+int active_features(const Position& pos, Color persp, int kingBase, int* out) {
     int n = 0;
 
     Bitboard bb = pos.pieces();
     while (bb)
     {
-        const Square s  = pop_lsb(bb);
-        const Piece  pc = pos.piece_on(s);
-        const bool   enemy = color_of(pc) != persp;
-        out[n++] = kingBase + piece_square_base(enemy, piece_slot(type_of(pc))) + orient(persp, s);
+        const Square s = pop_lsb(bb);
+        out[n++]       = piece_index(persp, kingBase, pos.piece_on(s), s);
     }
 
     for (Color c : {WHITE, BLACK})
@@ -213,8 +214,164 @@ int active_features(const Position& pos, Color persp, int* out) {
     return n;
 }
 
+// Spell-state feature deltas between a state and its predecessor
+void spell_state_deltas(const StateInfo* st, Color persp, int kingBase,
+                        int* added, int& nAdded, int* removed, int& nRemoved) {
+
+    const StateInfo* prev = st->previous;
+
+    for (Color c : {WHITE, BLACK})
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+        {
+            const int potionIndex = sp + SPELL_NB * int(c != persp);
+
+            const Bitboard curZone  = spell_zone_bb(SpellType(sp), Square(st->spellGate[c][sp]));
+            const Bitboard prevZone = spell_zone_bb(SpellType(sp), Square(prev->spellGate[c][sp]));
+
+            for (Bitboard b = curZone & ~prevZone; b;)
+                added[nAdded++] = kingBase + ZoneBase + potionIndex * SquaresNB
+                                + orient(persp, pop_lsb(b));
+            for (Bitboard b = prevZone & ~curZone; b;)
+                removed[nRemoved++] = kingBase + ZoneBase + potionIndex * SquaresNB
+                                    + orient(persp, pop_lsb(b));
+
+            const unsigned curCd  = unsigned(st->spellCooldown[c][sp]);
+            const unsigned prevCd = unsigned(prev->spellCooldown[c][sp]);
+            for (unsigned diff = curCd ^ prevCd, bit = 0; diff; diff >>= 1, ++bit)
+                if (diff & 1)
+                {
+                    const int idx = kingBase + CooldownBase + potionIndex * CooldownBits + int(bit);
+                    if (curCd & (1u << bit))
+                        added[nAdded++] = idx;
+                    else
+                        removed[nRemoved++] = idx;
+                }
+
+            const int curHand  = st->spellHand[c][sp];
+            const int prevHand = prev->spellHand[c][sp];
+            const bool enemy   = c != persp;
+            for (int i = curHand; i < prevHand; ++i)
+                removed[nRemoved++] = kingBase + piece_hand_base(enemy, SpellSlot[sp]) + i;
+            for (int i = prevHand; i < curHand; ++i)
+                added[nAdded++] = kingBase + piece_hand_base(enemy, SpellSlot[sp]) + i;
+        }
+}
+
 // ---------------------------------------------------------------------------
-// Refresh transform + evaluation
+// Incremental accumulator (lazy, cached in StateInfo)
+// ---------------------------------------------------------------------------
+
+// Walking further back than this costs more than a full refresh
+// (~46 active features vs steps * ~8 delta features)
+constexpr int MaxWalk = 6;
+
+void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateInfo* st) {
+
+    int       indices[128];
+    const int n = active_features(pos, persp, kingBase, indices);
+
+    auto& a = st->spellAcc;
+    std::memcpy(a.acc[persp], net->ftBiases.data(), HalfDims * sizeof(i16));
+    std::memset(a.psqt[persp], 0, PSQTBuckets * sizeof(i32));
+
+    for (int k = 0; k < n; ++k)
+    {
+        const i16* row = &net->ftWeights[size_t(indices[k]) * HalfDims];
+        for (int j = 0; j < HalfDims; ++j)
+            a.acc[persp][j] += row[j];
+        const i32* prow = &net->psqtWeights[size_t(indices[k]) * PSQTBuckets];
+        for (int b = 0; b < PSQTBuckets; ++b)
+            a.psqt[persp][b] += prow[b];
+    }
+    a.computed[persp] = true;
+}
+
+void ensure_accumulator(const Position& pos, Color persp, int kingBase) {
+
+    StateInfo* st = pos.state();
+    if (st->spellAcc.computed[persp])
+        return;
+
+    // Find a computed ancestor within reach, with no king move (of this
+    // perspective) in between — that would change every feature index
+    const Piece kingPc = make_piece(persp, KING);
+
+    StateInfo* chain[MaxWalk];
+    int        steps = 0;
+    StateInfo* s     = st;
+    bool       mustRefresh = false;
+
+    while (!s->spellAcc.computed[persp])
+    {
+        if (!s->previous || steps >= MaxWalk || s->boardOpCount > 4)
+        {
+            mustRefresh = true;
+            break;
+        }
+        bool kingMoved = false;
+        for (int i = 0; i < s->boardOpCount; ++i)
+            kingMoved |= s->boardOps[i].pc == u8(kingPc);
+        if (kingMoved)
+        {
+            mustRefresh = true;
+            break;
+        }
+        chain[steps++] = s;
+        s              = s->previous;
+    }
+
+    if (mustRefresh)
+    {
+        refresh_accumulator(pos, persp, kingBase, st);
+        return;
+    }
+
+    // Collect all feature deltas from the computed ancestor to the tip
+    int added[256], removed[256];
+    int nAdded = 0, nRemoved = 0;
+
+    for (int i = steps - 1; i >= 0; --i)
+    {
+        StateInfo* step = chain[i];
+        for (int k = 0; k < step->boardOpCount; ++k)
+        {
+            const auto& op  = step->boardOps[k];
+            const int   idx = piece_index(persp, kingBase, Piece(op.pc), Square(op.sq));
+            if (op.add)
+                added[nAdded++] = idx;
+            else
+                removed[nRemoved++] = idx;
+        }
+        spell_state_deltas(step, persp, kingBase, added, nAdded, removed, nRemoved);
+    }
+
+    auto& a = st->spellAcc;
+    std::memcpy(a.acc[persp], s->spellAcc.acc[persp], HalfDims * sizeof(i16));
+    std::memcpy(a.psqt[persp], s->spellAcc.psqt[persp], PSQTBuckets * sizeof(i32));
+
+    for (int k = 0; k < nAdded; ++k)
+    {
+        const i16* row = &net->ftWeights[size_t(added[k]) * HalfDims];
+        for (int j = 0; j < HalfDims; ++j)
+            a.acc[persp][j] += row[j];
+        const i32* prow = &net->psqtWeights[size_t(added[k]) * PSQTBuckets];
+        for (int b = 0; b < PSQTBuckets; ++b)
+            a.psqt[persp][b] += prow[b];
+    }
+    for (int k = 0; k < nRemoved; ++k)
+    {
+        const i16* row = &net->ftWeights[size_t(removed[k]) * HalfDims];
+        for (int j = 0; j < HalfDims; ++j)
+            a.acc[persp][j] -= row[j];
+        const i32* prow = &net->psqtWeights[size_t(removed[k]) * PSQTBuckets];
+        for (int b = 0; b < PSQTBuckets; ++b)
+            a.psqt[persp][b] -= prow[b];
+    }
+    a.computed[persp] = true;
+}
+
+// ---------------------------------------------------------------------------
+// Evaluation
 // ---------------------------------------------------------------------------
 
 Value network_output(const Position& pos, bool adjusted) {
@@ -228,26 +385,18 @@ Value network_output(const Position& pos, bool adjusted) {
 
     for (int p = 0; p < 2; ++p)
     {
-        int       indices[128];
-        const int n = active_features(pos, perspectives[p], indices);
+        const Color persp = perspectives[p];
+        const int   kingBase =
+          orient(persp, pos.count<KING>(persp) ? pos.square<KING>(persp) : SQ_NONE) * PieceIndices;
 
-        alignas(64) i32 acc[HalfDims];
-        for (int j = 0; j < HalfDims; ++j)
-            acc[j] = net->ftBiases[j];
+        ensure_accumulator(pos, persp, kingBase);
 
-        i32 ps = 0;
-        for (int k = 0; k < n; ++k)
-        {
-            const i16* row = &net->ftWeights[size_t(indices[k]) * HalfDims];
-            for (int j = 0; j < HalfDims; ++j)
-                acc[j] += row[j];
-            ps += net->psqtWeights[size_t(indices[k]) * PSQTBuckets + bucket];
-        }
+        const auto& a = pos.state()->spellAcc;
+        psqt[p]       = a.psqt[persp][bucket];
 
-        psqt[p] = ps;
         u8* half = &transformed[size_t(p) * HalfDims];
         for (int j = 0; j < HalfDims; ++j)
-            half[j] = u8(std::clamp(acc[j], 0, 127));
+            half[j] = u8(std::clamp(int(a.acc[persp][j]), 0, 127));
     }
 
     const i32 materialist = (psqt[0] - psqt[1]) / 2;

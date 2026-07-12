@@ -136,6 +136,43 @@ eval for the M1 A/B loop.
 **Decision**: Phase 3 accepted. Next: A/B baseline match with identical net (search delta
 measurement), then Phase 4 (incremental accumulator + search iteration to M1).
 
+**A/B datapoint (identical net, 300 VSTC games)**: **-568 Elo** (W7 L285 D8) vs the frozen
+baseline, both on run5rl. With eval parity verified, this is the pure search/speed gap Phase 4
+must close: ~2.3x NPS deficit from refresh-only eval (113k vs 262k) plus the reference's tuned
+spell ordering/selectivity (its movepick gate scoring alone was worth ~+100 Elo). Time losses
+were symmetric (12 vs 11) — VSTC harness tightness, though our default Move Overhead deserves a
+bump. GitHub Actions note: CI jobs on the private repo fail at start due to account billing
+("payments have failed / spending limit") — validation continues locally; owner decides on
+billing vs public repo.
+
+## Phase 4.1 — Incremental spell accumulator (2026-07-12)
+
+**Hypothesis**: refresh-only eval (rebuilding all ~46 piece features + zone/cooldown/hand planes
+per node) is the dominant share of the -568 Elo A/B gap; incremental updates recover most of it.
+
+**Changes**:
+- `StateInfo` gains `boardOps[4]` (add/remove piece ops recorded by `do_move`: generic moves,
+  captures incl. self-captures, castling) and a per-state `SpellAccumulator`
+  (`i16 acc[2][512]` + `i32 psqt[2][8]` + computed flags), reset on `do_move`/`do_null_move`.
+- `spell_nnue.cpp`: `ensure_accumulator()` walks back up to 6 states to a computed ancestor
+  (refresh barriers: root, king-of-perspective moved, unknown ops), collecting board-op deltas
+  plus `spell_state_deltas()` (zone bitboard diffs, cooldown bit diffs, hand slot diffs vs
+  `st->previous`), then applies one batched add/sub pass per perspective.
+  Spell ticks change features every ply, so pure "board delta" updating is not enough — the
+  zone/cooldown/hand planes are diffed alongside board ops each step of the walk-back.
+
+**Validation**:
+- Bench signature with run5rl (`bench 16 1 10 default depth`): **881,768 nodes — identical to
+  the refresh build**. Every eval in the ~880k-node tree matches; a single divergent value
+  would fork the tree. Strongest equivalence check available.
+- NPS 113k → **208k (+84%)**. Still below the 262k baseline — remaining gap is search-side
+  (ordering/selectivity) plus eval hot paths for later profiling.
+- eval-parity vs baseline: raw 61/61 (±2), scaled 59/59 (±1). Perft suite 61/61 d2. Unit tests
+  21/21.
+
+**Decision**: accepted. Next: third-round Codex findings on PR #2 (MAX_MOVES P1 + pseudo_legal
+transparency holes), then movepick spell ordering and the A/B re-measurement.
+
 ---
 
 ---

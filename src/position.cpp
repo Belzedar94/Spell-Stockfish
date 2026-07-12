@@ -1104,6 +1104,15 @@ void Position::do_move(Move                      m,
     newSt.previous = st;
     st             = &newSt;
 
+    // Spell-NNUE accumulator bookkeeping (the region after `key` is not
+    // copied, so these must be reset explicitly)
+    st->spellAcc.computed[WHITE] = st->spellAcc.computed[BLACK] = false;
+    st->boardOpCount                                            = 0;
+
+    const auto record_op = [this](bool add, Piece opPc, Square opSq) {
+        st->boardOps[st->boardOpCount++] = {u8(add), u8(opPc), u8(opSq)};
+    };
+
     // Increment ply counters. In particular, rule50 will be reset to zero later on
     // in case of a capture or a pawn move.
     ++gamePly;
@@ -1135,6 +1144,11 @@ void Position::do_move(Move                      m,
 
         Square rfrom, rto;
         do_castling<true>(us, from, to, rfrom, rto, &dts, &dp);
+
+        record_op(false, pc, from);
+        record_op(true, pc, to);
+        record_op(false, captured, rfrom);
+        record_op(true, captured, rto);
 
         k ^= Zobrist::psq[captured][rfrom] ^ Zobrist::psq[captured][rto];
         st->nonPawnKey[us] ^= Zobrist::psq[captured][rfrom] ^ Zobrist::psq[captured][rto];
@@ -1175,6 +1189,8 @@ void Position::do_move(Move                      m,
 
         dp.remove_pc = captured;
         dp.remove_sq = capsq;
+
+        record_op(false, captured, capsq);
 
         k ^= Zobrist::psq[captured][capsq];
         st->materialKey ^=
@@ -1323,6 +1339,9 @@ void Position::do_move(Move                      m,
         Piece toPc = pc;
         if (m.type_of() == PROMOTION)
             toPc = make_piece(us, m.promotion_type());
+
+        record_op(false, pc, from);
+        record_op(true, toPc, to);
 
         if (captured && m.type_of() != EN_PASSANT)
         {
@@ -1694,6 +1713,10 @@ void Position::do_null_move(StateInfo& newSt) {
 
     newSt.previous = st;
     st             = &newSt;
+
+    // A null move changes no board features, only the spell clock below
+    st->spellAcc.computed[WHITE] = st->spellAcc.computed[BLACK] = false;
+    st->boardOpCount                                            = 0;
 
     if (st->epSquare != SQ_NONE)
     {
