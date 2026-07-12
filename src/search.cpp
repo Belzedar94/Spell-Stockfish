@@ -185,6 +185,7 @@ Search::Worker::Worker(SharedState&                    sharedState,
     // pages stay untouched (hence uncommitted) until a ply first uses them
     movesArena.reset(new ExtMove[usize(2) * (MAX_PLY + 10) * MAX_MOVES]);
     genScratch.reset(new Move[MAX_MOVES]);
+    spellRefreshCache.clear();
     clear();
 }
 
@@ -1916,8 +1917,8 @@ Value Search::Worker::evaluate(const Position& pos) {
     // engine exactly (including its outer scaling); the stock chess networks
     // remain the spell-blind bootstrap fallback.
     if (SpellNNUE::loaded())
-        return std::clamp(SpellNNUE::evaluate_scaled(pos), VALUE_TB_LOSS_IN_MAX_PLY + 1,
-                          VALUE_TB_WIN_IN_MAX_PLY - 1);
+        return std::clamp(SpellNNUE::evaluate_scaled(pos, &spellRefreshCache),
+                          VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
 
     return Eval::evaluate(network[numaAccessToken], pos, accumulatorStack, refreshTable,
                           optimism[pos.side_to_move()]);

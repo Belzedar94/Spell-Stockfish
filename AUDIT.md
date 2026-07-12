@@ -173,6 +173,39 @@ per node) is the dominant share of the -568 Elo A/B gap; incremental updates rec
 **Decision**: accepted. Next: third-round Codex findings on PR #2 (MAX_MOVES P1 + pseudo_legal
 transparency holes), then movepick spell ordering and the A/B re-measurement.
 
+## Phase 4.2 — A/B checkpoint, ordering refutation, refresh cache (2026-07-12)
+
+**A/B re-measurement** (300 VSTC, identical run5rl, after incremental accumulator + review
+fixes): **-524 Elo** (W12 L284 D4, time losses 1-0). vs -568 at F3 → ~+44, inside the error
+bars. **Lesson: the gap is search policy, not speed** — +84% NPS bought almost nothing. The
+baseline (SF11-era FSF + spell tuning) out-searches us per node by a wide margin.
+
+**REFUTED: MovePicker gate-impact ordering v1** (raw impact added to gated quiets,
+SpellGateKingRingBonus=50000 dominating): **-676 ±189** (W6 L294 D0) — ~150 Elo WORSE than no
+ordering. Two causes: (a) speculative king-ring freezes ordered above history-proven quiets —
+freezes are a 5-per-game resource, "looks scary" is not "is best"; (b) per-node gate tables in
+score<QUIETS> cost -42% NPS, and the tree it produced was refresh-heavy (enemy king replies →
+accumulator refresh barrier), so spell-net TTD was net +19% WORSE despite -31% nodes to fixed
+depth (chess-net TTD had improved 36% — the eval side punished the tree shape). Blacklisted:
+raw-scale impact ordering; a /8-tempered variant without ring dominance remains untested.
+
+**Finny-style RefreshCache** (`[perspective][own king square]` entries corrected by feature
+diffs, per thread; `spell_nnue.h`): bit-identical results (bench signatures exactly preserved:
+566,057 ordering tree / 819,199 normal tree), **+38% NPS on refresh-heavy trees** (116k→161k),
++3.5% on the normal tree (200k→207k). Kept — pays where kings walk (endgames, long TC).
+
+**New tool**: `tools/fixed_nodes_match.py` — fixed-`go nodes` head-to-head driver (equal
+compute per move ⇒ pure search-quality-per-node measurement, ~10x faster iteration than VSTC).
+VSTC variantfishtest stays as the confirmation gate. Also reports average reached depth at the
+fixed node budget (depth-per-node comparison vs the baseline).
+
+**Next hypotheses for the policy gap** (one A/B each): spell depth penalties are too harsh
+under SF-master LMR (effective spell depth ≈ 0 → spell-blind tactics); LMP/futility move-count
+pruning with ~2000-quiet nodes prunes nearly all spells unsearched; history signal for gated
+moves shares the base-move slot (19 copies tie).
+
+---
+
 ## Review rounds 3 (PR #2) & 1 (PR #3) — robustness batch (2026-07-12)
 
 **PR #2 round 3** (fixed): `MAX_MOVES` 8192→32768 (P1: promoted material + freeze in hand

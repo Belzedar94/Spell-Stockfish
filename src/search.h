@@ -39,6 +39,7 @@
 #include "numa.h"
 #include "position.h"
 #include "score.h"
+#include "spellnnue/spell_nnue.h"
 #include "syzygy/tbprobe.h"
 #include "timeman.h"
 #include "types.h"
@@ -418,6 +419,10 @@ class Worker {
     // committed when touched, so the large reservation is virtual.
     std::unique_ptr<ExtMove[]> movesArena;
     std::unique_ptr<Move[]>    genScratch;
+
+    // Per-thread accumulator refresh cache for the spell NNUE (Finny-style:
+    // keyed by perspective and own king square)
+    SpellNNUE::RefreshCache spellRefreshCache;
 
     ExtMove* moves_buffer(int ply, int slot) {
         return movesArena.get() + (usize(2) * ply + slot) * MAX_MOVES;

@@ -213,6 +213,7 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         threatByLesser[KING]  = 0;
     }
 
+
     ExtMove* it = cur;
     for (const Move* mit = begin; mit != end; ++mit)
     {
@@ -248,6 +249,10 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
             int v = 20 * (bool(threatByLesser[pt] & from) - bool(threatByLesser[pt] & to));
             m.value += PieceValue[pt] * v;
 
+            // NOTE (refuted idea, AUDIT.md): adding the gate impact score to
+            // gated quiets here lost ~-150 Elo at VSTC — the king-ring bonus
+            // ordered speculative freezes above history-proven quiets, and
+            // the per-node tables cost ~40% NPS on top.
 
             if (ply < LOW_PLY_HISTORY_SIZE)
                 m.value += 8 * (*lowPlyHistory)[ply][m.raw() & 0xFFFF] / (1 + ply);

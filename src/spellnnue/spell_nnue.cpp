@@ -267,28 +267,142 @@ void spell_state_deltas(const StateInfo* st, Color persp, int kingBase,
 // (~46 active features vs steps * ~8 delta features)
 constexpr int MaxWalk = 6;
 
-void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateInfo* st) {
+void apply_deltas(i16* acc, i32* psqt, const int* added, int nAdded, const int* removed,
+                  int nRemoved) {
+
+    for (int k = 0; k < nAdded; ++k)
+    {
+        const i16* row = &net->ftWeights[size_t(added[k]) * HalfDims];
+        for (int j = 0; j < HalfDims; ++j)
+            acc[j] += row[j];
+        const i32* prow = &net->psqtWeights[size_t(added[k]) * PSQTBuckets];
+        for (int b = 0; b < PSQTBuckets; ++b)
+            psqt[b] += prow[b];
+    }
+    for (int k = 0; k < nRemoved; ++k)
+    {
+        const i16* row = &net->ftWeights[size_t(removed[k]) * HalfDims];
+        for (int j = 0; j < HalfDims; ++j)
+            acc[j] -= row[j];
+        const i32* prow = &net->psqtWeights[size_t(removed[k]) * PSQTBuckets];
+        for (int b = 0; b < PSQTBuckets; ++b)
+            psqt[b] -= prow[b];
+    }
+}
+
+void refresh_accumulator(const Position& pos, Color persp, int kingBase, StateInfo* st,
+                         RefreshCache* cache) {
+
+    auto& a = st->spellAcc;
+
+    // Correct a cached same-king accumulator by its diffs instead of
+    // rebuilding, when a cache is available (search threads)
+    if (cache && pos.count<KING>(persp))
+    {
+        auto& e = cache->entries[persp][pos.square<KING>(persp)];
+
+        if (!e.valid)
+        {
+            // Seed the entry with a full rebuild
+            int       indices[128];
+            const int n = active_features(pos, persp, kingBase, indices);
+
+            std::memcpy(e.acc, net->ftBiases.data(), HalfDims * sizeof(i16));
+            std::memset(e.psqt, 0, PSQTBuckets * sizeof(i32));
+            apply_deltas(e.acc, e.psqt, indices, n, nullptr, 0);
+        }
+        else
+        {
+            // Board diffs against the snapshot
+            int added[224], removed[224];
+            int nAdded = 0, nRemoved = 0;
+
+            for (Color c : {WHITE, BLACK})
+                for (PieceType pt = PAWN; pt <= KING; ++pt)
+                {
+                    const Bitboard cur = pos.pieces(c, pt);
+                    const Bitboard old = e.pieces[c][pt];
+                    const Piece    pc  = make_piece(c, pt);
+
+                    for (Bitboard b = cur & ~old; b;)
+                        added[nAdded++] = piece_index(persp, kingBase, pc, pop_lsb(b));
+                    for (Bitboard b = old & ~cur; b;)
+                        removed[nRemoved++] = piece_index(persp, kingBase, pc, pop_lsb(b));
+                }
+
+            // Spell-state diffs against the snapshot (same formulas as
+            // spell_state_deltas, with the snapshot as "previous")
+            for (Color c : {WHITE, BLACK})
+                for (int sp = 0; sp < SPELL_NB; ++sp)
+                {
+                    const int potionIndex = sp + SPELL_NB * int(c != persp);
+
+                    const Bitboard curZone =
+                      spell_zone_bb(SpellType(sp), Square(st->spellGate[c][sp]));
+                    const Bitboard oldZone = spell_zone_bb(SpellType(sp), Square(e.gate[c][sp]));
+
+                    for (Bitboard b = curZone & ~oldZone; b;)
+                        added[nAdded++] = kingBase + ZoneBase + potionIndex * SquaresNB
+                                        + orient(persp, pop_lsb(b));
+                    for (Bitboard b = oldZone & ~curZone; b;)
+                        removed[nRemoved++] = kingBase + ZoneBase + potionIndex * SquaresNB
+                                            + orient(persp, pop_lsb(b));
+
+                    const unsigned curCd = unsigned(st->spellCooldown[c][sp]);
+                    const unsigned oldCd = unsigned(e.cooldown[c][sp]);
+                    for (unsigned diff = curCd ^ oldCd, bit = 0; diff; diff >>= 1, ++bit)
+                        if (diff & 1)
+                        {
+                            const int idx =
+                              kingBase + CooldownBase + potionIndex * CooldownBits + int(bit);
+                            if (curCd & (1u << bit))
+                                added[nAdded++] = idx;
+                            else
+                                removed[nRemoved++] = idx;
+                        }
+
+                    const int  curHand = st->spellHand[c][sp];
+                    const int  oldHand = e.hand[c][sp];
+                    const bool enemy   = c != persp;
+                    for (int i = curHand; i < oldHand; ++i)
+                        removed[nRemoved++] = kingBase + piece_hand_base(enemy, SpellSlot[sp]) + i;
+                    for (int i = oldHand; i < curHand; ++i)
+                        added[nAdded++] = kingBase + piece_hand_base(enemy, SpellSlot[sp]) + i;
+                }
+
+            apply_deltas(e.acc, e.psqt, added, nAdded, removed, nRemoved);
+        }
+
+        // Update the snapshot and hand the entry to the state
+        for (Color c : {WHITE, BLACK})
+        {
+            for (PieceType pt = PAWN; pt <= KING; ++pt)
+                e.pieces[c][pt] = pos.pieces(c, pt);
+            for (int sp = 0; sp < SPELL_NB; ++sp)
+            {
+                e.gate[c][sp]     = st->spellGate[c][sp];
+                e.cooldown[c][sp] = st->spellCooldown[c][sp];
+                e.hand[c][sp]     = st->spellHand[c][sp];
+            }
+        }
+        e.valid = true;
+
+        std::memcpy(a.acc[persp], e.acc, HalfDims * sizeof(i16));
+        std::memcpy(a.psqt[persp], e.psqt, PSQTBuckets * sizeof(i32));
+        a.computed[persp] = true;
+        return;
+    }
 
     int       indices[128];
     const int n = active_features(pos, persp, kingBase, indices);
 
-    auto& a = st->spellAcc;
     std::memcpy(a.acc[persp], net->ftBiases.data(), HalfDims * sizeof(i16));
     std::memset(a.psqt[persp], 0, PSQTBuckets * sizeof(i32));
-
-    for (int k = 0; k < n; ++k)
-    {
-        const i16* row = &net->ftWeights[size_t(indices[k]) * HalfDims];
-        for (int j = 0; j < HalfDims; ++j)
-            a.acc[persp][j] += row[j];
-        const i32* prow = &net->psqtWeights[size_t(indices[k]) * PSQTBuckets];
-        for (int b = 0; b < PSQTBuckets; ++b)
-            a.psqt[persp][b] += prow[b];
-    }
+    apply_deltas(a.acc[persp], a.psqt[persp], indices, n, nullptr, 0);
     a.computed[persp] = true;
 }
 
-void ensure_accumulator(const Position& pos, Color persp, int kingBase) {
+void ensure_accumulator(const Position& pos, Color persp, int kingBase, RefreshCache* cache) {
 
     StateInfo* st = pos.state();
     if (st->spellAcc.computed[persp])
@@ -324,7 +438,7 @@ void ensure_accumulator(const Position& pos, Color persp, int kingBase) {
 
     if (mustRefresh)
     {
-        refresh_accumulator(pos, persp, kingBase, st);
+        refresh_accumulator(pos, persp, kingBase, st, cache);
         return;
     }
 
@@ -351,24 +465,7 @@ void ensure_accumulator(const Position& pos, Color persp, int kingBase) {
     std::memcpy(a.acc[persp], s->spellAcc.acc[persp], HalfDims * sizeof(i16));
     std::memcpy(a.psqt[persp], s->spellAcc.psqt[persp], PSQTBuckets * sizeof(i32));
 
-    for (int k = 0; k < nAdded; ++k)
-    {
-        const i16* row = &net->ftWeights[size_t(added[k]) * HalfDims];
-        for (int j = 0; j < HalfDims; ++j)
-            a.acc[persp][j] += row[j];
-        const i32* prow = &net->psqtWeights[size_t(added[k]) * PSQTBuckets];
-        for (int b = 0; b < PSQTBuckets; ++b)
-            a.psqt[persp][b] += prow[b];
-    }
-    for (int k = 0; k < nRemoved; ++k)
-    {
-        const i16* row = &net->ftWeights[size_t(removed[k]) * HalfDims];
-        for (int j = 0; j < HalfDims; ++j)
-            a.acc[persp][j] -= row[j];
-        const i32* prow = &net->psqtWeights[size_t(removed[k]) * PSQTBuckets];
-        for (int b = 0; b < PSQTBuckets; ++b)
-            a.psqt[persp][b] -= prow[b];
-    }
+    apply_deltas(a.acc[persp], a.psqt[persp], added, nAdded, removed, nRemoved);
     a.computed[persp] = true;
 }
 
@@ -376,7 +473,7 @@ void ensure_accumulator(const Position& pos, Color persp, int kingBase) {
 // Evaluation
 // ---------------------------------------------------------------------------
 
-Value network_output(const Position& pos, bool adjusted) {
+Value network_output(const Position& pos, bool adjusted, RefreshCache* cache) {
 
     const size_t bucket = std::min((pos.count<ALL_PIECES>() - 1) * 8 / MaxPieces, 7);
 
@@ -391,7 +488,7 @@ Value network_output(const Position& pos, bool adjusted) {
         const int   kingBase =
           orient(persp, pos.count<KING>(persp) ? pos.square<KING>(persp) : SQ_NONE) * PieceIndices;
 
-        ensure_accumulator(pos, persp, kingBase);
+        ensure_accumulator(pos, persp, kingBase, cache);
 
         const auto& a = pos.state()->spellAcc;
         psqt[p]       = a.psqt[persp][bucket];
@@ -496,12 +593,12 @@ const std::string& failed_path() { return failedPath; }
 
 const std::string& file_name() { return netFileName; }
 
-Value evaluate(const Position& pos, bool adjusted) {
+Value evaluate(const Position& pos, bool adjusted, RefreshCache* cache) {
     assert(loaded());
-    return network_output(pos, adjusted);
+    return network_output(pos, adjusted, cache);
 }
 
-Value evaluate_scaled(const Position& pos) {
+Value evaluate_scaled(const Position& pos, RefreshCache* cache) {
 
     // Outer scaling of the reference engine's evaluate() for NNUE nets. Its
     // non_pawn_material() includes the commoners (kings) at CommonerValueMg,
@@ -511,7 +608,7 @@ Value evaluate_scaled(const Position& pos) {
     const int scale = 903 + 32 * pos.count<PAWN>()
                     + 32 * (pos.non_pawn_material() + CommonerValueMg * pos.count<KING>()) / 1024;
 
-    Value v = evaluate(pos, true) * scale / 1024;
+    Value v = evaluate(pos, true, cache) * scale / 1024;
 
     // Rule50 shuffle damping (reference n_move_rule = 50 for spell-chess)
     v = v * (100 - pos.rule50_count()) / 100;

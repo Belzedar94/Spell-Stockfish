@@ -26,6 +26,7 @@
 #include "bitboard.h"
 #include "position.h"
 #include "spell.h"
+#include "spell_order.h"
 #include "spell_params.h"
 
 namespace Stockfish {
@@ -248,49 +249,20 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
             if (sp == SPELL_JUMP && !jumpScoreReady)
             {
-                std::fill_n(jumpScore, SQUARE_NB, 0);
-                Bitboard sliders = pos.pieces(Us, BISHOP, ROOK, QUEEN) & ~frozenUs;
-                while (sliders)
-                {
-                    const Square    from = pop_lsb(sliders);
-                    const PieceType pt   = type_of(pos.piece_on(from));
-                    const Bitboard  seen = Attacks::attacks_bb(pt, from, occSliding);
-
-                    Bitboard blockers = seen & occupied;
-                    while (blockers)
-                    {
-                        const Square   b = pop_lsb(blockers);
-                        const Bitboard reveal =
-                          Attacks::attacks_bb(pt, from, occSliding ^ square_bb(b)) & ~seen;
-
-                        int s = 0;
-                        for (Bitboard t = reveal & pos.pieces(~Us); t;)
-                            s += PieceValue[pos.piece_on(pop_lsb(t))];
-                        if (eksq != SQ_NONE && (reveal & square_bb(eksq)))
-                            s += SpellGateKingBonus;
-                        jumpScore[b] += s;
-                    }
-                }
+                jump_gate_scores(pos, Us, eksq, jumpScore);
                 jumpScoreReady = true;
             }
 
             for (Bitboard b = allGates; b;)
             {
                 const Square g = pop_lsb(b);
-                int          s = 0;
+                int          s;
 
                 if (sp == SPELL_FREEZE)
                 {
-                    const Bitboard zone = FreezeZoneBB[g];
-                    for (Bitboard t = zone & pos.pieces(~Us); t;)
-                        s += PieceValue[pos.piece_on(pop_lsb(t))];
-                    if (eksq != SQ_NONE && (zone & square_bb(eksq)))
-                        s += SpellGateKingBonus;
-                    if (zone & eRing)
-                    {
-                        s += SpellGateKingRingBonus;
+                    s = freeze_gate_score(pos, Us, g, eksq, eRing);
+                    if (FreezeZoneBB[g] & eRing)
                         ++ringCount;
-                    }
                 }
                 else
                     s = jumpScore[g];
