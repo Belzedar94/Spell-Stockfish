@@ -1713,7 +1713,7 @@ moves_loop:  // When in check, search starts here
 // See https://www.chessprogramming.org/Horizon_Effect
 // and https://www.chessprogramming.org/Quiescence_Search
 template<NodeType nodeType>
-Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta) {
+Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta, int qsPly) {
 
     static_assert(nodeType != Root);
     constexpr bool PvNode = nodeType == PV;
@@ -1830,15 +1830,20 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         futilityBase = ss->staticEval + 335;
     }
 
-    const PieceToHistory* contHist[] = {(ss - 1)->continuationHistory};
+    // Six entries like the main search: the QSPELL stage scores quiet
+    // spells through score<QUIETS>, which reads continuationHistory[0..5]
+    // (the previous single-entry array read out of bounds)
+    const PieceToHistory* contHist[] = {
+      (ss - 1)->continuationHistory, (ss - 2)->continuationHistory, (ss - 3)->continuationHistory,
+      (ss - 4)->continuationHistory, (ss - 5)->continuationHistory, (ss - 6)->continuationHistory};
 
     Square prevSq = ((ss - 1)->currentMove).is_ok() ? ((ss - 1)->currentMove).to_sq() : SQ_NONE;
 
     // Initialize a MovePicker object for the current position, and prepare to search
     // the moves. We presently use two stages of move generator in quiescence search:
     // captures, or evasions only when in check.
-    MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &gateHistory,
-                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(),
+    MovePicker mp(pos, ttData.move, DEPTH_QS - (qsPly > 0), &mainHistory, &lowPlyHistory,
+                  &gateHistory, &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(),
                   gen_scratch());
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain or a beta
@@ -1862,9 +1867,10 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         // Step 6. Pruning
         if (!is_loss(bestValue) && !royalCapture)
         {
-            // Futility pruning and moveCount pruning
-            if (!givesCheck && move.to_sq() != prevSq && !is_loss(futilityBase)
-                && move.type_of() != PROMOTION)
+            // Futility pruning and moveCount pruning (tactical spells from
+            // the QSPELL stage are searched, that is their point)
+            if (!givesCheck && !move.is_spell() && move.to_sq() != prevSq
+                && !is_loss(futilityBase) && move.type_of() != PROMOTION)
             {
                 if (moveCount > 2)
                     continue;
@@ -1888,8 +1894,8 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
                 }
             }
 
-            // Skip non-captures
-            if (!capture)
+            // Skip non-captures (except the staged tactical spells)
+            if (!capture && !move.is_spell())
                 continue;
 
             // Do not search moves with bad enough SEE values
@@ -1900,7 +1906,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         // Step 7. Make and search the move
         do_move(pos, move, st, givesCheck, ss);
 
-        value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha);
+        value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha, qsPly + 1);
         undo_move(pos, move);
 
         assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);
