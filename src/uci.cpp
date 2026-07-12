@@ -399,7 +399,6 @@ void UCIEngine::datagen(std::istringstream& args) {
         StateListPtr states(new std::deque<StateInfo>(1));
         pos.set(StartFEN, false, &states->back());
 
-        std::vector<std::string>              moveStrs;
         std::vector<Datagen::PackedSfenValue> buf;
         int result = 0;  // white POV: +1 / -1 / 0
 
@@ -426,7 +425,9 @@ void UCIEngine::datagen(std::istringstream& args) {
                 m = ml.begin()[rng.rand<u64>() % ml.size()];
             else
             {
-                engine.set_position(StartFEN, moveStrs);
+                // O(1) per ply: hand the engine the current FEN instead of
+                // replaying the whole move list
+                engine.set_position(pos.fen(), {});
                 Search::LimitsType limits;
                 limits.nodes = nodesLimit;
                 haveScore    = false;
@@ -458,7 +459,6 @@ void UCIEngine::datagen(std::istringstream& args) {
                 buf.push_back(psv);
             }
 
-            moveStrs.push_back(move(m, false));
             states->emplace_back();
             pos.do_move(m, states->back());
         }
