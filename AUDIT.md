@@ -257,6 +257,35 @@ cap probe; gating without regenerating base quiets).
 
 ---
 
+## Phase 4.4 — crash forensics, review round (PR #4), QSPELL (2026-07-12)
+
+**Crash investigation** (4 engine deaths in 60 fixed-nodes games, exit 0xFFFFFFFF, none in 300
+VSTC games): stress with asserts (80 games) clean, release restress (80 games) clean, OLD binary
+with the hardened driver (80 games) clean → the trigger was the probe driver's cross-game state
+(no ucinewgame between games; variantfishtest always sends it, hence clean VSTC). The driver now
+isolates games, resolves bestmove-(none) by the engine's own root score (stall = draw), reports
+all-loss Elo honestly, and captures the engine's last lines on death. The indeterminate
+`RefreshCache::Entry::gen` read (review P2) is fixed regardless — validity checked before the
+generation tag.
+
+**Fixed-nodes checkpoint after the king-value package: -52.5 Elo** (80 games, both assert and
+release builds identically), our reached depth now ABOVE the baseline's (16-18 vs 12-15). The
++12 "win" measured earlier was crash-survivorship bias — discard.
+
+**PR #4 review round 1**: 6 findings, all fixed (c71ce7d4): searchmoves-forced spells bypass the
+useless-filter at the root; gen initialization order; driver reader-thread timeouts, ucinewgame
+isolation, stall-draw resolution, all-loss Elo reporting.
+
+**QSPELL** (reference QPOTION): tactical spells searched at the FIRST qsearch ply only (qsPly
+threaded through qsearch), exempt from the capture-only pruning there. Exposed a latent OOB:
+qsearch's contHist array had one entry but score<QUIETS> (newly reachable from qsearch) reads
+six — the garbage pointers looped the picker forever. qsearch now builds the six-entry array
+like the main search. Debugging trail: assert build clean (logic bug, not corruption) →
+stage-disable bisect → step tracing landed on score<QUIETS>. Bench 2,815,402 @ 352k NPS,
+battery green. Fixed-nodes probe pending.
+
+---
+
 ## Review rounds 3 (PR #2) & 1 (PR #3) — robustness batch (2026-07-12)
 
 **PR #2 round 3** (fixed): `MAX_MOVES` 8192→32768 (P1: promoted material + freeze in hand
