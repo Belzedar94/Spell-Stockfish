@@ -36,6 +36,11 @@ def main():
     ap.add_argument("--seed-base", type=int, default=1000)
     args = ap.parse_args()
 
+    # Only the datagen `out` argument is a single UCI token (the engine
+    # path goes through Popen argv and EvalFile reads the rest of the line)
+    if " " in args.outdir:
+        sys.exit(f"outdir must not contain spaces (single-token UCI arg): "
+                 f"{args.outdir}")
     os.makedirs(args.outdir, exist_ok=True)
     procs = []
     t0 = time.time()
@@ -52,9 +57,12 @@ def main():
             f"eval_limit {args.eval_limit}\n"
             "quit\n"
         )
+        # Keep each worker's output: engine errors (bad paths, failed net
+        # loads) are invisible otherwise. NOTE: the datagen UCI parser reads
+        # single tokens — paths must not contain spaces.
+        wlog = open(os.path.join(args.outdir, f"worker_{seed}.log"), "w")
         p = subprocess.Popen([args.engine], stdin=subprocess.PIPE,
-                             stdout=subprocess.DEVNULL,
-                             stderr=subprocess.DEVNULL, text=True)
+                             stdout=wlog, stderr=subprocess.STDOUT, text=True)
         p.stdin.write(cmds)
         p.stdin.flush()
         procs.append((p, out, seed))
@@ -80,12 +88,16 @@ def main():
     here = os.path.dirname(os.path.abspath(__file__))
     bad = 0
     for _, out, _ in procs:
+        if not os.path.exists(out):
+            print(f"validate {out}: MISSING (worker produced nothing)", flush=True)
+            bad += 1
+            continue
         r = subprocess.run([sys.executable, os.path.join(here, "psv_decode.py"),
                             out, "--quiet"], capture_output=True, text=True)
         status = "OK" if r.returncode == 0 else "BAD"
         bad += r.returncode != 0
-        print(f"validate {out}: {status} {r.stdout.strip().splitlines()[-1]}",
-              flush=True)
+        tail = r.stdout.strip().splitlines()[-1] if r.stdout.strip() else r.stderr.strip()[:120]
+        print(f"validate {out}: {status} {tail}", flush=True)
 
     total = sum(os.path.getsize(o) // RECORD for _, o, _ in procs)
     print(f"\nDONE: {total:,} positions in {(time.time()-t0)/3600:.2f}h, "
