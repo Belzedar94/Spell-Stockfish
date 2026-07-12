@@ -127,6 +127,13 @@ struct DynStats {
 // see https://www.chessprogramming.org/Butterfly_Boards
 using ButterflyHistory = Stats<i16, 7183, COLOR_NB, UINT_16_HISTORY_SIZE>;
 
+// GateHistory records how successful casting at a given gate square has been,
+// indexed by [color][gate square] with slot SQUARE_NB for non-spell moves
+// (the reference's gateHistory; prior 13365). This is the LEARNED counterpart
+// of static gate-impact ordering, which was refuted — see AUDIT.md: spells
+// earn ordering priority by producing cutoffs, not by looking scary.
+using GateHistory = Stats<i16, 13365, COLOR_NB, SQUARE_NB + 1>;
+
 // LowPlyHistory is addressed by ply and move's from and to squares, used
 // to improve move ordering near the root
 using LowPlyHistory = Stats<i16, 7183, LOW_PLY_HISTORY_SIZE, UINT_16_HISTORY_SIZE>;

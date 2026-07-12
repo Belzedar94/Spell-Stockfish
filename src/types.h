@@ -538,6 +538,10 @@ class Move {
     u32 data;
 };
 
+// History slot for a move's gate: the gate square, or SQUARE_NB for moves
+// that cast nothing (see GateHistory)
+constexpr int gate_slot(Move m) { return m.is_spell() ? int(m.gate_sq()) : int(SQUARE_NB); }
+
 template<typename T, typename... Ts>
 struct is_all_same {
     static constexpr bool value = (std::is_same_v<T, Ts> && ...);

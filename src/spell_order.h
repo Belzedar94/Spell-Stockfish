@@ -49,6 +49,54 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
     return s;
 }
 
+// A freeze cast is "tactical" (reference policy: treated like a capture or
+// check throughout pruning, reductions and extensions) when its zone
+// touches the enemy king, silences an attacker of our own king (defensive
+// freeze), or freezes an enemy piece that is major-valued, attacked by us,
+// or attacking our king. ourRoyalAttackers/enemyRoyal/ourRoyal are
+// precomputed once per node.
+inline bool is_tactical_spell(const Position& pos, Move m, Bitboard ourRoyalAttackers,
+                              Square enemyRoyal, Square ourRoyal) {
+
+    if (!m.is_spell() || m.spell_type() != SPELL_FREEZE)
+        return false;
+
+    const Color    us   = pos.side_to_move();
+    const Color    them = ~us;
+    const Bitboard zone = FreezeZoneBB[m.gate_sq()];
+
+    if (enemyRoyal != SQ_NONE && (zone & square_bb(enemyRoyal)))
+        return true;
+    if (ourRoyalAttackers & zone)
+        return true;
+
+    Bitboard candidates = zone & pos.pieces(them);
+    if (!candidates)
+        return false;
+
+    const Bitboard occ = pos.pieces();
+    while (candidates)
+    {
+        const Square    s  = pop_lsb(candidates);
+        const Piece     pc = pos.piece_on(s);
+        const PieceType pt = type_of(pc);
+
+        // Freezing an attacked or major enemy piece is a tactical motif
+        if (PieceValue[pc] >= RookValue)
+            return true;
+        if (pos.attackers_to(s) & pos.pieces(us))
+            return true;
+        if (ourRoyal != SQ_NONE)
+        {
+            const Bitboard att = pt == PAWN ? Attacks::attacks_bb<PAWN>(s, them)
+                                            : Attacks::attacks_bb(pt, s, occ);
+            if (att & square_bb(ourRoyal))
+                return true;
+        }
+    }
+    return false;
+}
+
 // Fills out[64] with the reveal value of lifting each blocker for our
 // sliders: enemy material newly attacked, plus the king bonus if the enemy
 // king becomes attacked. Non-blocker squares score 0.

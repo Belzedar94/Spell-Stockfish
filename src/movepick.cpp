@@ -155,6 +155,7 @@ MovePicker::MovePicker(const Position&              p,
                        Depth                        d,
                        const ButterflyHistory*      mh,
                        const LowPlyHistory*         lph,
+                       const GateHistory*           gh,
                        const CapturePieceToHistory* cph,
                        const PieceToHistory**       ch,
                        const SharedHistories*       sh,
@@ -164,6 +165,7 @@ MovePicker::MovePicker(const Position&              p,
     pos(p),
     mainHistory(mh),
     lowPlyHistory(lph),
+    gateHistory(gh),
     captureHistory(cph),
     continuationHistory(ch),
     sharedHistory(sh),
@@ -234,6 +236,7 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         {
             // histories
             m.value = 2 * (*mainHistory)[us][m.raw() & 0xFFFF];
+            m.value += 2 * (*gateHistory)[us][gate_slot(m)];
             m.value += 2 * sharedHistory->pawn_entry(pos)[pc][to];
             m.value += (*continuationHistory[0])[pc][to];
             m.value += (*continuationHistory[1])[pc][to];
