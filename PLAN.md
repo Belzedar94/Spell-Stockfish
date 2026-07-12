@@ -51,6 +51,32 @@ molino de ideas cuanto antes; ajustable).
 - 0.5: pipeline NNUE completo con red propia entrenada (run6+) y búsqueda no inferior a la actual.
 - 1.0: suite completa + OpenBench operativo + mejora demostrada sobre baseline en los 3 TCs.
 
+## Intel de Discord (Fairy-Stockfish, escaneado 2026-07-12 vía bot fairy-vault)
+
+- **S7/OpenBench — diseño ya validado por la comunidad** (hilo #development 2026-01-16/17):
+  ubdip: el servidor mantiene la lista de tareas y los workers (procesos standalone) hacen
+  polling — nunca push del servidor; el propietario concluyó y ubdip confirmó que el cambio
+  clave es **sustituir cutechess por variantfishtest en el lado worker**. sscg13: OpenBench
+  funciona para variantes soportadas por cutechess, lo demás requiere ese swap. Referencia:
+  su fork sscg13/OpenBench@shatranj (variantes+NNUE+SPSA).
+- **Trainer moderno**: sscg13 tiene `bullet` (el trainer estándar actual) soportando la
+  arquitectura SF oficial y "probablemente adaptable" a variantes tipo-ajedrez (rey + 5
+  tipos en 8x8). Candidato para la era spell-bin-v2/NNUE-v2 (S8) en vez del pytorch legacy.
+- **Candidatos S8 del brainstorm de heurísticas (2025-09-29)** no cubiertos aún:
+  (a) endurecer el filtro de jumps: solo mantener jumps cuya jugada habilitada captura, da
+  jaque o escapa presión táctica severa; (b) "skip redundant freezes" (zonas solapando área
+  ya congelada). Ya cubiertos por nuestro trabajo: bonus rey/anillo (tacticalSpell), filtro
+  de inutilidad, history por gate. OJO: la idea "penalizar freezes que congelan material
+  propio" es rules-incorrecta (la zona solo bloquea al rival).
+- **Historia**: el bug de config chess-mode del trainer (PIECE_TYPES 6/POCKETS false → datos
+  sin potions) que corregimos en F6 es exactamente el que el propietario sufrió el
+  2025-09-30 durante run5. El crash por MAX_MOVES=4096 reportado por moky (2025-10-01)
+  es la misma clase que nuestro fix 8192→32768+arena. ubdip modernizó variant-nnue-tools
+  (2025-10-31: docs, convert_epd, puzzle gen) — útil para S5.
+- **Comunidad**: pregunta sin responder en #general (2026-05-27, jasper_0011): "did you
+  guys ever make an engine for evaluating spell chess positions?" — momento de anuncio
+  natural para el propietario cuando el proyecto esté presentable.
+
 ## Notas operativas
 - CI de GitHub bloqueado por billing de la cuenta (decisión pendiente del propietario);
   mientras tanto, todos los gates corren en local.
