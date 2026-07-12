@@ -396,7 +396,7 @@ top:
                 const Color us = pos.side_to_move();
                 if (pos.count<KING>(us))
                 {
-                    spellOurRoyal = pos.square<KING>(us);
+                    spellOurRoyal       = pos.square<KING>(us);
                     spellRoyalAttackers = pos.attackers_to(spellOurRoyal) & pos.pieces(~us);
                 }
                 if (pos.count<KING>(~us))
