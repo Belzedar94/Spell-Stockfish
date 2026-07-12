@@ -1,5 +1,9 @@
 # OpenBench variantes — nota de diseño (S7): torre de control multi-proyecto
 
+> **Guía OPERATIVA para agentes (cómo usarla, alta de engines nuevos, contratos):**
+> `../openbench-spell/AGENTS.md`. Este documento es la nota de DISEÑO original; el
+> despliegue está en `openbench-server-runbook.md`.
+
 Base: fork `sscg13/OpenBench@shatranj` (clonado en `../openbench-spell`), que ya soporta
 variantes, redes NNUE por SHA y SPSA distribuido. Decisión del propietario (2026-07-12):
 **una única instancia OpenBench como torre de control para TODOS los proyectos de motores**
