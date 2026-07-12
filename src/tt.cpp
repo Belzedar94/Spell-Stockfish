@@ -34,14 +34,14 @@
 namespace Stockfish {
 
 
-// TTEntry struct is the 10 bytes transposition table entry, defined as:
+// TTEntry struct is the 12 bytes transposition table entry, defined as:
 //
 // key        16 bit
 // depth       8 bit
 // pv node     1 bit
 // bound type  2 bit
 // generation  5 bit
-// move       16 bit
+// move       32 bit (Spell Chess moves carry spell type + gate square in the high bits)
 // value      16 bit
 // evaluation 16 bit
 //
@@ -151,14 +151,16 @@ void TTWriter::penalize(int penalty) {
 // of TTEntry. Each non-empty TTEntry contains information on exactly one position. The size of a Cluster should
 // divide the size of a cache line for best performance, as the cacheline is prefetched when possible.
 
-static constexpr int ClusterSize = 3;
+// With the 12-byte entries needed by 32-bit spell moves, five entries plus
+// 4 bytes of padding fill exactly one 64-byte cache line.
+static constexpr int ClusterSize = 5;
 
 struct Cluster {
     TTEntry entry[ClusterSize];
-    char    padding[2];  // Pad to 32 bytes
+    char    padding[4];  // Pad to 64 bytes
 };
 
-static_assert(sizeof(Cluster) == 32, "Suboptimal Cluster size");
+static_assert(sizeof(Cluster) == 64, "Suboptimal Cluster size");
 
 
 // Sets the size of the transposition table,

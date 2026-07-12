@@ -1,0 +1,42 @@
+name: Spell CI
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache networks
+        uses: actions/cache@v4
+        with:
+          path: src/*.nnue
+          key: nnue-${{ hashFiles('src/evaluate.h') }}
+
+      - name: Build
+        run: make -j2 build ARCH=x86-64-avx2 && strip stockfish
+
+      - name: Startpos perft parity
+        run: |
+          out=$( (printf 'position startpos\ngo perft 1\n'; sleep 1) | ./stockfish | grep 'Nodes searched' )
+          echo "$out"
+          echo "$out" | grep -q 'Nodes searched: 1878'
+          out=$( (printf 'position startpos\ngo perft 2\n'; sleep 20) | ./stockfish | grep 'Nodes searched' )
+          echo "$out"
+          echo "$out" | grep -q 'Nodes searched: 3287752'
+
+      - name: Rule unit tests + suite d1 parity
+        working-directory: tests
+        run: python3 spell_tests.py ../src/stockfish
+
+      - name: Bench sanity
+        run: ./stockfish bench 16 1 8 default depth

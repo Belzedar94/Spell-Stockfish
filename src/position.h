@@ -31,6 +31,7 @@
 
 #include "attacks.h"
 #include "bitboard.h"
+#include "spell.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -54,6 +55,13 @@ struct StateInfo {
     int    rule50;
     int    pliesFromNull;
     Square epSquare;
+
+    // Spell chess state (see SPELL_SPEC.md): active zone gate squares
+    // (SQ_NONE = no zone), cooldowns 0..SPELL_COOLDOWN, spells still in hand.
+    // All indexed [color][SpellType] and part of the position key.
+    u8 spellGate[COLOR_NB][SPELL_NB];
+    i8 spellCooldown[COLOR_NB][SPELL_NB];
+    i8 spellHand[COLOR_NB][SPELL_NB];
 
     // Not copied when making a move (will be recomputed anyhow)
     Key        key;
@@ -157,6 +165,18 @@ class Position {
 
     // Static Exchange Evaluation
     bool see_ge(Move m, int threshold = 0) const;
+
+    // Spell chess accessors
+    Square   spell_gate(Color c, SpellType sp) const;
+    Bitboard spell_zone(Color c, SpellType sp) const;
+    int      spell_cooldown(Color c, SpellType sp) const;
+    int      spells_in_hand(Color c, SpellType sp) const;
+    bool     can_cast(Color c, SpellType sp) const;
+    Bitboard frozen_squares(Color c) const;   // squares from which c's pieces cannot move
+    Bitboard frozen_pieces() const;           // pieces of either color that are frozen
+    Bitboard jump_transparent() const;        // active jump gates (transparent for sliding)
+    Bitboard occupied_for_sliding() const;    // pieces() minus transparent gates
+    bool     both_kings_on_board() const;
 
     // Accessing hash keys
     Key key() const;
@@ -279,6 +299,42 @@ inline Square Position::square(Color c) const {
 }
 
 inline Square Position::ep_square() const { return st->epSquare; }
+
+inline Square Position::spell_gate(Color c, SpellType sp) const {
+    return Square(st->spellGate[c][sp]);
+}
+
+inline Bitboard Position::spell_zone(Color c, SpellType sp) const {
+    return spell_zone_bb(sp, spell_gate(c, sp));
+}
+
+inline int Position::spell_cooldown(Color c, SpellType sp) const {
+    return st->spellCooldown[c][sp];
+}
+
+inline int Position::spells_in_hand(Color c, SpellType sp) const { return st->spellHand[c][sp]; }
+
+inline bool Position::can_cast(Color c, SpellType sp) const {
+    return st->spellHand[c][sp] > 0 && st->spellCooldown[c][sp] == 0;
+}
+
+// A freeze zone cast by ~c restricts c's pieces (origin squares) while active
+inline Bitboard Position::frozen_squares(Color c) const { return spell_zone(~c, SPELL_FREEZE); }
+
+// Frozen pieces of either color: they cannot move and give no attacks
+inline Bitboard Position::frozen_pieces() const {
+    return (pieces(WHITE) & frozen_squares(WHITE)) | (pieces(BLACK) & frozen_squares(BLACK));
+}
+
+inline Bitboard Position::jump_transparent() const {
+    return spell_zone(WHITE, SPELL_JUMP) | spell_zone(BLACK, SPELL_JUMP);
+}
+
+inline Bitboard Position::occupied_for_sliding() const { return pieces() & ~jump_transparent(); }
+
+inline bool Position::both_kings_on_board() const {
+    return count<KING>(WHITE) == 1 && count<KING>(BLACK) == 1;
+}
 
 inline bool Position::can_castle(CastlingRights cr) const { return st->castlingRights & cr; }
 

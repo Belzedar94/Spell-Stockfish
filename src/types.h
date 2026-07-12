@@ -113,8 +113,33 @@ constexpr bool Is64Bit = false;
 using Key      = u64;
 using Bitboard = u64;
 
-constexpr int MAX_MOVES = 256;
+// Spell chess: the gated-move universe is huge (startpos has 1878 legal moves,
+// mid-game positions can exceed 3500). The bound must cover the worst case,
+// not the common one: a side with heavy promoted material and a freeze in
+// hand can exceed 8192 pseudo-legal moves (~250 base moves x ~60 freeze
+// gates plus jump copies), so size for ~32k. Thread stacks must fit one
+// MovePicker buffer (MAX_MOVES x 8 bytes) per ply — see thread_win32_osx.h.
+constexpr int MAX_MOVES = 32768;
 constexpr int MAX_PLY   = 246;
+
+// The two spell types of Spell Chess. Values are used as array indices;
+// SPELL_NONE is only a sentinel for moves that cast nothing.
+enum SpellType : u8 {
+    SPELL_FREEZE,
+    SPELL_JUMP,
+    SPELL_NB   = 2,
+    SPELL_NONE = 2
+};
+
+// Spells each player holds at game start, indexed by SpellType
+constexpr int SpellInitialHand[SPELL_NB] = {5, 2};
+
+// After casting a spell, the same spell type is unavailable until the
+// caster's cooldown (ticked once per full move) returns to zero.
+constexpr int SPELL_COOLDOWN = 3;
+// A zone disappears once its owner's cooldown drops to this value or below
+// (i.e. it is active during the casting ply and the opponent's single reply).
+constexpr int SPELL_ZONE_LIFETIME = SPELL_COOLDOWN - 1;
 
 enum Color : u8 {
     WHITE,
@@ -418,13 +443,20 @@ enum MoveType : u16 {
     CASTLING   = 3 << 14
 };
 
-// A move needs 16 bits to be stored
+// A move needs 24 bits to be stored (widened from Stockfish's 16 to make
+// room for the Spell Chess cast information)
 //
 // bit  0- 5: destination square (from 0 to 63)
 // bit  6-11: origin square (from 0 to 63)
 // bit 12-13: promotion piece type - 2 (from KNIGHT-2 to QUEEN-2)
 // bit 14-15: special move flag: promotion (1), en passant (2), castling (3)
+// bit 16-17: spell cast together with the move: none (0), freeze (1), jump (2)
+// bit 18-23: spell gate square (from 0 to 63), only meaningful when bits 16-17 are nonzero
 // NOTE: en passant bit is set only when a pawn can be captured
+//
+// A gated move is "cast spell at gate, then play the base move" in a single ply.
+// The base move (low 16 bits) is always of type NORMAL or CASTLING; promotions
+// and en passant captures can never carry a spell (see SPELL_SPEC.md).
 //
 // Special cases are Move::none() and Move::null(). We can sneak these in because
 // in any normal move the destination square and origin square are always different,
@@ -433,7 +465,7 @@ enum MoveType : u16 {
 class Move {
    public:
     Move() = default;
-    constexpr explicit Move(u16 d) :
+    constexpr explicit Move(u32 d) :
         data(d) {}
 
     constexpr Move(Square from, Square to) :
@@ -442,6 +474,11 @@ class Move {
     template<MoveType T>
     static constexpr Move make(Square from, Square to, PieceType pt = KNIGHT) {
         return Move(T + ((pt - KNIGHT) << 12) + (from << 6) + to);
+    }
+
+    // Attach a spell cast to a base move (base must be NORMAL or CASTLING)
+    static constexpr Move make_spell(Move base, SpellType spell, Square gate) {
+        return Move(base.data | ((u32(spell) + 1) << SpellShift) | (u32(gate) << GateShift));
     }
 
     constexpr Square from_sq() const {
@@ -458,6 +495,22 @@ class Move {
 
     constexpr PieceType promotion_type() const { return PieceType(((data >> 12) & 3) + KNIGHT); }
 
+    // Spell accessors
+    constexpr bool is_spell() const { return data & SpellTypeMask; }
+
+    constexpr SpellType spell_type() const {
+        assert(is_spell());
+        return SpellType(((data >> SpellShift) & 3) - 1);
+    }
+
+    constexpr Square gate_sq() const {
+        assert(is_spell());
+        return Square((data >> GateShift) & 0x3F);
+    }
+
+    // The move without its spell payload
+    constexpr Move base_move() const { return Move(data & 0xFFFFu); }
+
     constexpr bool is_ok() const { return none().data != data && null().data != data; }
 
     static constexpr Move null() { return Move(65); }
@@ -468,7 +521,7 @@ class Move {
 
     constexpr explicit operator bool() const { return data != 0; }
 
-    constexpr u16 raw() const { return data; }
+    constexpr u32 raw() const { return data; }
 
     struct MoveHash {
         usize operator()(const Move& m) const { return make_key(m.data); }
@@ -476,9 +529,13 @@ class Move {
 
     static constexpr int FromSqShift = 6;
     static constexpr int ToSqShift   = 0;
+    static constexpr int SpellShift  = 16;
+    static constexpr int GateShift   = 18;
+
+    static constexpr u32 SpellTypeMask = 3u << 16;
 
    protected:
-    u16 data;
+    u32 data;
 };
 
 template<typename T, typename... Ts>

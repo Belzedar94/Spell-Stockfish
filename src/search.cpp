@@ -42,6 +42,7 @@
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
 #include "position.h"
+#include "spell_params.h"
 #include "syzygy/tbprobe.h"
 #include "thread.h"
 #include "timeman.h"
@@ -179,6 +180,10 @@ Search::Worker::Worker(SharedState&                    sharedState,
     tt(sharedState.tt),
     network(sharedState.network),
     refreshTable(network[token]) {
+    // Raw new[]: ExtMove/Move are trivially constructible, so the arena
+    // pages stay untouched (hence uncommitted) until a ply first uses them
+    movesArena.reset(new ExtMove[usize(2) * (MAX_PLY + 10) * MAX_MOVES]);
+    genScratch.reset(new Move[MAX_MOVES]);
     clear();
 }
 
@@ -205,8 +210,15 @@ void Search::Worker::start_searching() {
 
     if (rootMoves.empty())
     {
-        main_manager()->updates.onUpdateNoMoves(
-          {0, {rootPos.checkers() ? -VALUE_MATE : VALUE_DRAW, rootPos}});
+        // Spell chess: no moves at the root also happens on terminal
+        // positions — our king captured (loss) or the enemy king captured
+        // (win); a stall while attacked is a mate, otherwise stalemate.
+        const Value terminal =
+          !rootPos.count<KING>(rootPos.side_to_move())  ? -VALUE_MATE
+          : !rootPos.count<KING>(~rootPos.side_to_move()) ? VALUE_MATE
+          : rootPos.checkers()                            ? -VALUE_MATE
+                                                          : VALUE_DRAW;
+        main_manager()->updates.onUpdateNoMoves({0, {terminal, rootPos}});
         main_manager()->updates.onBestmove(UCIEngine::move(Move::none()), "");
         return;
     }
@@ -744,7 +756,12 @@ Value Search::Worker::search(
     SearchedList quietsSearched;
 
     // Step 1. Initialize node
-    ss->inCheck   = pos.checkers();
+    // Spell chess (reference policy): self-check is legal, so kings are
+    // "attacked" in a large share of normal positions. Treating that as being
+    // in check would disable static eval, stand-pat and most pruning and the
+    // tree explodes; instead every node is treated as a normal one and the
+    // extinction scoring punishes a hanging king one ply deeper.
+    ss->inCheck   = false;
     priorCapture  = pos.captured_piece();
     Color us      = pos.side_to_move();
     ss->moveCount = 0;
@@ -766,6 +783,13 @@ Value Search::Worker::search(
 
     if (!rootNode)
     {
+        // Spell chess: a captured king ends the game immediately (extinction),
+        // before any draw rule, TT probe or evaluation can apply.
+        if (!pos.count<KING>(us))
+            return mated_in(ss->ply);
+        if (!pos.count<KING>(~us))
+            return mate_in(ss->ply);
+
         // Step 2. Check for aborted search and immediate draw
         if (threads.stop.load(std::memory_order_relaxed) || pos.is_draw(ss->ply)
             || ss->ply >= MAX_PLY)
@@ -960,7 +984,7 @@ Value Search::Worker::search(
     if (((ss - 1)->currentMove).is_ok() && !(ss - 1)->inCheck && !priorCapture)
     {
         int evalDiff = std::clamp(-int((ss - 1)->staticEval + ss->staticEval), -183, 180) + 62;
-        mainHistory[~us][((ss - 1)->currentMove).raw()] << evalDiff * 10;
+        mainHistory[~us][((ss - 1)->currentMove).raw() & 0xFFFF] << evalDiff * 10;
         if (!ttHit && type_of(pos.piece_on(prevSq)) != PAWN
             && ((ss - 1)->currentMove).type_of() != PROMOTION)
             sharedHistory.pawn_entry(pos)[pos.piece_on(prevSq)][prevSq] << evalDiff * 13;
@@ -1044,7 +1068,8 @@ Value Search::Worker::search(
     {
         assert(probCutBeta < VALUE_INFINITE && probCutBeta > beta);
 
-        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory);
+        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory,
+                      moves_buffer(ss->ply, 1), gen_scratch());
         Depth      probCutDepth = depth - 4 - improving;
 
         while ((move = mp.next_move()) != Move::none())
@@ -1094,7 +1119,7 @@ moves_loop:  // When in check, search starts here
 
 
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &captureHistory, contHist,
-                  &sharedHistory, ss->ply);
+                  &sharedHistory, ss->ply, moves_buffer(ss->ply, 0), gen_scratch());
 
     value = bestValue;
 
@@ -1136,6 +1161,19 @@ moves_loop:  // When in check, search starts here
 
         // Calculate new depth for this move
         newDepth = depth - 1;
+
+        // Spell chess: gated moves multiply the branching factor enormously,
+        // so they are searched shallower (the reference's PotionDepthPenalty
+        // policy, worth a large amount of its Elo): quiet casts two plies,
+        // tactical casts one. The penalty may drop the move straight into
+        // quiescence (floor at 0, not 1).
+        if (move.is_spell())
+            newDepth =
+              std::max(0,
+                       newDepth
+                         - (pos.capture_stage(move) || pos.gives_check(move)
+                              ? SpellDepthPenaltyTactical
+                              : SpellDepthPenaltyQuiet));
 
         int delta = beta - alpha;
 
@@ -1190,7 +1228,7 @@ moves_loop:  // When in check, search starts here
                 if (history < -4313 * depth)
                     continue;
 
-                history += 64 * mainHistory[us][move.raw()] / 32;
+                history += 64 * mainHistory[us][move.raw() & 0xFFFF] / 32;
 
                 // (*Scaler): Generally, lower divisors scale well
                 lmrDepth += history / lmrDivisor[dIndex];
@@ -1318,7 +1356,7 @@ moves_loop:  // When in check, search starts here
             ss->statScore = 809 * int(PieceValue[pos.captured_piece()]) / 128
                           + captureHistory[movedPiece][move.to_sq()][type_of(pos.captured_piece())];
         else
-            ss->statScore = 2 * mainHistory[us][move.raw()]
+            ss->statScore = 2 * mainHistory[us][move.raw() & 0xFFFF]
                           + (*contHist[0])[movedPiece][move.to_sq()]
                           + (*contHist[1])[movedPiece][move.to_sq()];
 
@@ -1529,8 +1567,11 @@ moves_loop:  // When in check, search starts here
     if (bestValue >= beta && !is_decisive(bestValue) && !is_decisive(alpha))
         bestValue = (bestValue * depth + beta) / (depth + 1);
 
+    // Spell chess: ss->inCheck is pinned to false (non-check policy), so the
+    // stalled-while-attacked terminal must consult the real checkers — a
+    // checkmate-like stall is a loss, a quiet stall is a stalemate draw.
     if (!moveCount)
-        bestValue = excludedMove ? alpha : ss->inCheck ? mated_in(ss->ply) : VALUE_DRAW;
+        bestValue = excludedMove ? alpha : pos.checkers() ? mated_in(ss->ply) : VALUE_DRAW;
 
     // If there is a move that produces search value greater than alpha,
     // we update the stats of searched moves.
@@ -1560,7 +1601,7 @@ moves_loop:  // When in check, search starts here
         update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq,
                                       scaledBonus * 236 / 16384);
 
-        mainHistory[~us][((ss - 1)->currentMove).raw()] << scaledBonus * 234 / 32768;
+        mainHistory[~us][((ss - 1)->currentMove).raw() & 0xFFFF] << scaledBonus * 234 / 32768;
 
         if (type_of(pos.piece_on(prevSq)) != PAWN && ((ss - 1)->currentMove).type_of() != PROMOTION)
             sharedHistory.pawn_entry(pos)[pos.piece_on(prevSq)][prevSq] << scaledBonus * 322 / 8192;
@@ -1649,12 +1690,19 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     }
 
     bestMove    = Move::none();
-    ss->inCheck = pos.checkers();
+    // Spell chess: same non-check policy as the main search (see Step 1 there)
+    ss->inCheck = false;
     moveCount   = 0;
 
     // Used to send selDepth info to GUI (selDepth counts from 1, ply from 0)
     if (PvNode && selDepth < ss->ply + 1)
         selDepth = ss->ply + 1;
+
+    // Spell chess: a captured king ends the game immediately (extinction)
+    if (!pos.count<KING>(pos.side_to_move()))
+        return mated_in(ss->ply);
+    if (!pos.count<KING>(~pos.side_to_move()))
+        return mate_in(ss->ply);
 
     // Step 2. Check for an immediate draw or maximum ply reached
     if (pos.is_draw(ss->ply) || ss->ply >= MAX_PLY)
@@ -1734,7 +1782,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     // the moves. We presently use two stages of move generator in quiescence search:
     // captures, or evasions only when in check.
     MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &captureHistory,
-                  contHist, &sharedHistory, ss->ply);
+                  contHist, &sharedHistory, ss->ply, moves_buffer(ss->ply, 0), gen_scratch());
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain or a beta
     // cutoff occurs.
@@ -2009,10 +2057,10 @@ void update_quiet_histories(
   const Position& pos, Stack* ss, Search::Worker& workerThread, Move move, int bonus) {
 
     Color us = pos.side_to_move();
-    workerThread.mainHistory[us][move.raw()] << bonus;  // Untuned to prevent duplicate effort
+    workerThread.mainHistory[us][move.raw() & 0xFFFF] << bonus;  // Untuned to prevent duplicate effort
 
     if (ss->ply < LOW_PLY_HISTORY_SIZE)
-        workerThread.lowPlyHistory[ss->ply][move.raw()] << bonus * 663 / 1024;
+        workerThread.lowPlyHistory[ss->ply][move.raw() & 0xFFFF] << bonus * 663 / 1024;
 
     update_continuation_histories(ss, pos.moved_piece(move), move.to_sq(), bonus * 820 / 1024);
 

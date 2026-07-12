@@ -158,7 +158,9 @@ MovePicker::MovePicker(const Position&              p,
                        const CapturePieceToHistory* cph,
                        const PieceToHistory**       ch,
                        const SharedHistories*       sh,
-                       int                          pl) :
+                       int                          pl,
+                       ExtMove*                     buf,
+                       Move*                        scratch) :
     pos(p),
     mainHistory(mh),
     lowPlyHistory(lph),
@@ -167,23 +169,25 @@ MovePicker::MovePicker(const Position&              p,
     sharedHistory(sh),
     ttMove(ttm),
     depth(d),
-    ply(pl) {
+    ply(pl),
+    moves(buf),
+    genScratch(scratch) {
 
-    if (pos.checkers())
-        stage = EVASION_TT + !(ttm && pos.pseudo_legal(ttm));
-
-    else
-        stage = (depth > 0 ? MAIN_TT : QSEARCH_TT) + !(ttm && pos.pseudo_legal(ttm));
+    // Spell chess: no evasion staging — self-check is legal, so "in check"
+    // nodes are ordered and pruned exactly like normal ones (reference policy)
+    stage = (depth > 0 ? MAIN_TT : QSEARCH_TT) + !(ttm && pos.pseudo_legal(ttm));
 }
 
 // MovePicker constructor for ProbCut: we generate captures with Static Exchange
 // Evaluation (SEE) greater than or equal to the given threshold.
-MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceToHistory* cph) :
+MovePicker::MovePicker(
+  const Position& p, Move ttm, int th, const CapturePieceToHistory* cph, ExtMove* buf, Move* scratch) :
     pos(p),
     captureHistory(cph),
     ttMove(ttm),
-    threshold(th) {
-    assert(!pos.checkers());
+    threshold(th),
+    moves(buf),
+    genScratch(scratch) {
 
     stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm));
 }
@@ -192,7 +196,7 @@ MovePicker::MovePicker(const Position& p, Move ttm, int th, const CapturePieceTo
 // Captures are ordered by Most Valuable Victim (MVV), preferring captures
 // with a good history. Quiet moves are ordered using the history tables.
 template<GenType Type>
-ExtMove* MovePicker::score(const MoveList<Type>& ml) {
+ExtMove* MovePicker::score(const Move* begin, const Move* end) {
 
     static_assert(Type == CAPTURES || Type == QUIETS || Type == EVASIONS, "Wrong type");
 
@@ -210,10 +214,10 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
     }
 
     ExtMove* it = cur;
-    for (auto move : ml)
+    for (const Move* mit = begin; mit != end; ++mit)
     {
         ExtMove& m = *it++;
-        m          = move;
+        m          = *mit;
 
         const Square    from          = m.from_sq();
         const Square    to            = m.to_sq();
@@ -228,7 +232,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
         else if constexpr (Type == QUIETS)
         {
             // histories
-            m.value = 2 * (*mainHistory)[us][m.raw()];
+            m.value = 2 * (*mainHistory)[us][m.raw() & 0xFFFF];
             m.value += 2 * sharedHistory->pawn_entry(pos)[pc][to];
             m.value += (*continuationHistory[0])[pc][to];
             m.value += (*continuationHistory[1])[pc][to];
@@ -246,7 +250,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
 
 
             if (ply < LOW_PLY_HISTORY_SIZE)
-                m.value += 8 * (*lowPlyHistory)[ply][m.raw()] / (1 + ply);
+                m.value += 8 * (*lowPlyHistory)[ply][m.raw() & 0xFFFF] / (1 + ply);
         }
 
         else  // Type == EVASIONS
@@ -254,7 +258,7 @@ ExtMove* MovePicker::score(const MoveList<Type>& ml) {
             if (pos.capture_stage(m))
                 m.value = PieceValue[capturedPiece] + (1 << 28);
             else
-                m.value = (*mainHistory)[us][m.raw()] + (*continuationHistory[0])[pc][to];
+                m.value = (*mainHistory)[us][m.raw() & 0xFFFF] + (*continuationHistory[0])[pc][to];
         }
     }
     return it;
@@ -292,10 +296,10 @@ top:
     case CAPTURE_INIT :
     case PROBCUT_INIT :
     case QCAPTURE_INIT : {
-        MoveList<CAPTURES> ml(pos);
+        const Move* endGen = generate<CAPTURES>(pos, genScratch);
 
         cur = endBadCaptures = moves;
-        endCur = endCaptures = score<CAPTURES>(ml);
+        endCur = endCaptures = score<CAPTURES>(genScratch, endGen);
 
         partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
         ++stage;
@@ -317,9 +321,9 @@ top:
     case QUIET_INIT :
         if (!skipQuiets)
         {
-            MoveList<QUIETS> ml(pos);
+            const Move* endGen = generate<QUIETS>(pos, genScratch);
 
-            endCur = endGenerated = score<QUIETS>(ml);
+            endCur = endGenerated = score<QUIETS>(genScratch, endGen);
 
             partial_insertion_sort(cur, endCur, -3560 * depth);
         }
@@ -356,10 +360,10 @@ top:
         return Move::none();
 
     case EVASION_INIT : {
-        MoveList<EVASIONS> ml(pos);
+        const Move* endGen = generate<EVASIONS>(pos, genScratch);
 
         cur    = moves;
-        endCur = endGenerated = score<EVASIONS>(ml);
+        endCur = endGenerated = score<EVASIONS>(genScratch, endGen);
 
         partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
         ++stage;

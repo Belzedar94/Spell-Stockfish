@@ -536,6 +536,9 @@ endif
 
 ifeq ($(target_windows),yes)
 	LDFLAGS += -static
+# Spell chess: MovePicker holds MAX_MOVES (8192) ExtMoves per node, so deep
+# searches need far more than the 1MB Windows default stack reserve.
+	LDFLAGS += -Wl,--stack,268435456
 endif
 
 ifeq ($(COMP),mingw)

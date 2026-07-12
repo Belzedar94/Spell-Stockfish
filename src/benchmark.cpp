@@ -30,71 +30,27 @@ namespace {
 // clang-format off
 const std::vector<std::string> Defaults = {
   "setoption name UCI_Chess960 value false",
-  "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-  "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 10",
-  "8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 11",
-  "4rrk1/pp1n3p/3q2pQ/2p1pb2/2PP4/2P3N1/P2B2PP/4RRK1 b - - 7 19",
-  "rq3rk1/ppp2ppp/1bnpb3/3N2B1/3NP3/7P/PPPQ1PP1/2KR3R w - - 7 14 moves d4e6",
-  "r1bq1r1k/1pp1n1pp/1p1p4/4p2Q/4Pp2/1BNP4/PPP2PPP/3R1RK1 w - - 2 14 moves g2g4",
-  "r3r1k1/2p2ppp/p1p1bn2/8/1q2P3/2NPQN2/PPP3PP/R4RK1 b - - 2 15",
-  "r1bbk1nr/pp3p1p/2n5/1N4p1/2Np1B2/8/PPP2PPP/2KR1B1R w kq - 0 13",
-  "r1bq1rk1/ppp1nppp/4n3/3p3Q/3P4/1BP1B3/PP1N2PP/R4RK1 w - - 1 16",
-  "4r1k1/r1q2ppp/ppp2n2/4P3/5Rb1/1N1BQ3/PPP3PP/R5K1 w - - 1 17",
-  "2rqkb1r/ppp2p2/2npb1p1/1N1Nn2p/2P1PP2/8/PP2B1PP/R1BQK2R b KQ - 0 11",
-  "r1bq1r1k/b1p1npp1/p2p3p/1p6/3PP3/1B2NN2/PP3PPP/R2Q1RK1 w - - 1 16",
-  "3r1rk1/p5pp/bpp1pp2/8/q1PP1P2/b3P3/P2NQRPP/1R2B1K1 b - - 6 22",
-  "r1q2rk1/2p1bppp/2Pp4/p6b/Q1PNp3/4B3/PP1R1PPP/2K4R w - - 2 18",
-  "4k2r/1pb2ppp/1p2p3/1R1p4/3P4/2r1PN2/P4PPP/1R4K1 b - - 3 22",
-  "3q2k1/pb3p1p/4pbp1/2r5/PpN2N2/1P2P2P/5PP1/Q2R2K1 b - - 4 26",
-  "6k1/6p1/6Pp/ppp5/3pn2P/1P3K2/1PP2P2/3N4 b - - 0 1",
-  "3b4/5kp1/1p1p1p1p/pP1PpP1P/P1P1P3/3KN3/8/8 w - - 0 1",
-  "2K5/p7/7P/5pR1/8/5k2/r7/8 w - - 0 1 moves g5g6 f3e3 g6g5 e3f3",
-  "8/6pk/1p6/8/PP3p1p/5P2/4KP1q/3Q4 w - - 0 1",
-  "7k/3p2pp/4q3/8/4Q3/5Kp1/P6b/8 w - - 0 1",
-  "8/2p5/8/2kPKp1p/2p4P/2P5/3P4/8 w - - 0 1",
-  "8/1p3pp1/7p/5P1P/2k3P1/8/2K2P2/8 w - - 0 1",
-  "8/pp2r1k1/2p1p3/3pP2p/1P1P1P1P/P5KR/8/8 w - - 0 1",
-  "8/3p4/p1bk3p/Pp6/1Kp1PpPp/2P2P1P/2P5/5B2 b - - 0 1",
-  "5k2/7R/4P2p/5K2/p1r2P1p/8/8/8 b - - 0 1",
-  "6k1/6p1/P6p/r1N5/5p2/7P/1b3PP1/4R1K1 w - - 0 1",
-  "1r3k2/4q3/2Pp3b/3Bp3/2Q2p2/1p1P2P1/1P2KP2/3N4 w - - 0 1",
-  "6k1/4pp1p/3p2p1/P1pPb3/R7/1r2P1PP/3B1P2/6K1 w - - 0 1",
-  "8/3p3B/5p2/5P2/p7/PP5b/k7/6K1 w - - 0 1",
-  "5rk1/q6p/2p3bR/1pPp1rP1/1P1Pp3/P3B1Q1/1K3P2/R7 w - - 93 90",
-  "4rrk1/1p1nq3/p7/2p1P1pp/3P2bp/3Q1Bn1/PPPB4/1K2R1NR w - - 40 21",
-  "r3k2r/3nnpbp/q2pp1p1/p7/Pp1PPPP1/4BNN1/1P5P/R2Q1RK1 w kq - 0 16",
-  "3Qb1k1/1r2ppb1/pN1n2q1/Pp1Pp1Pr/4P2p/4BP2/4B1R1/1R5K b - - 11 40",
-  "4k3/3q1r2/1N2r1b1/3ppN2/2nPP3/1B1R2n1/2R1Q3/3K4 w - - 5 1",
-  "1r6/1P4bk/3qr1p1/N6p/3pp2P/6R1/3Q1PP1/1R4K1 w - - 1 42",
-
-  // Positions with high numbers of changed threats
-  "k7/2n1n3/1nbNbn2/2NbRBn1/1nbRQR2/2NBRBN1/3N1N2/7K w - - 0 1",
-  "K7/8/8/BNQNQNB1/N5N1/R1Q1q2r/n5n1/bnqnqnbk w - - 0 1",
-
-  // 5-man positions
-  "8/8/8/8/5kp1/P7/8/1K1N4 w - - 0 1",     // Kc2 - mate
-  "8/8/8/5N2/8/p7/8/2NK3k w - - 0 1",      // Na2 - mate
-  "8/3k4/8/8/8/4B3/4KB2/2B5 w - - 0 1",    // draw
-
-  // 6-man positions
-  "8/8/1P6/5pr1/8/4R3/7k/2K5 w - - 0 1",   // Re5 - mate
-  "8/2p4P/8/kr6/6R1/8/8/1K6 w - - 0 1",    // Ka2 - mate
-  "8/8/3P3k/8/1p6/8/1P6/1K3n2 b - - 0 1",  // Nd2 - draw
-
-  // 7-man positions
-  "8/R7/2q5/8/6k1/8/1P5p/K6R w - - 0 124", // Draw
-
-  // Mate and stalemate positions
-  "6k1/3b3r/1p1p4/p1n2p2/1PPNpP1q/P3Q1p1/1R1RB1P1/5K2 b - - 0 1",
-  "r2r1n2/pp2bk2/2p1p2p/3q4/3PN1QP/2P3R1/P4PP1/5RK1 w - - 0 1",
-  "8/8/8/8/8/6k1/6p1/6K1 w - -",
-  "7k/7P/6K1/8/3B4/8/8/8 b - -",
-
-  // Chess 960
-  "setoption name UCI_Chess960 value true",
-  "bbqnnrkr/pppppppp/8/8/8/8/PPPPPPPP/BBQNNRKR w HFhf - 0 1 moves g2g3 d7d5 d2d4 c8h3 c1g5 e8d6 g5e7 f7f6",
-  "nqbnrkrb/pppppppp/8/8/8/8/PPPPPPPP/NQBNRKRB w KQkq - 0 1",
-  "setoption name UCI_Chess960 value false"
+  "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] {F@-:0,J@-:0,f@-:0,j@-:0} w KQkq - 0 1",
+  "2rnkbr1/p2b2R1/p1p1pp1p/2P2P2/5K1P/1qRPpQ1N/1P1NB1P1/2n5[] {F@-:2,J@-:0,f@-:0,j@-:0} w - - 0 31",
+  "rnbqk1nr/3pp2p/1p4p1/1Np2p2/p2P1b2/P3B2N/1PP1PPPP/R2QKB1R[JFFFjfff] {F@-:2,J@-:0,f@-:0,j@-:0} w KQkq - 2 11",
+  "rn2kn1r/1p2pp2/pPq3p1/5P1p/3pp3/P1b1P1PP/R1P1QK2/1NBR4[f] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 4 24",
+  "rnb1kb1r/1p1pp3/8/2p1Qpp1/PpP1n1Pp/3Pq2P/1P2P2R/RN2KBN1[Fjffff] {F@c1:3,J@-:0,f@-:0,j@-:0} b Qkq - 1 15",
+  "1rb1kbr1/pppqppp1/2n4p/P1Pn4/3p1P1P/R7/1P1PPKP1/1NBQ1BNR[JFFFjjfff] {F@-:2,J@-:0,f@-:1,j@-:0} w - - 1 10",
+  "Qnr1kbr1/2p1np2/b5p1/1N4Bp/PPpp3P/R1N3PR/4PP2/4KB2[JJFff] {F@-:2,J@-:0,f@-:0,j@-:0} b - - 5 22",
+  "r1bqkbnr/1pppp2p/p1n2pp1/8/1P1P4/5P2/PBP1P1PP/RN1QKBNR[JJFFFFjjfffff] {F@-:2,J@-:0,f@-:0,j@-:0} w KQkq - 0 5",
+  "rn2kbnr/p2b3p/2Ppp3/1p3pp1/2P4P/B2Pq3/4RPP1/1N1QKBNR[FFFjfff] {F@-:0,J@-:0,f@-:0,j@-:0} w Kkq - 0 13",
+  "r1b1k1nr/p1qp1p1p/4p3/1ppn4/4P1PP/NPPPbP2/P3K1BR/R1Q3N1[JFFFff] {F@-:1,J@-:0,f@-:2,j@-:1} w kq - 5 15",
+  "rnb1kbnr/p4p2/4p1p1/Pppp2Pp/3P4/R1P4P/1PN1PP2/2BQKBNR[FFffff] {F@-:0,J@-:0,f@-:1,j@-:2} w Kkq - 0 12",
+  "1r1k1nnr/5pp1/2B1q2p/p1b1p3/P2PP3/1P2QN1P/3PKP2/2B4R[] {F@c1:3,J@-:0,f@-:0,j@-:0} b - - 1 25",
+  "2r3n1/1bpn1k2/Q2b3r/4q1p1/PP2p3/5PP1/4B2P/RNB2K1R[ff] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 3 23",
+  "rnbqkb1r/p1pppp2/5n1p/Bp6/1P1PPQ2/8/P1P1KPPP/RN3BNR[JFFFFjfff] {F@-:2,J@-:0,f@-:0,j@-:0} b kq - 0 10",
+  "rn1q1b1r/4kBp1/Q3b3/2P1p1np/4P2P/2N4N/PP1PK3/R1B4R[Ff] {F@-:0,J@-:0,f@-:2,j@-:0} b - - 0 23",
+  "r2qkb1N/p2npp2/4b3/1p1p1n1p/1Pp3p1/P1P1PP2/3PK1PP/RNB1QBR1[JFFFffff] {F@e6:3,J@-:2,f@-:0,j@-:2} b q - 1 12",
+  "r2qkb1r/1bp2p1p/1p3n2/p2ppQp1/8/1n2PP1N/PP1P2PP/RNBK1BR1[FFFfff] {F@-:0,J@-:0,f@-:0,j@-:1} b kq - 1 12",
+  "1r1k1nnr/3q1pp1/2B4p/p1b1p3/P2PP3/1P2QN1P/3P1P2/2B1K2R[] {F@-:2,J@-:0,f@-:0,j@-:0} b - - 3 26",
+  "rnb1kb1r/1p2p3/8/2pp1pp1/PpP1Q1Pp/3Pq2P/1P2PR2/RN2KBN1[Fjfff] {F@-:0,J@-:0,f@-:2,j@-:0} w Qq - 2 18",
+  "1n1qk2r/rp2ppbp/p4np1/2pp4/1P3P2/P3P1PP/R1PP4/1NBQKB1R[FFfff] {F@-:0,J@-:0,f@-:1,j@-:0} b K - 0 11",
+  "rn3b1r/4qBp1/p3bk2/Q1p1p1np/3PP2P/2N4N/PP1PK3/R1B4R[Fff] {F@-:2,J@-:0,f@-:0,j@-:0} w - - 4 21"
 };
 // clang-format on
 
