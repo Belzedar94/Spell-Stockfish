@@ -257,6 +257,27 @@ cap probe; gating without regenerating base quiets).
 
 ---
 
+## S4 — END-TO-END LOOP CLOSED (2026-07-12, plan v2)
+
+Under the v2 plan (infrastructure before Elo milestones), the complete cycle now runs with
+REAL self-generated data:
+
+  engine `datagen` → farm shards (run6a generating: 12 workers, ~150-240 pos/s)
+  → trainer C++ loader (spell mode) → GPU training (50.2M-param spell architecture,
+  2-epoch dry run on a 47k-position snapshot) → checkpoint → serialize.py →
+  101,788,549-byte .nnue → **our engine loads it and evaluates sanely**
+  (`spellnnue raw 72 adjusted 76 scaled 146` at startpos).
+
+The dry-run net is deliberately tiny (proof of plumbing, not strength). The overnight run6a
+farm (7.2M positions target) feeds the first REAL training run. Exact commands now debugged:
+train.py + serialize.py invocations recorded in this entry's commit.
+
+Also this cycle: the first-principles **spell-stage relevance gate** measured -17.4 at fixed
+nodes (best equal-compute result; prior best -52.5) — implemented before the plan pivot,
+kept as part of the strongest current build.
+
+---
+
 ## Phase 4.6 — SPSA checkpoint: the full three-TC panel (2026-07-12)
 
 First complete panel (300 games per TC, run5rl both sides, tuned defaults):
