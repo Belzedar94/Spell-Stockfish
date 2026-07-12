@@ -166,7 +166,8 @@ MovePicker::MovePicker(const Position&              p,
                        const SharedHistories*       sh,
                        int                          pl,
                        ExtMove**                    at,
-                       Move*                        scratch) :
+                       Move*                        scratch,
+                       bool                         spells) :
     pos(p),
     mainHistory(mh),
     lowPlyHistory(lph),
@@ -177,6 +178,7 @@ MovePicker::MovePicker(const Position&              p,
     ttMove(ttm),
     depth(d),
     ply(pl),
+    allowSpells(spells),
     arenaTop(at),
     moves(*at),
     genScratch(scratch) {
@@ -373,10 +375,13 @@ top:
         // Gated quiets, generated only now: most nodes never get here.
         // The stage deliberately ignores skipQuiets — spells are the
         // tactical resource of the variant and late-move counting says
-        // little about them (reference behavior).
+        // little about them — but it does honor the search's relevance
+        // gate (allowSpells): a cast is worth at most about a tempo plus
+        // bounded tactics, so hopeless nodes skip the expansion entirely.
         cur = endCur = endSpells = endGenerated;
-        if (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
-            || pos.can_cast(pos.side_to_move(), SPELL_JUMP))
+        if (allowSpells
+            && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
+                || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
         {
             const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
 

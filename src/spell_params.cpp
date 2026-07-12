@@ -40,6 +40,8 @@ int SpellLmrMoveCountCap = 43;
 int SpellGateHistOrderWeight = 1;
 int SpellGateHistStatWeight  = 1;
 
+int SpellStageMargin = 400;
+
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
@@ -51,5 +53,6 @@ TUNE(SetRange(0, 3072), SpellTacticalLmrBonus);
 TUNE(SetRange(4, 96), SpellLmrMoveCountCap);
 TUNE(SetRange(0, 8), SpellGateHistOrderWeight);
 TUNE(SetRange(0, 8), SpellGateHistStatWeight);
+TUNE(SetRange(0, 2000), SpellStageMargin);
 
 }  // namespace Stockfish

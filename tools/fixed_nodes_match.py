@@ -114,8 +114,9 @@ class Engine:
             self.proc.kill()
 
 
-def play_game(white, black, fen, nodes, adj_cp, adj_plies, ply_cap):
-    """Returns (+1 white win, 0 draw, -1 black win, plies, depth_sums)."""
+def play_game(white, black, fen, nodes, adj_cp, adj_plies, ply_cap, trace=None):
+    """Returns (+1 white win, 0 draw, -1 black win, plies, depth_sums).
+    When trace is a list, appends (move, score, depth) per ply."""
     moves = []
     streak = 0   # count of consecutive plies with an agreed |cp| leader
     leader = 0   # +1 white better, -1 black better
@@ -134,6 +135,8 @@ def play_game(white, black, fen, nodes, adj_cp, adj_plies, ply_cap):
             raise
         depth_sum[eng] += depth
         move_cnt[eng] += 1
+        if trace is not None:
+            trace.append((best, score, depth))
 
         if best in ("(none)", "0000", "none"):
             # No legal move. Spell chess terminals: king captured or stalled
@@ -187,6 +190,8 @@ def main():
     ap.add_argument("--adj-cp", type=int, default=800)
     ap.add_argument("--adj-plies", type=int, default=4)
     ap.add_argument("--ply-cap", type=int, default=300)
+    ap.add_argument("--dump", default=None,
+                    help="write per-game JSONL (fen, moves, scores, result)")
     args = ap.parse_args()
 
     opts1 = [o.split("=", 1) for o in args.e1_options]
@@ -216,13 +221,14 @@ def main():
             except queue.Empty:
                 break
             white, black = (e1, e2) if e1_white else (e2, e1)
+            trace = [] if args.dump else None
             try:
                 for e in (e1, e2):  # fresh TT per game, like the TC harness
                     e.send("ucinewgame")
                     e.sync()
                 res, plies, dsum, mcnt = play_game(
                     white, black, fen, args.nodes, args.adj_cp,
-                    args.adj_plies, args.ply_cap)
+                    args.adj_plies, args.ply_cap, trace)
             except EngineDied as exc:
                 # Log a self-contained repro and restart both engines
                 print(f"ENGINE CRASH: {exc}", flush=True)
@@ -241,6 +247,15 @@ def main():
                 jobs.task_done()
                 continue
             e1_res = res if e1_white else -res
+            if args.dump:
+                import json as _json
+                with lock, open(args.dump, "a", encoding="utf-8") as df:
+                    df.write(_json.dumps({
+                        "fen": fen, "e1_white": e1_white, "result_white": res,
+                        "e1_result": e1_res,
+                        "moves": [t[0] for t in trace],
+                        "scores": [t[1] for t in trace],
+                        "depths": [t[2] for t in trace]}) + "\n")
             with lock:
                 tally["games"] += 1
                 tally["plies"] += plies

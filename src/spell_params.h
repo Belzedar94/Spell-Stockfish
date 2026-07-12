@@ -55,6 +55,12 @@ extern int SpellLmrMoveCountCap;  // 24
 extern int SpellGateHistOrderWeight;  // 2
 extern int SpellGateHistStatWeight;   // 2
 
+// Relevance gate for the SPELL stage: a cast is worth at most about a
+// tempo plus bounded tactics, so nodes whose static eval sits further
+// than this below alpha skip the gated-quiet expansion entirely
+// (PV nodes and nodes with our king under attack always search spells).
+extern int SpellStageMargin;  // 400
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

@@ -57,7 +57,8 @@ class MovePicker {
                const SharedHistories*,
                int,
                ExtMove**,
-               Move*);
+               Move*,
+               bool allowSpells = true);
     MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove**, Move*);
     ~MovePicker() { *arenaTop -= MAX_MOVES; }
     Move next_move();
@@ -83,6 +84,7 @@ class MovePicker {
     Depth                        depth;
     int                          ply;
     bool                         skipQuiets = false;
+    bool                         allowSpells = true;
     ExtMove**                    arenaTop;
     ExtMove*                     moves;
     Move*                        genScratch;

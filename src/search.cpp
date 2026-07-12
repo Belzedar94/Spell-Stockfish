@@ -1140,9 +1140,17 @@ moves_loop:  // When in check, search starts here
             enemyRoyal = pos.square<KING>(~us);
     }
 
+    // Relevance gate for the spell stage: PV nodes, nodes with our king
+    // under attack (defensive freeze) and nodes whose static eval is
+    // within SpellStageMargin of alpha search gated quiets; nodes failing
+    // low beyond what a cast could bridge skip the whole expansion.
+    const bool allowSpells = PvNode || ourRoyalAttackers
+                          || !is_valid(ss->staticEval)
+                          || ss->staticEval + SpellStageMargin >= alpha;
+
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &gateHistory,
                   &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(),
-                  gen_scratch());
+                  gen_scratch(), allowSpells);
 
     value = bestValue;
 
