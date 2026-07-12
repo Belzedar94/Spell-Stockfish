@@ -31,7 +31,7 @@ Decisiones de alcance (propietario):
 | S4 | Pipeline end-to-end: datagen nativo ✅ formato-verificado, granja ✅, loader ✅, paso GPU ✅, serializador byte-idéntico ✅ → **run6 real: generar datos + entrenar + cargar + jugar** | ⏭ EN CURSO |
 | S5 | Suite obligatoria: spell_tests ampliado (release+debug), perft.sh, protocol.sh (UCI+XBoard), reprosearch.sh, signature.sh (corpus spell), instrumented (ASan/UBSan), pipeline-CI; sin skips nuevos sin justificar | ⏳ |
 | S6 | Protocolos y bindings: XBoard/CECP; API compartida; wheel pyffish-spell; ffish.js CJS+ESM; WASM ligero y NNUE; tests de paridad native/Python/JS/WASM | ⏳ |
-| S7 | OpenBench-spell: servidor + workers multi-máquina, SPRT, SPSA, gestión de redes; adaptación del fork shatranj | ⏳ |
+| S7 | OpenBench multi-proyecto (torre de control para Spell-Stockfish, Atomic-Stockfish y sucesivos): servidor + workers multi-máquina, SPRT, SPSA, redes por SHA; ruteo variante→runner (cutechess para variantes que conoce, p.ej. atomic; uci-pair-runner para spell y exóticas) — ver docs/openbench-spell.md | ⏳ |
 | S8 | Molino de ideas: búsqueda (candidatos en AUDIT: dominancia del base, descomposición aditiva del producto base×gate, forense de derrotas) y redes (arquitecturas, datos, distill) con gates SPRT | ⏳ |
 
 Orden propuesto: S4 → S5 → S7 → S6 → S8 (OpenBench antes que bindings para desbloquear el
