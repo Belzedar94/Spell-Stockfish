@@ -22,21 +22,23 @@
 
 namespace Stockfish {
 
-int MaxFreezeGates = 12;
-int MaxJumpGates   = 6;
+// Defaults from the first SPSA session (600 self-play pairs at 150k
+// nodes/move, 2026-07-12 — see AUDIT.md phase 4.5)
+int MaxFreezeGates = 9;
+int MaxJumpGates   = 4;
 
-int SpellGateKingBonus     = 10000;
-int SpellGateKingRingBonus = 50000;
+int SpellGateKingBonus     = 11418;
+int SpellGateKingRingBonus = 57185;
 
 int SpellDepthPenaltyTactical = 1;
-int SpellDepthPenaltyQuiet    = 2;
+int SpellDepthPenaltyQuiet    = 3;
 
-int SpellTacticalLmrBonus = 1024;
+int SpellTacticalLmrBonus = 1272;
 
-int SpellLmrMoveCountCap = 24;
+int SpellLmrMoveCountCap = 43;
 
-int SpellGateHistOrderWeight = 2;
-int SpellGateHistStatWeight  = 2;
+int SpellGateHistOrderWeight = 1;
+int SpellGateHistStatWeight  = 1;
 
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
