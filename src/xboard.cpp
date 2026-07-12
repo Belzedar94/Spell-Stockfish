@@ -18,6 +18,7 @@
 
 #include "xboard.h"
 
+#include <cstdlib>
 #include <deque>
 #include <iostream>
 #include <optional>
@@ -62,6 +63,7 @@ void XBoardEngine::set_board(const std::string& fen) {
     startFen = fen;
     moveList.clear();
     doneMoves.clear();
+    resultClaimed = false;
 
     states  = StateListPtr(new std::deque<StateInfo>(1));
     auto ok = !pos.set(startFen, false, &states->back()).has_value();
@@ -87,6 +89,7 @@ void XBoardEngine::take_back() {
     states->pop_back();
     doneMoves.pop_back();
     moveList.pop_back();
+    resultClaimed = false;
 }
 
 // game_result() detects the end of a spell-chess game on the mirror board
@@ -126,7 +129,7 @@ void XBoardEngine::start_search(bool analysis) {
     std::string result;
     if (game_result(result))
     {
-        if (!analysis)
+        if (!analysis && !resultClaimed.exchange(true))
             sync_cout << result << sync_endl;
         return;
     }
@@ -164,6 +167,9 @@ void XBoardEngine::stop_search(bool discard) {
     engine.stop();
     engine.wait_for_search_finished();
     discardBestmove = false;
+
+    // Answer the pings that arrived while the engine was thinking
+    flush_pongs();
 }
 
 // send_features() answers 'protover N' with the CECP feature negotiation
@@ -176,8 +182,11 @@ void XBoardEngine::send_features() {
     for (const OptionInfo& o : option_infos())
     {
         // Threads and Hash are driven by the dedicated 'cores' and 'memory'
-        // commands, and UCI_Variant is redundant for a single-variant engine
-        if (o.name == "Threads" || o.name == "Hash" || o.name == "UCI_Variant")
+        // commands, UCI_Variant is redundant for a single-variant engine and
+        // UCI_Chess960 does not apply to spell-chess (and is not propagated
+        // to the mirror, so exposing it could only desync castling notation)
+        if (o.name == "Threads" || o.name == "Hash" || o.name == "UCI_Variant"
+            || o.name == "UCI_Chess960")
             continue;
 
         std::ostringstream ss;
@@ -217,13 +226,22 @@ void XBoardEngine::send_variant_setup() {
     sync_cout << "piece J& " << sync_endl;
 }
 
-// set_option_value() routes a value to the OptionsMap in UCI syntax
+// set_option_value() routes a value to the OptionsMap in UCI syntax.
+// Options cannot change under a running search (Threads resizes thread
+// pools), and blindly waiting on an infinite analysis search would deadlock
+// the input thread — the only thread that could stop it. So the search is
+// aborted first, and analysis is relaunched afterwards.
 void XBoardEngine::set_option_value(const std::string& name, const std::string& value) {
 
-    engine.wait_for_search_finished();
+    bool wasAnalyzing = analyzeMode && !moveAfterSearch;
+    // Game searches end on their own: let the pending move be printed
+    stop_search(wasAnalyzing);
 
     std::istringstream ss("name " + name + " value " + value);
     engine.get_options().setoption(ss);
+
+    if (wasAnalyzing)
+        start_search(true);
 }
 
 // option_infos() re-describes the engine options by parsing the UCI dump of
@@ -289,6 +307,11 @@ std::string XBoardEngine::format_xboard_score(const Score& s) {
 // depth score time(cs) nodes seldepth nps tbhits \t pv
 void XBoardEngine::on_update_full(const Engine::InfoFull& info) {
 
+    // A search being aborted must not leak thinking lines of the old
+    // position after the command that killed it was already processed
+    if (discardBestmove)
+        return;
+
     std::stringstream ss;
 
     ss << info.depth << " "                  //
@@ -314,14 +337,32 @@ void XBoardEngine::on_bestmove(std::string_view bestmove) {
 
     Move m = UCIEngine::to_move(pos, std::string(bestmove));
     if (m == Move::none())  // "(none)": no legal move, result claimed elsewhere
+    {
+        flush_pongs();
         return;
+    }
 
     sync_cout << "move " << bestmove << sync_endl;
     apply_move(m);
 
     std::string result;
-    if (game_result(result))
+    if (game_result(result) && !resultClaimed.exchange(true))
         sync_cout << result << sync_endl;
+
+    flush_pongs();
+}
+
+// flush_pongs() answers every ping deferred while the engine was thinking
+// on its own move (CECP: "reply after moving")
+void XBoardEngine::flush_pongs() {
+
+    std::vector<std::string> pongs;
+    {
+        std::lock_guard<std::mutex> lock(pongMutex);
+        pongs.swap(pendingPongs);
+    }
+    for (const auto& p : pongs)
+        sync_cout << "pong " << p << sync_endl;
 }
 
 // process_command() dispatches a single XBoard protocol command
@@ -338,8 +379,24 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
     {
         if (!(is >> token))
             token = "";
+        // CECP: a ping received while thinking on our move is answered only
+        // after the move — XBoard arbitrates the force/move race with it.
+        // Double-checked under the lock against a concurrent search end.
+        if (moveAfterSearch)
+        {
+            std::lock_guard<std::mutex> lock(pongMutex);
+            if (moveAfterSearch)
+            {
+                pendingPongs.push_back(token);
+                return;
+            }
+        }
         sync_cout << "pong " << token << sync_endl;
     }
+
+    else if (token == ".")
+    {}  // Optional analysis stat update; must never disturb the search
+        // (WinBoard sends it every ~2s with Periodic Updates, the default)
 
     else if (token == "new")
     {
@@ -386,20 +443,25 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
             // Moves per session (0 = whole game)
             is >> limits.movestogo;
 
-            // Base time, in minutes or "minutes:seconds"
-            is >> token;
+            // Base time, in minutes or "minutes:seconds". std::atoi instead
+            // of std::stoi: a malformed GUI line must not terminate the
+            // process (stoi throws, and this build has no exceptions)
+            if (!(is >> token))
+                token.clear();
             int  base = 0;
             auto idx  = token.find(':');
             if (idx != std::string::npos)
-                base = std::stoi(token.substr(0, idx)) * 60 + std::stoi(token.substr(idx + 1));
+                base = std::atoi(token.substr(0, idx).c_str()) * 60
+                     + std::atoi(token.substr(idx + 1).c_str());
             else
-                base = std::stoi(token) * 60;
+                base = std::atoi(token.c_str()) * 60;
             limits.time[WHITE] = limits.time[BLACK] = TimePoint(base) * 1000;
 
             // Increment, in (possibly fractional) seconds
             double inc = 0;
             is >> inc;
             limits.inc[WHITE] = limits.inc[BLACK] = TimePoint(inc * 1000);
+            clocksInitialized = true;
         }
         else if (token == "sd")
             is >> limits.depth;
@@ -409,6 +471,7 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
             is >> secs;
             limits.movetime    = TimePoint(secs * 1000);
             limits.time[WHITE] = limits.time[BLACK] = 0;
+            clocksInitialized  = false;
         }
         // Note: 'time'/'otim' are in centi-, not milliseconds, and they
         // arrive before the usermove they refer to, so they are assigned by
@@ -419,16 +482,18 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
             i64 csec = 0;
             is >> csec;
             Color us = playColor != COLOR_NB ? playColor : pos.side_to_move();
-            if (limits.time[us])
-                limits.time[us] = TimePoint(csec) * 10;
+            // Clamp: CECP sends negative times after a flag fall, and a
+            // literal 0 must not freeze the clock updates forever
+            if (clocksInitialized)
+                limits.time[us] = std::max<TimePoint>(TimePoint(csec) * 10, 1);
         }
         else  // otim
         {
             i64 csec = 0;
             is >> csec;
             Color them = playColor != COLOR_NB ? ~playColor : ~pos.side_to_move();
-            if (limits.time[them])
-                limits.time[them] = TimePoint(csec) * 10;
+            if (clocksInitialized)
+                limits.time[them] = std::max<TimePoint>(TimePoint(csec) * 10, 1);
         }
     }
 
@@ -543,16 +608,27 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
             sync_cout << "tellusererror " << err->what() << sync_endl;
         else
             sync_cout << "\nNodes searched: " << std::get<u64>(result) << "\n" << sync_endl;
+        if (analyzeMode)
+            start_search(true);
     }
 
     else if (token == "d")
+    {
+        // The mirror may be mutated by the search thread when a game-play
+        // search ends: settle the search before serializing the position
+        stop_search(false);
         sync_cout << pos << sync_endl;
+        if (analyzeMode)
+            start_search(true);
+    }
 
     else if (token == "eval")
     {
         stop_search();
         if (!engine.set_position(startFen, moveList))
             engine.trace_eval();
+        if (analyzeMode)
+            start_search(true);
     }
 
     // Move strings ('usermove <mv>' or a bare move) and unknown commands
@@ -561,6 +637,16 @@ void XBoardEngine::process_command(std::string token, std::istringstream& is) {
         bool isMove = token == "usermove";
         if (isMove)
             is >> token;
+
+        // While no game-play search is pending the mirror is stable, so a
+        // token that is not a legal move can be rejected WITHOUT stopping
+        // the search: unknown GUI chatter must not kill an analysis.
+        if (!moveAfterSearch && UCIEngine::to_move(pos, token) == Move::none())
+        {
+            sync_cout << (isMove ? "Illegal move: " : "Error (unknown command): ") << token
+                      << sync_endl;
+            return;
+        }
 
         // If the engine was thinking, let it move first to stay in sync
         stop_search(false);

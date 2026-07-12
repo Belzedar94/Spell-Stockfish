@@ -61,13 +61,16 @@ class UCIEngine {
     auto& engine_options() { return engine.get_options(); }
 
    private:
+    // XBoard/CECP adapter, created by the first 'xboard' command; while it
+    // exists, loop() delegates every command line to it (except 'quit').
+    // Declared BEFORE engine on purpose: members are destroyed in reverse
+    // order, and the adapter's callbacks (capturing it) run on the search
+    // thread, which is only joined in ~Engine — the adapter must outlive it.
+    std::unique_ptr<XBoardEngine> xbAdapter;
+
     Engine      engine;
     CommandLine cli;
     std::string currentCmd;
-
-    // XBoard/CECP adapter, created by the first 'xboard' command; while it
-    // exists, loop() delegates every command line to it (except 'quit').
-    std::unique_ptr<XBoardEngine> xbAdapter;
 
     static void print_info_string(std::string_view str);
 

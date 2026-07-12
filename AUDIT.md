@@ -587,4 +587,35 @@ tolerate pre-handshake text).
 **Decision**: S6 XBoard half done; bindings (Python/JS/WASM) remain. Adversarial verify
 round on the adapter queued.
 
+## S6.1 — XBoard adapter hardening after the adversarial round (2026-07-12)
+
+**Findings (2 agents: hostile C++ review + experimental protocol attack on the real
+binary) — all fixed and regression-tested**:
+- CRITICAL use-after-free, reproduced 4/4 (0xC0000005): 'quit' during a game search.
+  xbAdapter was declared after Engine, so it died first while the search thread could still
+  run its callbacks. Fixed: member reordered (adapter now outlives ~Engine's join) + loop()
+  waits for the search on quit in CECP mode + listeners never swapped under a live search.
+- CRITICAL permanent deadlock: 'option'/'easy'/'hard' during analyze called
+  wait_for_search_finished() on an infinite search only the blocked thread could stop.
+  Fixed: set_option_value() aborts the search and relaunches analysis afterwards.
+- MAJOR: WinBoard sends '.' every ~2s in analyze (Periodic Updates default); the fallback
+  path stopped the search and never restarted it — analysis died permanently. Fixed:
+  explicit '.' no-op + unknown tokens are rejected without touching the search (probe the
+  mirror first when no game move is pending).
+- MAJOR: malformed 'level' (e.g. 'level 0 x 0') killed the process — std::stoi throws and
+  the build uses -fno-exceptions (std::terminate). Fixed with atoi + failure guards.
+- Minor: 'd' torn-read race vs on_bestmove; stale thinking lines of the old position leaking
+  after setboard/exit (on_update_full now gated by discardBestmove); 'time 0' froze clock
+  updates forever + negative CECP times accepted (clocksInitialized flag + clamp to 1ms);
+  pong answered while thinking (now deferred until after the move per CECP spec — XBoard
+  arbitrates the force/move race with it); double result claims (resultClaimed flag);
+  UCI_Chess960 no longer announced (was not propagated to the mirror).
+- Noted, not fixed: TUNE CSV dump prints before the handshake (GUIs tolerate it; disappears
+  in non-TUNE builds); mirror mutation from the search thread remains the FSF concurrency
+  model (serial GUI traffic).
+
+**Validation**: tests/xboard_hostile_test.py NEW (6 attack scenarios as permanent
+regressions) PASS 18/18 checks; xboard_test.py conformance PASS; bench signature still
+2,395,529 (search untouched). Both wired into run_suite.
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).

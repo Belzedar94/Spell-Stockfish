@@ -53,6 +53,8 @@ def main():
                        [py, "repro_test.py", args.engine, args.net]))
     results.append(run("protocolo XBoard/CECP (xboard_test.py)",
                        [py, "xboard_test.py", args.engine]))
+    results.append(run("CECP hostil (xboard_hostile_test.py)",
+                       [py, "xboard_hostile_test.py", args.engine]))
 
     depth = "1" if args.quick else "2"
     results.append(run(f"perft suite d{depth} vs oraculo",

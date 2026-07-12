@@ -108,7 +108,13 @@ void UCIEngine::loop() {
         is >> token;
 
         if (token == "quit" || token == "stop")
+        {
             engine.stop();
+            // In CECP mode the search thread runs the adapter's callbacks:
+            // join it before destruction starts tearing anything down
+            if (xbAdapter && token == "quit")
+                engine.wait_for_search_finished();
+        }
 
         // 'xboard' switches the session to the XBoard/CECP protocol: the
         // adapter installs its own search listeners and, from then on,
@@ -116,7 +122,12 @@ void UCIEngine::loop() {
         else if (token == "xboard")
         {
             if (!xbAdapter)
+            {
+                // Never swap the search listeners under a live search
+                engine.stop();
+                engine.wait_for_search_finished();
                 xbAdapter = std::make_unique<XBoardEngine>(engine);
+            }
         }
 
         else if (xbAdapter)

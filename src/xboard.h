@@ -20,6 +20,7 @@
 #define XBOARD_H_INCLUDED
 
 #include <atomic>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -67,6 +68,7 @@ class XBoardEngine {
 
     void on_update_full(const Engine::InfoFull& info);
     void on_bestmove(std::string_view bestmove);
+    void flush_pongs();
 
     static std::string format_xboard_score(const Score& s);
 
@@ -84,6 +86,8 @@ class XBoardEngine {
 
     Color playColor   = COLOR_NB;  // side the engine plays, COLOR_NB = force mode
     bool  analyzeMode = false;
+    // 'time'/'otim' only touch clocks after 'level' initialised them
+    bool clocksInitialized = false;
 
     // Set while a game-play search is running; the bestmove callback only
     // prints/applies a move when it is still true.
@@ -91,6 +95,15 @@ class XBoardEngine {
     // Raised before aborting a search ('force'/'result'/'new'/...) so that
     // the bestmove callback swallows the pending move.
     std::atomic<bool> discardBestmove{false};
+    // A game result is claimed at most once per mirror game
+    std::atomic<bool> resultClaimed{false};
+
+    // CECP: a ping received while thinking on our own move must be answered
+    // only after the move is printed (XBoard arbitrates the force/move race
+    // with it). Deferred pongs are flushed by the bestmove callback (search
+    // thread) or after an abort (input thread), hence the mutex.
+    std::mutex               pongMutex;
+    std::vector<std::string> pendingPongs;
 };
 
 }  // namespace Stockfish
