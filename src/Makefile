@@ -1537,3 +1537,25 @@ $(UNIVERSAL_EXE): $(UNIVERSAL_ENTRY_OBJ) $(NNUE_EMBED_OBJ) $(ARCH_OBJS)
 	@echo "Universal binary built: $@"
 
 endif  # UNIVERSAL_BUILD
+
+### ==========================================================================
+### Section 12. OpenBench build shim
+### ==========================================================================
+# OpenBench workers build public engines with a bare `make -j EXE=<out>
+# [CC=<compiler>] [EVALFILE=<net>]`: no explicit target, no COMP/ARCH. The
+# default goal must therefore produce a playable native binary. ARCH already
+# defaults to native; COMP is dispatched on the host OS. EVALFILE is
+# intentionally IGNORED here: spell nets are legacy-format runtime nets
+# (loaded via the UCI EvalFile option), not SF-embeddable networks, and the
+# embedded default (EvalFileDefaultName) is fetched by the `net` target.
+
+ifeq ($(OS),Windows_NT)
+    OPENBENCH_COMP = mingw
+else
+    OPENBENCH_COMP = gcc
+endif
+
+openbench:
+	+$(MAKE) build COMP=$(OPENBENCH_COMP)
+
+.DEFAULT_GOAL := openbench
