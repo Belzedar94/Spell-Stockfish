@@ -833,6 +833,9 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   LLR -0.72 → OUT (neutral-negative). Restricting null move while the opponent holds
   a freeze does not pay at STC — the unsoundness it guards against is apparently
   rarer than the pruning it gives up.
+- #29 lmp-scale-200 (SpellLmpScalePct=200): stopped at 1,730 games, +825 -842 =63,
+  LLR -0.50 → OUT (pure neutral). Doubling the LMP threshold neither helps nor hurts:
+  late-move counting at spell branching is apparently already saturated either way.
 
 ## S6 bindings + Atomic-discipline adoptions (2026-07-13)
 
