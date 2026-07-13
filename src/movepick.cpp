@@ -428,6 +428,31 @@ top:
             endCur = endSpells = score<QUIETS>(genScratch, endGen);
 
             partial_insertion_sort(cur, endCur, -3560 * depth);
+
+            // Pillar B (SpellDecompose): collapse the sorted gated product
+            // to ONE declaration sentinel per viable (spell, gate) — the
+            // first occurrence carries the gate's best score, so the
+            // sentinel list inherits the ordering. Useless gates (already
+            // per-gate properties) are dropped here; the root keeps the
+            // classic expansion (searchmoves surface).
+            if (SpellDecompose && ply != 0)
+            {
+                bool     seen[SPELL_NB][SQUARE_NB] = {};
+                ExtMove* out                       = cur;
+                for (ExtMove* it = cur; it != endCur; ++it)
+                {
+                    const SpellType sp = it->spell_type();
+                    const Square    g  = it->gate_sq();
+                    if (seen[sp][g] || is_useless_spell(pos, *it))
+                        continue;
+                    seen[sp][g] = true;
+                    const int keep = it->value;
+                    *out           = Move::make_spell(Move(g, g), sp, g);
+                    out->value     = keep;
+                    ++out;
+                }
+                endCur = endSpells = out;
+            }
         }
 
         ++stage;
@@ -437,6 +462,12 @@ top:
         if (select([&]() {
                 if (ply == 0)  // searchmoves may force any legal cast
                     return true;
+                // Declaration sentinels (SpellDecompose) were usefulness-
+                // filtered at collapse time; only the tactical policy applies
+                if (SpellDecompose && cur->from_sq() == cur->to_sq())
+                    return !onlyTacticalSpells
+                        || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
+                                             spellOurRoyal);
                 if (is_useless_spell(pos, *cur))
                     return false;
                 return !onlyTacticalSpells

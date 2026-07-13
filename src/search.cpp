@@ -1180,6 +1180,95 @@ moves_loop:  // When in check, search starts here
         if (move == excludedMove)
             continue;
 
+        // ---- Pillar B (SpellDecompose): cast declaration sentinel ----
+        // Expand its quiet completions at THIS ply (same side, same window:
+        // max-max, no sign flip). Gated captures were already searched
+        // classically by the capture stages; the TT move is skipped because
+        // the node already searched it. The sentinel occupies one moveCount
+        // slot, so LMP/ordering see casts as ~130 edges instead of ~1650.
+        if (SpellDecompose && move.is_spell() && move.from_sq() == move.to_sq())
+        {
+            if (rootNode || !pos.can_cast(us, move.spell_type()))
+                continue;
+
+            ss->moveCount = ++moveCount;
+            pos.do_cast(move.spell_type(), move.gate_sq());
+
+            Move        comp[256];
+            Move* const endComp = generate_pending(pos, comp);
+
+            // Quiet completions ordered by main history
+            ExtMove decList[256];
+            int     nDec = 0;
+            for (Move* b = comp; b != endComp; ++b)
+                if (!pos.capture(*b))
+                {
+                    decList[nDec]       = *b;
+                    decList[nDec].value = mainHistory[us][b->raw() & 0xFFFF];
+                    ++nDec;
+                }
+            std::sort(decList, decList + nDec,
+                      [](const ExtMove& x, const ExtMove& y) { return x.value > y.value; });
+
+            for (int i = 0; i < nDec; ++i)
+            {
+                const Move full = pos.compose_pending(decList[i]);
+                if (full == ttData.move)
+                    continue;
+
+                pos.undo_cast();
+                if (!pos.legal(full))
+                {
+                    pos.do_cast(move.spell_type(), move.gate_sq());
+                    continue;
+                }
+
+                do_move(pos, full, st, ss);
+
+                // Light internal LMR: completions after the first two get
+                // one ply less, then verify on fail-high
+                const Depth nd = std::max(0, depth - 1 - (i > 1));
+                value = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, nd, true);
+                if (value > alpha && nd < depth - 1)
+                    value =
+                      -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, depth - 1, !cutNode);
+                if (PvNode && value > alpha)
+                {
+                    (ss + 1)->pv = &pv;
+                    (ss + 1)->pv->clear();
+                    value = -search<PV>(pos, ss + 1, -beta, -alpha, depth - 1, false);
+                }
+
+                undo_move(pos, full);
+                pos.do_cast(move.spell_type(), move.gate_sq());
+
+                if (threads.stop.load(std::memory_order_relaxed))
+                {
+                    pos.undo_cast();
+                    return VALUE_ZERO;
+                }
+
+                if (value > bestValue)
+                {
+                    bestValue = value;
+                    if (value > alpha)
+                    {
+                        bestMove = full;
+                        if (PvNode && !rootNode)
+                            ss->pv->update(full, (ss + 1)->pv);
+                        if (value >= beta)
+                            break;
+                        alpha = value;
+                    }
+                }
+            }
+            pos.undo_cast();
+
+            if (bestValue >= beta)
+                break;
+            continue;
+        }
+
         // Check for legality
         if (!pos.legal(move))
             continue;
