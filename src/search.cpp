@@ -1225,9 +1225,9 @@ moves_loop:  // When in check, search starts here
 
                 do_move(pos, full, st, ss);
 
-                // Light internal LMR: completions after the first two get
-                // one ply less, then verify on fail-high
-                const Depth nd = std::max(0, depth - 1 - (i > 1));
+                // Graded internal LMR over completions (classic-late-move
+                // magnitudes), verified on fail-high below
+                const Depth nd = std::max(0, depth - 1 - (i > 0) - i / 3);
                 value = -search<NonPV>(pos, ss + 1, -(alpha + 1), -alpha, nd, true);
                 if (value > alpha && nd < depth - 1)
                     value =

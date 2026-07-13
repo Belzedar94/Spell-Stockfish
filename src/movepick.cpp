@@ -463,11 +463,16 @@ top:
                 if (ply == 0)  // searchmoves may force any legal cast
                     return true;
                 // Declaration sentinels (SpellDecompose) were usefulness-
-                // filtered at collapse time; only the tactical policy applies
+                // filtered at collapse time. Unlike the classic stage, quiet
+                // sentinels DO honor skipQuiets: casts are quiets, and LMP
+                // finally counting them is half the point of decomposing.
                 if (SpellDecompose && cur->from_sq() == cur->to_sq())
-                    return !onlyTacticalSpells
-                        || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
+                {
+                    if (!onlyTacticalSpells && !skipQuiets)
+                        return true;
+                    return is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
                                              spellOurRoyal);
+                }
                 if (is_useless_spell(pos, *cur))
                     return false;
                 return !onlyTacticalSpells
