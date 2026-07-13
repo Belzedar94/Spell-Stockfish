@@ -81,8 +81,8 @@ SRCS = attacks.cpp benchmark.cpp bitboard.cpp evaluate.cpp main.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp \
 	nnue/nnue_accumulator.cpp nnue/nnue_misc.cpp nnue/network.cpp \
 	nnue/features/half_ka_v2_hm.cpp nnue/features/full_threats.cpp \
-	spellnnue/spell_nnue.cpp \
-	engine.cpp score.cpp memory.cpp
+	datagen.cpp spell_params.cpp spellnnue/spell_nnue.cpp \
+	engine.cpp score.cpp memory.cpp xboard.cpp
 
 OTHER_SRCS = universal/entry_x86.cpp universal/entry_arm64.cpp universal/entry_riscv64.cpp universal/nnue_embed.cpp
 
@@ -92,7 +92,7 @@ HEADERS = attacks.h benchmark.h bitboard.h evaluate.h misc.h movegen.h movepick.
 		nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h nnue/nnue_accumulator.h \
 		nnue/nnue_architecture.h nnue/nnue_common.h nnue/nnue_feature_transformer.h nnue/simd.h \
 		nnue/nnz_helper.h position.h search.h syzygy/tbprobe.h thread.h thread_win32_osx.h timeman.h \
-		tt.h tune.h types.h uci.h ucioption.h perft.h nnue/network.h engine.h score.h numa.h memory.h shm.h shm_linux.h
+		tt.h tune.h types.h uci.h ucioption.h perft.h nnue/network.h engine.h score.h numa.h memory.h shm.h shm_linux.h xboard.h
 
 OBJS = $(notdir $(SRCS:.cpp=.o))
 
@@ -1537,3 +1537,35 @@ $(UNIVERSAL_EXE): $(UNIVERSAL_ENTRY_OBJ) $(NNUE_EMBED_OBJ) $(ARCH_OBJS)
 	@echo "Universal binary built: $@"
 
 endif  # UNIVERSAL_BUILD
+
+### ==========================================================================
+### Section 12. OpenBench build shim
+### ==========================================================================
+# OpenBench workers build public engines with a bare `make -j EXE=<out>
+# [CC=<compiler>] [EVALFILE=<net>]`: no explicit target, no COMP/ARCH. The
+# default goal must therefore produce a playable native binary. ARCH already
+# defaults to native; COMP is dispatched on the host OS.
+#
+# EVALFILE (the net OpenBench assigns to a test) cannot be embedded through
+# the stock incbin path — spell nets are legacy-format runtime nets loaded
+# via the UCI EvalFile option. Instead its path is baked in as the option's
+# DEFAULT, loaded at engine startup (SPELL_EVALFILE_DEFAULT in engine.cpp).
+# The worker passes the path with forward slashes, so it is a valid C string
+# literal. The embedded stock default (EvalFileDefaultName) is still fetched
+# by the `net` target either way.
+
+ifdef EVALFILE
+    # Single-quoted so paths with spaces survive the shell's word splitting
+    CXXFLAGS += -DSPELL_EVALFILE_DEFAULT='"$(EVALFILE)"'
+endif
+
+ifeq ($(OS),Windows_NT)
+    OPENBENCH_COMP = mingw
+else
+    OPENBENCH_COMP = gcc
+endif
+
+openbench:
+	+$(MAKE) build COMP=$(OPENBENCH_COMP)
+
+.DEFAULT_GOAL := openbench

@@ -1,5 +1,8 @@
 name: Spell CI
 
+# NOTE: Actions is currently blocked by billing; this workflow must stay
+# correct so it runs unchanged once the account is unblocked.
+
 on:
   push:
     branches:
@@ -34,9 +37,64 @@ jobs:
           echo "$out"
           echo "$out" | grep -q 'Nodes searched: 3287752'
 
-      - name: Rule unit tests + suite d1 parity
+      # run_suite --quick orchestrates: spell_tests.py (units + suite d1),
+      # protocol_test.py, repro_test.py and compare_perft.py at depth 1.
+      # --net "" skips EvalFile loading (the spell net is not in the repo;
+      # the embedded/default net covers the runs). --baseline points at our
+      # own binary: the reference oracle only lives locally, and the quick
+      # perft gate validates totals against perft_spell.csv anyway — the
+      # baseline engine is only consulted to isolate diffs after a FAIL.
+      # Absolute engine path: run_suite launches compare_perft.py from
+      # tests/reference, so relative paths would resolve differently there.
+      - name: S5 suite (units + protocolo + repro + perft d1)
         working-directory: tests
-        run: python3 spell_tests.py ../src/stockfish
+        run: python3 run_suite.py --quick --engine "$GITHUB_WORKSPACE/src/stockfish" --baseline "$GITHUB_WORKSPACE/src/stockfish" --net ""
 
       - name: Bench sanity
         run: ./stockfish bench 16 1 8 default depth
+
+      # Registration mode unless the repo defines the SPELL_BENCH_SIG
+      # variable (Settings > Secrets and variables > Actions > Variables);
+      # once set, any signature drift fails the job.
+      - name: Bench signature
+        working-directory: tests
+        env:
+          SPELL_BENCH_SIG: ${{ vars.SPELL_BENCH_SIG }}
+        run: python3 signature_test.py ../src/stockfish ""
+
+  # S5 instrumented battery: the asserts run locally on Windows; ASan/UBSan
+  # need Linux, so they live here. Reduced battery — sanitizers are ~10x
+  # slower, so unit tests + perft d1 + a short bench give the coverage that
+  # matters (movegen/legality/eval paths) within the job budget.
+  sanitizers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: src
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache networks
+        uses: actions/cache@v4
+        with:
+          path: src/*.nnue
+          key: nnue-${{ hashFiles('src/evaluate.h') }}
+
+      - name: Build with ASan+UBSan
+        run: make -j2 build ARCH=x86-64-avx2 debug=yes optimize=yes sanitize="address undefined"
+
+      - name: Unit tests under sanitizers
+        working-directory: tests
+        env:
+          UBSAN_OPTIONS: halt_on_error=1
+        run: python3 spell_tests.py ../src/stockfish
+
+      - name: Perft d1 + bench under sanitizers
+        env:
+          UBSAN_OPTIONS: halt_on_error=1
+        run: |
+          out=$( (printf 'position startpos\ngo perft 1\n'; sleep 3) | ./stockfish | grep 'Nodes searched' )
+          echo "$out"
+          echo "$out" | grep -q 'Nodes searched: 1878'
+          ./stockfish bench 16 1 5 default depth

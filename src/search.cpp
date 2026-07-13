@@ -42,6 +42,7 @@
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
 #include "position.h"
+#include "spell_order.h"
 #include "spell_params.h"
 #include "spellnnue/spell_nnue.h"
 #include "syzygy/tbprobe.h"
@@ -183,8 +184,12 @@ Search::Worker::Worker(SharedState&                    sharedState,
     refreshTable(network[token]) {
     // Raw new[]: ExtMove/Move are trivially constructible, so the arena
     // pages stay untouched (hence uncommitted) until a ply first uses them
-    movesArena.reset(new ExtMove[usize(2) * (MAX_PLY + 10) * MAX_MOVES]);
+    // Sized for the worst nesting: one picker per ply plus singular
+    // re-entries and the ProbCut picker (all LIFO); pages commit on touch
+    movesArena.reset(new ExtMove[usize(4) * (MAX_PLY + 10) * MAX_MOVES]);
+    movesArenaTop = movesArena.get();
     genScratch.reset(new Move[MAX_MOVES]);
+    spellRefreshCache.clear();
     clear();
 }
 
@@ -214,11 +219,10 @@ void Search::Worker::start_searching() {
         // Spell chess: no moves at the root also happens on terminal
         // positions — our king captured (loss) or the enemy king captured
         // (win); a stall while attacked is a mate, otherwise stalemate.
-        const Value terminal =
-          !rootPos.count<KING>(rootPos.side_to_move())  ? -VALUE_MATE
-          : !rootPos.count<KING>(~rootPos.side_to_move()) ? VALUE_MATE
-          : rootPos.checkers()                            ? -VALUE_MATE
-                                                          : VALUE_DRAW;
+        const Value terminal = !rootPos.count<KING>(rootPos.side_to_move())  ? -VALUE_MATE
+                             : !rootPos.count<KING>(~rootPos.side_to_move()) ? VALUE_MATE
+                             : rootPos.checkers()                            ? -VALUE_MATE
+                                                                             : VALUE_DRAW;
         main_manager()->updates.onUpdateNoMoves({0, {terminal, rootPos}});
         main_manager()->updates.onBestmove(UCIEngine::move(Move::none()), "");
         return;
@@ -687,6 +691,7 @@ void Search::Worker::undo_null_move(Position& pos) { pos.undo_null_move(); }
 // Reset histories, usually before a new game
 void Search::Worker::clear() {
     mainHistory.fill(-5);
+    gateHistory.fill(0);
     captureHistory.fill(-699);
 
     // Each thread is responsible for clearing their part of shared history
@@ -1069,8 +1074,8 @@ Value Search::Worker::search(
     {
         assert(probCutBeta < VALUE_INFINITE && probCutBeta > beta);
 
-        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory,
-                      moves_buffer(ss->ply, 1), gen_scratch());
+        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory, arena_top(),
+                      gen_scratch());
         Depth      probCutDepth = depth - 4 - improving;
 
         while ((move = mp.next_move()) != Move::none())
@@ -1118,9 +1123,39 @@ moves_loop:  // When in check, search starts here
       (ss - 1)->continuationHistory, (ss - 2)->continuationHistory, (ss - 3)->continuationHistory,
       (ss - 4)->continuationHistory, (ss - 5)->continuationHistory, (ss - 6)->continuationHistory};
 
+    // Spell chess: royal context for classifying tactical freezes (zone
+    // touches the enemy king, silences our king's attackers, or freezes an
+    // attacked/major/king-attacking enemy piece), computed once per node
+    Bitboard ourRoyalAttackers = 0;
+    Square   ourRoyal = SQ_NONE, enemyRoyal = SQ_NONE;
+    if (pos.can_cast(us, SPELL_FREEZE))
+    {
+        if (pos.count<KING>(us))
+        {
+            ourRoyal          = pos.square<KING>(us);
+            ourRoyalAttackers = pos.attackers_to(ourRoyal) & pos.pieces(~us);
+        }
+        if (pos.count<KING>(~us))
+            enemyRoyal = pos.square<KING>(~us);
+    }
 
-    MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &captureHistory, contHist,
-                  &sharedHistory, ss->ply, moves_buffer(ss->ply, 0), gen_scratch());
+    // Relevance gate for the spell stage: PV nodes, nodes with our king
+    // under attack (defensive freeze) and nodes whose static eval is
+    // within SpellStageMargin of alpha search gated quiets; nodes failing
+    // low beyond what a cast could bridge skip the whole expansion.
+    const bool allowSpells = PvNode || ourRoyalAttackers || !is_valid(ss->staticEval)
+                          || ss->staticEval + SpellStageMargin >= alpha;
+
+    // Near the horizon, non-PV nodes with a safe king optionally expand only
+    // TACTICAL quiet spells: horizon nodes carry most of the tree, and a
+    // quiet cast there is worth at most about a tempo. Disabled by default
+    // (SpellQuietMinDepth = 0); a SPSA-tunable candidate.
+    const bool onlyTacticalSpells =
+      allowSpells && !PvNode && !ourRoyalAttackers && depth < SpellQuietMinDepth;
+
+    MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &gateHistory,
+                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch(),
+                  allowSpells, onlyTacticalSpells);
 
     value = bestValue;
 
@@ -1160,21 +1195,16 @@ moves_loop:  // When in check, search starts here
         movedPiece = pos.moved_piece(move);
         givesCheck = pos.gives_check(move);
 
+        // A tactical freeze is treated like a capture or a check throughout
+        // pruning, reductions and extensions (reference policy)
+        const bool tacticalSpell =
+          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal);
+
+        // Capturing the king ends the game: the terminal move is never pruned
+        const bool royalCapture = capture && type_of(pos.piece_on(move.to_sq())) == KING;
+
         // Calculate new depth for this move
         newDepth = depth - 1;
-
-        // Spell chess: gated moves multiply the branching factor enormously,
-        // so they are searched shallower (the reference's PotionDepthPenalty
-        // policy, worth a large amount of its Elo): quiet casts two plies,
-        // tactical casts one. The penalty may drop the move straight into
-        // quiescence (floor at 0, not 1).
-        if (move.is_spell())
-            newDepth =
-              std::max(0,
-                       newDepth
-                         - (pos.capture_stage(move) || pos.gives_check(move)
-                              ? SpellDepthPenaltyTactical
-                              : SpellDepthPenaltyQuiet));
 
         int delta = beta - alpha;
 
@@ -1187,7 +1217,7 @@ moves_loop:  // When in check, search starts here
 
         // Step 14. Pruning at shallow depths.
         // Depth conditions are important for mate finding.
-        if (!rootNode && pos.non_pawn_material(us) && !is_loss(bestValue))
+        if (!rootNode && !royalCapture && pos.non_pawn_material(us) && !is_loss(bestValue))
         {
             // Skip quiet moves if movecount exceeds our threshold
             if (moveCount >= (3 + depth * depth) / (2 - improving))
@@ -1196,13 +1226,13 @@ moves_loop:  // When in check, search starts here
             // Reduced depth of the next LMR search
             int lmrDepth = newDepth - r / 1024;
 
-            if (capture || givesCheck)
+            if (capture || givesCheck || tacticalSpell)
             {
                 Piece capturedPiece = pos.piece_on(move.to_sq());
                 int   captHist = captureHistory[movedPiece][move.to_sq()][type_of(capturedPiece)];
 
                 // Futility pruning for captures
-                if (!givesCheck && lmrDepth < 7)
+                if (!givesCheck && !tacticalSpell && lmrDepth < 7)
                 {
                     Value futilityValue = ss->staticEval + 231 + 232 * lmrDepth
                                         + PieceValue[capturedPiece] + 131 * captHist / 1024;
@@ -1220,6 +1250,15 @@ moves_loop:  // When in check, search starts here
             }
             else if (!ss->followPV || !PvNode)
             {
+                // Quiet spells with doubly negative continuation history are
+                // pruned outright (the reference's CounterMovePruneThreshold
+                // rule): with thousands of gated quiets per node, the
+                // depth-scaled threshold below almost never fires and the
+                // spell stage floods the tree with 1-ply probes
+                if (move.is_spell() && lmrDepth < 5 && (*contHist[0])[movedPiece][move.to_sq()] < 0
+                    && (*contHist[1])[movedPiece][move.to_sq()] < 0)
+                    continue;
+
                 int dIndex  = std::min(int(depth), int(lmrDivisor.size())) - 1;
                 int history = (*contHist[0])[movedPiece][move.to_sq()]
                             + (*contHist[1])[movedPiece][move.to_sq()]
@@ -1320,6 +1359,11 @@ moves_loop:  // When in check, search starts here
                 extension = -2;
         }
 
+        // Checks and tactical freezes are extended in stable-enough
+        // positions (reference policy)
+        else if ((givesCheck || tacticalSpell) && depth > 6 && std::abs(ss->staticEval) > 100)
+            extension = 1;
+
         u64 nodeCount = rootNode ? u64(nodes) : 0;
 
         // Step 16. Make the move
@@ -1328,13 +1372,30 @@ moves_loop:  // When in check, search starts here
         // Add extension to new depth
         newDepth += extension;
 
+        // Spell chess: gated moves multiply the branching factor enormously,
+        // so from depth 3 they are searched shallower (the reference's
+        // PotionDepthPenalty policy): one ply for tactical casts (captures,
+        // checks, tactical freezes), two for quiet ones. The penalty may
+        // drop the move straight into quiescence (floor at 0, not 1).
+        if (move.is_spell() && depth >= 3)
+            newDepth =
+              std::max(0, newDepth
+                            - (capture || givesCheck || tacticalSpell ? SpellDepthPenaltyTactical
+                                                                      : SpellDepthPenaltyQuiet));
+
         // Decrease reduction for PvNodes (*Scaler)
         if (ss->ttPv)
             r -= 2766 + PvNode * 1017 + (ttData.value > alpha) * 838
                + (ttData.depth >= depth) * (923 + cutNode * 955);
 
         r += 714;  // Base reduction offset to compensate for other tweaks
-        r -= moveCount * 62;
+        // The linear moveCount discount is tuned for chess move counts
+        // (mn <= ~60). Spell chess reaches mn in the thousands, where an
+        // uncapped term overwhelms the logarithmic reduction and would
+        // EXTEND every late move by 2 plies — capping keeps it a bounded
+        // correction instead of a runaway (found via fixed-nodes probes:
+        // depth collapsed to ~12 while the reference reached ~27).
+        r -= std::min(moveCount, SpellLmrMoveCountCap) * 62;
         r -= std::abs(correctionValue) / 26131;
 
         // Increase reduction for cut nodes
@@ -1344,6 +1405,11 @@ moves_loop:  // When in check, search starts here
         // Increase reduction if ttMove is a capture
         if (ttCapture)
             r += 1039;
+
+        // Reduce tactical spells less, like other tactical moves
+        // (reference policy)
+        if (tacticalSpell)
+            r -= SpellTacticalLmrBonus;
 
         // Increase reduction if next ply has a lot of fail high
         if ((ss + 1)->cutoffCnt > 1)
@@ -1358,6 +1424,7 @@ moves_loop:  // When in check, search starts here
                           + captureHistory[movedPiece][move.to_sq()][type_of(pos.captured_piece())];
         else
             ss->statScore = 2 * mainHistory[us][move.raw() & 0xFFFF]
+                          + SpellGateHistStatWeight * gateHistory[us][gate_slot(move)]
                           + (*contHist[0])[movedPiece][move.to_sq()]
                           + (*contHist[1])[movedPiece][move.to_sq()];
 
@@ -1690,7 +1757,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         ss->pv->clear();
     }
 
-    bestMove    = Move::none();
+    bestMove = Move::none();
     // Spell chess: same non-check policy as the main search (see Step 1 there)
     ss->inCheck = false;
     moveCount   = 0;
@@ -1775,15 +1842,21 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         futilityBase = ss->staticEval + 335;
     }
 
-    const PieceToHistory* contHist[] = {(ss - 1)->continuationHistory};
+    // Six entries like the main search: score<QUIETS> reads
+    // continuationHistory[0..5], and the stack keeps seven sentinel
+    // entries below the root, so ss-6 is always valid. The previous
+    // single-entry array was a latent out-of-bounds read.
+    const PieceToHistory* contHist[] = {
+      (ss - 1)->continuationHistory, (ss - 2)->continuationHistory, (ss - 3)->continuationHistory,
+      (ss - 4)->continuationHistory, (ss - 5)->continuationHistory, (ss - 6)->continuationHistory};
 
     Square prevSq = ((ss - 1)->currentMove).is_ok() ? ((ss - 1)->currentMove).to_sq() : SQ_NONE;
 
     // Initialize a MovePicker object for the current position, and prepare to search
     // the moves. We presently use two stages of move generator in quiescence search:
     // captures, or evasions only when in check.
-    MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &captureHistory,
-                  contHist, &sharedHistory, ss->ply, moves_buffer(ss->ply, 0), gen_scratch());
+    MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &gateHistory,
+                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch());
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain or a beta
     // cutoff occurs.
@@ -1797,10 +1870,14 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         givesCheck = pos.gives_check(move);
         capture    = pos.capture_stage(move);
 
+        // Capturing the king ends the game: the terminal move must never
+        // be pruned, whatever its ordering position or SEE
+        const bool royalCapture = type_of(pos.piece_on(move.to_sq())) == KING;
+
         moveCount++;
 
         // Step 6. Pruning
-        if (!is_loss(bestValue))
+        if (!is_loss(bestValue) && !royalCapture)
         {
             // Futility pruning and moveCount pruning
             if (!givesCheck && move.to_sq() != prevSq && !is_loss(futilityBase)
@@ -1916,8 +1993,8 @@ Value Search::Worker::evaluate(const Position& pos) {
     // engine exactly (including its outer scaling); the stock chess networks
     // remain the spell-blind bootstrap fallback.
     if (SpellNNUE::loaded())
-        return std::clamp(SpellNNUE::evaluate_scaled(pos), VALUE_TB_LOSS_IN_MAX_PLY + 1,
-                          VALUE_TB_WIN_IN_MAX_PLY - 1);
+        return std::clamp(SpellNNUE::evaluate_scaled(pos, &spellRefreshCache),
+                          VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
 
     return Eval::evaluate(network[numaAccessToken], pos, accumulatorStack, refreshTable,
                           optimism[pos.side_to_move()]);
@@ -2065,7 +2142,12 @@ void update_quiet_histories(
   const Position& pos, Stack* ss, Search::Worker& workerThread, Move move, int bonus) {
 
     Color us = pos.side_to_move();
-    workerThread.mainHistory[us][move.raw() & 0xFFFF] << bonus;  // Untuned to prevent duplicate effort
+    workerThread.mainHistory[us][move.raw() & 0xFFFF]
+      << bonus;  // Untuned to prevent duplicate effort
+
+    // Spells learn per-gate: casting there caused (or failed to cause)
+    // a cutoff; non-spell quiets share the "no gate" slot
+    workerThread.gateHistory[us][gate_slot(move)] << bonus;
 
     if (ss->ply < LOW_PLY_HISTORY_SIZE)
         workerThread.lowPlyHistory[ss->ply][move.raw() & 0xFFFF] << bonus * 663 / 1024;

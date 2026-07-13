@@ -20,12 +20,14 @@
 #define UCI_H_INCLUDED
 
 #include <iostream>
+#include <memory>
 #include <string>
 #include <string_view>
 
 #include "engine.h"
 #include "misc.h"
 #include "search.h"
+#include "xboard.h"
 
 namespace Stockfish {
 
@@ -48,6 +50,8 @@ class UCIEngine {
     static std::string format_score(const Score& s);
     static std::string square(Square s);
     static std::string move(Move m, bool chess960 = false);
+
+    void               datagen(std::istringstream& args);
     static std::string wdl(Value v, const Position& pos);
     static std::string to_lower(std::string str);
     static Move        to_move(const Position& pos, std::string str);
@@ -57,6 +61,13 @@ class UCIEngine {
     auto& engine_options() { return engine.get_options(); }
 
    private:
+    // XBoard/CECP adapter, created by the first 'xboard' command; while it
+    // exists, loop() delegates every command line to it (except 'quit').
+    // Declared BEFORE engine on purpose: members are destroyed in reverse
+    // order, and the adapter's callbacks (capturing it) run on the search
+    // thread, which is only joined in ~Engine — the adapter must outlive it.
+    std::unique_ptr<XBoardEngine> xbAdapter;
+
     Engine      engine;
     CommandLine cli;
     std::string currentCmd;

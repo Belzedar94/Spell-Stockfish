@@ -25,18 +25,23 @@
 #include "bitboard.h"
 #include "misc.h"
 #include "position.h"
+#include "spell_order.h"
 
 namespace Stockfish {
 
 namespace {
 
 enum Stages {
-    // generate main search moves
+    // generate main search moves. Gated quiets (SPELL) are generated
+    // lazily after the base quiets: most nodes cut off before paying for
+    // the huge gated expansion (reference staging)
     MAIN_TT,
     CAPTURE_INIT,
     GOOD_CAPTURE,
     QUIET_INIT,
     GOOD_QUIET,
+    SPELL_INIT,
+    SPELL,
     BAD_CAPTURE,
     BAD_QUIET,
 
@@ -155,41 +160,62 @@ MovePicker::MovePicker(const Position&              p,
                        Depth                        d,
                        const ButterflyHistory*      mh,
                        const LowPlyHistory*         lph,
+                       const GateHistory*           gh,
                        const CapturePieceToHistory* cph,
                        const PieceToHistory**       ch,
                        const SharedHistories*       sh,
                        int                          pl,
-                       ExtMove*                     buf,
-                       Move*                        scratch) :
+                       ExtMove**                    at,
+                       Move*                        scratch,
+                       bool                         spells,
+                       bool                         onlyTactical) :
     pos(p),
     mainHistory(mh),
     lowPlyHistory(lph),
+    gateHistory(gh),
     captureHistory(cph),
     continuationHistory(ch),
     sharedHistory(sh),
     ttMove(ttm),
     depth(d),
     ply(pl),
-    moves(buf),
+    allowSpells(spells),
+    onlyTacticalSpells(onlyTactical),
+    arenaTop(at),
+    moves(*at),
     genScratch(scratch) {
 
+    *arenaTop += MAX_MOVES;
+
     // Spell chess: no evasion staging — self-check is legal, so "in check"
-    // nodes are ordered and pruned exactly like normal ones (reference policy)
-    stage = (depth > 0 ? MAIN_TT : QSEARCH_TT) + !(ttm && pos.pseudo_legal(ttm));
+    // nodes are ordered and pruned exactly like normal ones (reference policy).
+    // The useless-spell filter never applies at the root (ply 0): searchmoves
+    // may legitimately force a dominated-but-legal spell move.
+    stage = (depth > 0 ? MAIN_TT : QSEARCH_TT)
+          + !(ttm && pos.pseudo_legal(ttm) && (ply == 0 || !is_useless_spell(pos, ttm)));
 }
 
 // MovePicker constructor for ProbCut: we generate captures with Static Exchange
 // Evaluation (SEE) greater than or equal to the given threshold.
-MovePicker::MovePicker(
-  const Position& p, Move ttm, int th, const CapturePieceToHistory* cph, ExtMove* buf, Move* scratch) :
+MovePicker::MovePicker(const Position&              p,
+                       Move                         ttm,
+                       int                          th,
+                       const CapturePieceToHistory* cph,
+                       ExtMove**                    at,
+                       Move*                        scratch) :
     pos(p),
     captureHistory(cph),
     ttMove(ttm),
     threshold(th),
-    moves(buf),
+    arenaTop(at),
+    moves(*at),
     genScratch(scratch) {
 
-    stage = PROBCUT_TT + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm));
+    *arenaTop += MAX_MOVES;
+
+    stage =
+      PROBCUT_TT
+      + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm) && !is_useless_spell(pos, ttm));
 }
 
 // Assigns a numerical value to each move in a list, used for sorting.
@@ -213,6 +239,7 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         threatByLesser[KING]  = 0;
     }
 
+
     ExtMove* it = cur;
     for (const Move* mit = begin; mit != end; ++mit)
     {
@@ -233,6 +260,7 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         {
             // histories
             m.value = 2 * (*mainHistory)[us][m.raw() & 0xFFFF];
+            m.value += SpellGateHistOrderWeight * (*gateHistory)[us][gate_slot(m)];
             m.value += 2 * sharedHistory->pawn_entry(pos)[pc][to];
             m.value += (*continuationHistory[0])[pc][to];
             m.value += (*continuationHistory[1])[pc][to];
@@ -248,6 +276,10 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
             int v = 20 * (bool(threatByLesser[pt] & from) - bool(threatByLesser[pt] & to));
             m.value += PieceValue[pt] * v;
 
+            // NOTE (refuted idea, AUDIT.md): adding the gate impact score to
+            // gated quiets here lost ~-150 Elo at VSTC — the king-ring bonus
+            // ordered speculative freezes above history-proven quiets, and
+            // the per-node tables cost ~40% NPS on top.
 
             if (ply < LOW_PLY_HISTORY_SIZE)
                 m.value += 8 * (*lowPlyHistory)[ply][m.raw() & 0xFFFF] / (1 + ply);
@@ -308,6 +340,11 @@ top:
 
     case GOOD_CAPTURE :
         if (select([&]() {
+                // A gated capture with an irrelevant gate is dominated by
+                // the bare capture: drop it entirely (not even "bad") —
+                // except at the root, where searchmoves may force it
+                if (ply != 0 && is_useless_spell(pos, *cur))
+                    return false;
                 if (pos.see_ge(*cur, -cur->value / 18))
                     return true;
                 std::swap(*endBadCaptures++, *cur);
@@ -327,12 +364,65 @@ top:
 
             partial_insertion_sort(cur, endCur, -3560 * depth);
         }
+        else
+            endCur = endGenerated = cur;  // empty base-quiet segment
 
         ++stage;
         [[fallthrough]];
 
     case GOOD_QUIET :
         if (!skipQuiets && select([&]() { return cur->value > goodQuietThreshold; }))
+            return *(cur - 1);
+
+        ++stage;
+        [[fallthrough]];
+
+    case SPELL_INIT :
+        // Gated quiets, generated only now: most nodes never get here.
+        // The stage deliberately ignores skipQuiets — spells are the
+        // tactical resource of the variant and late-move counting says
+        // little about them — but it does honor the search's relevance
+        // gate (allowSpells): a cast is worth at most about a tempo plus
+        // bounded tactics, so hopeless nodes skip the expansion entirely.
+        cur = endCur = endSpells = endGenerated;
+        if (allowSpells
+            && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
+                || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
+        {
+            // Royal context for the tactical-only restriction, mirroring
+            // the search's own per-node precompute
+            if (onlyTacticalSpells)
+            {
+                const Color us = pos.side_to_move();
+                if (pos.count<KING>(us))
+                {
+                    spellOurRoyal       = pos.square<KING>(us);
+                    spellRoyalAttackers = pos.attackers_to(spellOurRoyal) & pos.pieces(~us);
+                }
+                if (pos.count<KING>(~us))
+                    spellEnemyRoyal = pos.square<KING>(~us);
+            }
+
+            const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
+
+            endCur = endSpells = score<QUIETS>(genScratch, endGen);
+
+            partial_insertion_sort(cur, endCur, -3560 * depth);
+        }
+
+        ++stage;
+        [[fallthrough]];
+
+    case SPELL :
+        if (select([&]() {
+                if (ply == 0)  // searchmoves may force any legal cast
+                    return true;
+                if (is_useless_spell(pos, *cur))
+                    return false;
+                return !onlyTacticalSpells
+                    || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
+                                         spellOurRoyal);
+            }))
             return *(cur - 1);
 
         // Prepare the pointers to loop over the bad captures
@@ -346,7 +436,7 @@ top:
         if (select([]() { return true; }))
             return *(cur - 1);
 
-        // Prepare the pointers to loop over quiets again
+        // Prepare the pointers to loop over the base quiets again
         cur    = endCaptures;
         endCur = endGenerated;
 
@@ -371,11 +461,14 @@ top:
     }
 
     case EVASION :
-    case QCAPTURE :
         return select([]() { return true; });
 
+    case QCAPTURE :
+        return select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); });
+
     case PROBCUT :
-        return select([&]() { return pos.see_ge(*cur, threshold); });
+        return select(
+          [&]() { return !is_useless_spell(pos, *cur) && pos.see_ge(*cur, threshold); });
     }
 
     assert(false);

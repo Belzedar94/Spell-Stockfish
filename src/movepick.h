@@ -38,23 +38,30 @@ class MovePicker {
    public:
     MovePicker(const MovePicker&)            = delete;
     MovePicker& operator=(const MovePicker&) = delete;
-    // Spell chess: the caller provides the buffers (a MAX_MOVES ExtMove slot
-    // for the scored moves and a MAX_MOVES Move generation scratch, consumed
-    // within each next_move() call). Keeping them off the C++ stack keeps
-    // search frames small — a stack-local MAX_MOVES array would page-probe
-    // ~256KB on every construction.
+    // Spell chess: the caller provides the buffers via a per-thread bump
+    // arena (a MAX_MOVES ExtMove slot claimed in the constructor, released
+    // in the destructor — MovePicker lifetimes are strictly nested, so LIFO
+    // reuse is safe even when a singular verification search re-enters
+    // search() at the same ply) plus a MAX_MOVES Move generation scratch,
+    // consumed within each next_move() call. Keeping them off the C++ stack
+    // keeps search frames small — a stack-local MAX_MOVES array would
+    // page-probe ~256KB on every construction.
     MovePicker(const Position&,
                Move,
                Depth,
                const ButterflyHistory*,
                const LowPlyHistory*,
+               const GateHistory*,
                const CapturePieceToHistory*,
                const PieceToHistory**,
                const SharedHistories*,
                int,
-               ExtMove*,
-               Move*);
-    MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove*, Move*);
+               ExtMove**,
+               Move*,
+               bool allowSpells        = true,
+               bool onlyTacticalSpells = false);
+    MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove**, Move*);
+    ~MovePicker() { *arenaTop -= MAX_MOVES; }
     Move next_move();
     void skip_quiet_moves();
 
@@ -67,18 +74,27 @@ class MovePicker {
     const Position&              pos;
     const ButterflyHistory*      mainHistory;
     const LowPlyHistory*         lowPlyHistory;
+    const GateHistory*           gateHistory;
     const CapturePieceToHistory* captureHistory;
     const PieceToHistory**       continuationHistory;
     const SharedHistories*       sharedHistory;
     Move                         ttMove;
-    ExtMove *                    cur, *endCur, *endBadCaptures, *endCaptures, *endGenerated;
-    int                          stage;
-    int                          threshold;
-    Depth                        depth;
-    int                          ply;
-    bool                         skipQuiets = false;
-    ExtMove*                     moves;
-    Move*                        genScratch;
+    ExtMove *cur, *endCur, *endBadCaptures, *endCaptures, *endGenerated, *endSpells;
+    int      stage;
+    int      threshold;
+    Depth    depth;
+    int      ply;
+    bool     skipQuiets  = false;
+    bool     allowSpells = true;
+    // Shallow non-PV nodes may restrict the SPELL stage to tactical casts;
+    // the royal context for that classification is computed lazily once
+    // per node in SPELL_INIT (mirrors the search's own precompute).
+    bool      onlyTacticalSpells  = false;
+    Bitboard  spellRoyalAttackers = 0;
+    Square    spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
+    ExtMove** arenaTop;
+    ExtMove*  moves;
+    Move*     genScratch;
 };
 
 }  // namespace Stockfish

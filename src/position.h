@@ -88,6 +88,7 @@ struct StateInfo {
     struct SpellAccumulator {
         alignas(64) i16 acc[COLOR_NB][512];
         i32  psqt[COLOR_NB][8];
+        u32  gen;  // SpellNNUE::net_generation() this entry was built with
         bool computed[COLOR_NB];
     };
     SpellAccumulator spellAcc;
@@ -191,10 +192,10 @@ class Position {
     int      spell_cooldown(Color c, SpellType sp) const;
     int      spells_in_hand(Color c, SpellType sp) const;
     bool     can_cast(Color c, SpellType sp) const;
-    Bitboard frozen_squares(Color c) const;   // squares from which c's pieces cannot move
-    Bitboard frozen_pieces() const;           // pieces of either color that are frozen
-    Bitboard jump_transparent() const;        // active jump gates (transparent for sliding)
-    Bitboard occupied_for_sliding() const;    // pieces() minus transparent gates
+    Bitboard frozen_squares(Color c) const;  // squares from which c's pieces cannot move
+    Bitboard frozen_pieces() const;          // pieces of either color that are frozen
+    Bitboard jump_transparent() const;       // active jump gates (transparent for sliding)
+    Bitboard occupied_for_sliding() const;   // pieces() minus transparent gates
     bool     both_kings_on_board() const;
 
     // Accessing hash keys

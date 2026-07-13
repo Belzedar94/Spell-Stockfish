@@ -20,3 +20,5 @@ tsan.supp
 __pycache__/
 tests/syzygy
 tests/bench_tmp.epd
+src/*.log
+src/bench_*.txt

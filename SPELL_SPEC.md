@@ -34,6 +34,10 @@ Spell Chess is standard chess plus two spell types per player:
   (attackers evaluated spell-aware: frozen attackers — including those frozen by the very cast
   carried by the king move — do not count, and jump transparency can open new attack lines).
   Self-check by any other means (breaking a pin, zone expiry, discovered attacks) is legal.
+  **Sub-exception (found in match play, verified against the reference binary): a king move that
+  CAPTURES the enemy king is legal even onto a defended square** — the game ends with the royal
+  capture, nothing gets to recapture (e.g. adjacent kings: Kb4xc3 with a white knight guarding
+  c3 is legal and immediately winning, gated copies included).
 
 ## 2. Spell state model
 
@@ -219,6 +223,40 @@ Spell-Stockfish's first NNUE implementation must load existing reference nets
 
 Architecture evolution (larger L1, new features) is allowed **after** M1, gated by matches, with an
 explicit version bump in our own serializer.
+
+## 6b. Training-data format (PackedSfenValue + potions)
+
+Byte contract verified against the reference tools binary
+(`Spell Project/variant-nnue-tools/src/stockfish_tools_v20_x86-64-bmi2.exe`,
+`generate_training_data`); decoder/validator: `tools/psv_decode.py`. Record = **76 bytes**
+(`DATA_SIZE = 512`):
+
+- `sfen[64]` — LSB-first bitstream:
+  1. side to move (1 bit, 0 = white)
+  2. white king square (7 bits), black king square (7 bits); a captured king writes the
+     out-of-board sentinel 64
+  3. board scan rank 8→1, file a→h, skipping kings: `0` = empty; otherwise 5-bit huffman code
+     (LSB always 1; code = 2·idx+1 with idx in variant order P N B R Q = 0..4) followed by
+     1 color bit (1 = black)
+  4. hands: for each color (white, black): **8 × 5-bit counts in FSF piece-id order
+     P N B R Q K F J** — only F (slot 6) and J (slot 7) are ever nonzero
+  5. potion blocks: for each color × {FREEZE, JUMP}: `has_zone` (1 bit) + zone-center square
+     (7 bits, 0 when none) + cooldown (16 bits). The gate square is the center; any center
+     producing the same zone is feature-equivalent.
+  6. castling KQkq (4 bits), en-passant flag (1 bit) + square (7 bits when set)
+  7. rule50 low 6 bits, fullmove low 8 + high 8 bits, rule50 high bit
+- `score` (i16) — search value, side-to-move POV, internal units
+- 2 alignment bytes
+- `move` (u32) — PV first move; in OUR data this is the engine's native 32-bit encoding
+  (spell payload in bits 16+). The trainer only uses it for teacher-match filtering, so the
+  encoding must merely be self-consistent within a data set.
+- `gamePly` (u16), `game_result` (i8, +1 = side to move eventually wins), padding (u8)
+
+Generation: `datagen out FILE count N nodes M [seed S] [random_plies R] [eval_limit E]
+[ply_limit P]` — self-play from the spell startpos, uniformly random legal moves for the first
+R plies (spells included), then fixed-node searches; positions written only for searched plies;
+a decisive score (|v| ≥ eval_limit or mate) ends the game and sets the result. Trainer-side
+requirements (F6): variant.h with PIECE_TYPES/POCKETS/HAS_POTIONS/DATA_SIZE=512 in spell mode.
 
 ## 7. Verification protocol
 

@@ -13,9 +13,11 @@ Usage:
 """
 
 import argparse
+import queue
 import re
 import subprocess
 import sys
+import threading
 import time
 
 PAWN_VALUE = 208  # FSF PawnValueEg used by its eval printout
@@ -26,6 +28,8 @@ class Engine:
         self.proc = subprocess.Popen(
             [path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, bufsize=1)
+        self._lines = queue.Queue()
+        threading.Thread(target=self._pump, daemon=True).start()
         self.send("uci")
         self.read_until("uciok")
         for k, v in opts.items():
@@ -36,18 +40,29 @@ class Engine:
         self.proc.stdin.write(line + "\n")
         self.proc.stdin.flush()
 
+    def _pump(self):
+        # Reader thread: makes timeouts actually interrupt blocked reads
+        for line in self.proc.stdout:
+            self._lines.put(line)
+        self._lines.put(None)  # EOF marker
+
+    def _readline(self, deadline):
+        try:
+            line = self._lines.get(timeout=max(0.05, deadline - time.time()))
+        except queue.Empty:
+            raise RuntimeError("timeout waiting for engine output")
+        if line is None:
+            raise RuntimeError("engine died")
+        return line
+
     def read_until(self, token, timeout=120):
         deadline = time.time() + timeout
         lines = []
-        while time.time() < deadline:
-            line = self.proc.stdout.readline()
-            if not line:
-                raise RuntimeError("engine died")
-            line = line.rstrip("\n")
+        while True:
+            line = self._readline(deadline).rstrip("\n")
             lines.append(line)
             if line.startswith(token):
                 return lines
-        raise RuntimeError(f"timeout: {token}")
 
     def sync(self):
         self.send("isready")
@@ -83,11 +98,8 @@ def ref_eval(e):
     nnue = final = None
     declined = False
     deadline = time.time() + 60
-    while time.time() < deadline:
-        line = e.proc.stdout.readline()
-        if not line:
-            raise RuntimeError("reference died")
-        line = line.rstrip("\n")
+    while True:
+        line = e._readline(deadline).rstrip("\n")
         if "in check" in line:
             declined = True
         m = re.search(r"NNUE evaluation\s+([+-]?\d+\.\d+)", line)
@@ -98,7 +110,6 @@ def ref_eval(e):
             final = float(m.group(1))
         if line.startswith("readyok"):
             return nnue, final, declined
-    raise RuntimeError("timeout in ref eval")
 
 
 def main():
@@ -158,6 +169,9 @@ def main():
             print(f"[{i+1}] RAW MISMATCH ours={raw} ref={ref_raw_internal} (d={d_raw})  {fen}")
         if ref_final_internal is not None:
             deltas_final.append(scaled - ref_final_internal)
+        elif not declined:
+            print(f"[{i+1}] UNEXPECTED: reference NNUE line without Final evaluation  {fen}")
+            skipped += 1
 
     print(f"\nraw: {evaluated - raw_fail}/{evaluated} within +/-{args.tolerance}"
           + f" ({len(fens) - evaluated} excluded by rule)"

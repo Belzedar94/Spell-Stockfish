@@ -26,6 +26,7 @@
 #include "bitboard.h"
 #include "position.h"
 #include "spell.h"
+#include "spell_order.h"
 #include "spell_params.h"
 
 namespace Stockfish {
@@ -248,49 +249,20 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
             if (sp == SPELL_JUMP && !jumpScoreReady)
             {
-                std::fill_n(jumpScore, SQUARE_NB, 0);
-                Bitboard sliders = pos.pieces(Us, BISHOP, ROOK, QUEEN) & ~frozenUs;
-                while (sliders)
-                {
-                    const Square    from = pop_lsb(sliders);
-                    const PieceType pt   = type_of(pos.piece_on(from));
-                    const Bitboard  seen = Attacks::attacks_bb(pt, from, occSliding);
-
-                    Bitboard blockers = seen & occupied;
-                    while (blockers)
-                    {
-                        const Square   b = pop_lsb(blockers);
-                        const Bitboard reveal =
-                          Attacks::attacks_bb(pt, from, occSliding ^ square_bb(b)) & ~seen;
-
-                        int s = 0;
-                        for (Bitboard t = reveal & pos.pieces(~Us); t;)
-                            s += PieceValue[pos.piece_on(pop_lsb(t))];
-                        if (eksq != SQ_NONE && (reveal & square_bb(eksq)))
-                            s += SpellGateKingBonus;
-                        jumpScore[b] += s;
-                    }
-                }
+                jump_gate_scores(pos, Us, eksq, jumpScore);
                 jumpScoreReady = true;
             }
 
             for (Bitboard b = allGates; b;)
             {
                 const Square g = pop_lsb(b);
-                int          s = 0;
+                int          s;
 
                 if (sp == SPELL_FREEZE)
                 {
-                    const Bitboard zone = FreezeZoneBB[g];
-                    for (Bitboard t = zone & pos.pieces(~Us); t;)
-                        s += PieceValue[pos.piece_on(pop_lsb(t))];
-                    if (eksq != SQ_NONE && (zone & square_bb(eksq)))
-                        s += SpellGateKingBonus;
-                    if (zone & eRing)
-                    {
-                        s += SpellGateKingRingBonus;
+                    s = freeze_gate_score(pos, Us, g, eksq, eRing);
+                    if (FreezeZoneBB[g] & eRing)
                         ++ringCount;
-                    }
                 }
                 else
                     s = jumpScore[g];
@@ -303,10 +275,9 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 limit = ringCount;
             if (n > limit)
             {
-                std::partial_sort(scored, scored + limit, scored + n,
-                                  [](const GateScore& a, const GateScore& b) {
-                                      return a.score > b.score;
-                                  });
+                std::partial_sort(
+                  scored, scored + limit, scored + n,
+                  [](const GateScore& a, const GateScore& b) { return a.score > b.score; });
                 n = limit;
             }
             for (int i = 0; i < n; ++i)
@@ -401,8 +372,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                     // Landing uses the phase-flipped occupancy incl. the
                     // candidate gate (occupied, so flipped out); the landing
                     // classifies as capture/quiet by physical occupancy
-                    const Bitboard flipOcc =
-                      (occupied ^ pos.jump_transparent()) ^ square_bb(gate);
+                    const Bitboard flipOcc = (occupied ^ pos.jump_transparent()) ^ square_bb(gate);
 
                     if ((pos.pieces(Us, PAWN) & ~frozenUs & square_bb(from)) && (TRank2 & from)
                         && !(flipOcc & to) && keep(bool(occupied & to)))
@@ -419,7 +389,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 template<Color Us, GenType Type>
 Move* generate_all(const Position& pos, Move* moveList) {
 
-    static_assert(Type != LEGAL, "Unsupported type in generate_all()");
+    static_assert(Type != LEGAL && Type != SPELL_QUIETS, "Unsupported type in generate_all()");
 
     // Terminal position: a king has been captured, the game is over
     if (!pos.count<KING>(Us) || !pos.count<KING>(~Us))
@@ -458,7 +428,25 @@ Move* generate_all(const Position& pos, Move* moveList) {
                     *moveList++ = Move::make<CASTLING>(ksq, pos.castling_rook_square(cr));
     }
 
+    // QUIETS returns the base moves only: the gated quiets are generated
+    // lazily by the SPELL_QUIETS stage of the MovePicker (most nodes cut
+    // off on a base move and never pay for the huge gated expansion)
+    if constexpr (Type == QUIETS)
+        return moveList;
+
     return generate_spell_moves<Us, Type>(pos, cur, moveList);
+}
+
+// The gated quiet moves alone: the base quiets are regenerated at the buffer
+// start as gating material, the gated segment is appended and then slid to
+// the front.
+template<Color Us>
+Move* generate_spell_quiets(const Position& pos, Move* moveList) {
+
+    Move* baseEnd  = generate_all<Us, QUIETS>(pos, moveList);
+    Move* spellEnd = generate_spell_moves<Us, QUIETS>(pos, moveList, baseEnd);
+
+    return std::move(baseEnd, spellEnd, moveList);
 }
 
 }  // namespace
@@ -477,13 +465,18 @@ Move* generate(const Position& pos, Move* moveList) {
 
     Color us = pos.side_to_move();
 
-    return us == WHITE ? generate_all<WHITE, Type>(pos, moveList)
-                       : generate_all<BLACK, Type>(pos, moveList);
+    if constexpr (Type == SPELL_QUIETS)
+        return us == WHITE ? generate_spell_quiets<WHITE>(pos, moveList)
+                           : generate_spell_quiets<BLACK>(pos, moveList);
+    else
+        return us == WHITE ? generate_all<WHITE, Type>(pos, moveList)
+                           : generate_all<BLACK, Type>(pos, moveList);
 }
 
 // Explicit template instantiations
 template Move* generate<CAPTURES>(const Position&, Move*);
 template Move* generate<QUIETS>(const Position&, Move*);
+template Move* generate<SPELL_QUIETS>(const Position&, Move*);
 template Move* generate<EVASIONS>(const Position&, Move*);
 template Move* generate<NON_EVASIONS>(const Position&, Move*);
 

@@ -30,7 +30,8 @@ class Position;
 
 enum GenType {
     CAPTURES,
-    QUIETS,
+    QUIETS,        // quiet BASE moves only — gated quiets are staged separately
+    SPELL_QUIETS,  // the gated quiet moves (lazy MovePicker stage after quiets)
     EVASIONS,
     NON_EVASIONS,
     LEGAL

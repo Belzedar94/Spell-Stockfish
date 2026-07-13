@@ -297,7 +297,7 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
                     return PositionSetError(std::string("Invalid FEN. Invalid spell holding: ")
                                             + std::string(1, token));
 
-                if (++st->spellHand[c][sp] > 7)
+                if (++st->spellHand[c][sp] > SpellInitialHand[sp])
                     return PositionSetError("Invalid FEN. Too many spells in hand.");
             }
         }
@@ -359,8 +359,8 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
         usize idx = 0;
         while (idx < state.size())
         {
-            usize next  = state.find(',', idx);
-            usize len   = next == string::npos ? state.size() - idx : next - idx;
+            usize  next = state.find(',', idx);
+            usize  len  = next == string::npos ? state.size() - idx : next - idx;
             string item = state.substr(idx, len);
             idx         = next == string::npos ? state.size() : next + 1;
 
@@ -375,12 +375,11 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
             const Color     c  = isupper(item[0]) ? WHITE : BLACK;
             const SpellType sp = up == 'F' ? SPELL_FREEZE : SPELL_JUMP;
 
-            const string sqs = item.substr(2, colon - 2);
+            const string sqs  = item.substr(2, colon - 2);
             Square       gate = SQ_NONE;
             if (sqs != "-")
             {
-                if (sqs.size() != 2 || sqs[0] < 'a' || sqs[0] > 'h' || sqs[1] < '1'
-                    || sqs[1] > '8')
+                if (sqs.size() != 2 || sqs[0] < 'a' || sqs[0] > 'h' || sqs[1] < '1' || sqs[1] > '8')
                     return PositionSetError("Invalid FEN. Invalid spell gate square: " + item);
                 gate = make_square(File(sqs[0] - 'a'), Rank(sqs[1] - '1'));
             }
@@ -503,7 +502,7 @@ Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
     // 4. En passant square.
     // Ignore if square is invalid or not on side to move relative rank 6.
     bool          enpassant = false;
-    unsigned char col = '-', row;
+    unsigned char col       = '-', row;
     ss >> col;
     if (col != '-')
     {
@@ -617,9 +616,9 @@ void Position::set_state() const {
     st->nonPawnKey[WHITE] = st->nonPawnKey[BLACK] = 0;
     st->pawnKey                                   = Zobrist::noPawns;
     st->nonPawnMaterial[WHITE] = st->nonPawnMaterial[BLACK] = VALUE_ZERO;
-    st->checkersBB             = both_kings_on_board()
-                                 ? attackers_to(square<KING>(sideToMove)) & pieces(~sideToMove)
-                                 : Bitboard(0);
+    st->checkersBB                                          = both_kings_on_board()
+                                                              ? attackers_to(square<KING>(sideToMove)) & pieces(~sideToMove)
+                                                              : Bitboard(0);
 
     set_check_info();
 
@@ -734,8 +733,7 @@ string Position::fen() const {
         {
             if (c != WHITE || sp != SPELL_FREEZE)
                 ss << ',';
-            ss << (c == WHITE ? (sp == SPELL_FREEZE ? 'F' : 'J')
-                              : (sp == SPELL_FREEZE ? 'f' : 'j'))
+            ss << (c == WHITE ? (sp == SPELL_FREEZE ? 'F' : 'J') : (sp == SPELL_FREEZE ? 'f' : 'j'))
                << '@';
             if (spell_gate(c, sp) != SQ_NONE)
                 ss << UCIEngine::square(spell_gate(c, sp));
@@ -899,7 +897,10 @@ bool Position::legal(Move m) const {
     // The king may not move into an attacked square. This is the one
     // remaining king-safety rule: all other forms of self-check (breaking a
     // pin, zone expiry, ...) are legal and punished by king capture.
-    if (m.type_of() != CASTLING && type_of(moved_piece(m)) == KING)
+    // Exception (verified against the reference): capturing the enemy KING
+    // ends the game immediately, so that move is legal even onto a defended
+    // square — nothing gets to recapture.
+    if (m.type_of() != CASTLING && type_of(moved_piece(m)) == KING && type_of(piece_on(to)) != KING)
     {
         const Bitboard transparent = jump_transparent() | castTransparent;
         const Bitboard occSliding  = (pieces() ^ from) & ~transparent;
@@ -945,7 +946,7 @@ bool Position::legal(Move m) const {
                     | (attacks_bb<PAWN>(s, us) & pieces(~us, PAWN))
                     | (attacks_bb<KNIGHT>(s) & pieces(~us, KNIGHT))
                     | (attacks_bb<KING>(s) & pieces(~us, KING)))
-                & ~inactive;
+                 & ~inactive;
         };
 
         // After castling, the rook and king final positions are the same in
@@ -977,6 +978,11 @@ bool Position::pseudo_legal(const Move m) const {
     Square from = m.from_sq();
     Square to   = m.to_sq();
     Piece  pc   = moved_piece(m);
+
+    // A raced or corrupted TT entry can carry the invalid spell tag 0b11 —
+    // reject it before any spell_type()/gate indexing
+    if ((m.raw() & Move::SpellTypeMask) == Move::SpellTypeMask)
+        return false;
 
     // Use a slower but simpler function for uncommon base move types
     if (m.type_of() != NORMAL)
@@ -1195,7 +1201,10 @@ void Position::do_move(Move                      m,
         }
         else
         {
-            st->nonPawnMaterial[color_of(captured)] -= PieceValue[captured];
+            // Kings are never part of nonPawnMaterial (they are skipped when
+            // put on the board), so a royal capture must not subtract either
+            if (type_of(captured) != KING)
+                st->nonPawnMaterial[color_of(captured)] -= PieceValue[captured];
             st->nonPawnKey[color_of(captured)] ^= Zobrist::psq[captured][capsq];
 
             if (type_of(captured) <= BISHOP)
@@ -1990,17 +1999,33 @@ bool Position::upcoming_repetition(int ply) const {
 // is only useful for debugging e.g. for finding evaluation symmetry bugs.
 std::optional<PositionSetError> Position::flip() {
 
-    string            f, token;
+    string            f, token, holdings, spellState;
     std::stringstream ss(fen());
 
     for (Rank r = RANK_8;; --r)  // Piece placement
     {
         std::getline(ss, token, r > RANK_1 ? '/' : ' ');
+
+        // Rank 1 carries the holdings suffix "[...]": split it off (it is
+        // case-swapped with the board, order is not significant on parse)
+        if (r == RANK_1)
+        {
+            const usize bracket = token.find('[');
+            if (bracket != string::npos)
+            {
+                holdings = token.substr(bracket);
+                token.resize(bracket);
+            }
+        }
+
         f.insert(0, token + (f.empty() ? " " : "/"));
 
         if (r == RANK_1)
             break;
     }
+    f.insert(f.size() - 1, holdings);  // after the (now) last rank
+
+    ss >> spellState;  // "{F@e4:3,J@-:0,f@-:0,j@-:0}" — handled after the case swap
 
     ss >> token;                        // Active color
     f += (token == "w" ? "B " : "W ");  // Will be lowercased later
@@ -2010,6 +2035,23 @@ std::optional<PositionSetError> Position::flip() {
 
     std::transform(f.begin(), f.end(), f.begin(),
                    [](char c) { return char(islower(c) ? toupper(c) : tolower(c)); });
+
+    // Spell state: swap the colors and mirror the gates (file kept, rank
+    // flipped). Built after the global case swap so the file letters and
+    // the F/J markers keep their intended case.
+    const auto flipEntry = [&](char marker) {
+        const usize at    = spellState.find(string(1, marker) + "@");
+        const usize colon = spellState.find(':', at);
+        const usize end   = spellState.find_first_of(",}", colon);
+        string      gate  = spellState.substr(at + 2, colon - at - 2);
+        if (gate != "-")
+            gate[1] = char('1' + '8' - gate[1]);
+        const char swapped = char(islower(marker) ? char(toupper(marker)) : char(tolower(marker)));
+        return string(1, swapped) + "@" + gate + spellState.substr(colon, end - colon);
+    };
+    const string flippedState = "{" + flipEntry('f') + "," + flipEntry('j') + "," + flipEntry('F')
+                              + "," + flipEntry('J') + "} ";
+    f.insert(f.find(' ') + 1, flippedState);
 
     ss >> token;  // En passant square
     f += (token == "-" ? token : token.replace(1, 1, token[1] == '3' ? "6" : "3"));
@@ -2061,13 +2103,12 @@ bool Position::pos_is_ok() const {
     for (Color c : {WHITE, BLACK})
         for (int sp = 0; sp < SPELL_NB; ++sp)
         {
-            if (st->spellHand[c][sp] < 0 || st->spellHand[c][sp] > 7
-                || st->spellCooldown[c][sp] < 0 || st->spellCooldown[c][sp] > SPELL_COOLDOWN)
+            if (st->spellHand[c][sp] < 0 || st->spellHand[c][sp] > 7 || st->spellCooldown[c][sp] < 0
+                || st->spellCooldown[c][sp] > SPELL_COOLDOWN)
                 assert(0 && "pos_is_ok: Spell state");
 
             const Square gate = Square(st->spellGate[c][sp]);
-            if (gate != SQ_NONE
-                && (!is_ok(gate) || st->spellCooldown[c][sp] < SPELL_ZONE_LIFETIME))
+            if (gate != SQ_NONE && (!is_ok(gate) || st->spellCooldown[c][sp] < SPELL_ZONE_LIFETIME))
                 assert(0 && "pos_is_ok: Spell zone");
         }
 
