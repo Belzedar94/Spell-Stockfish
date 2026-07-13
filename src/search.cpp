@@ -1742,7 +1742,7 @@ moves_loop:  // When in check, search starts here
 // See https://www.chessprogramming.org/Horizon_Effect
 // and https://www.chessprogramming.org/Quiescence_Search
 template<NodeType nodeType>
-Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta) {
+Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta, int qsPly) {
 
     static_assert(nodeType != Root);
     constexpr bool PvNode = nodeType == PV;
@@ -1872,8 +1872,14 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     // Initialize a MovePicker object for the current position, and prepare to search
     // the moves. We presently use two stages of move generator in quiescence search:
     // captures, or evasions only when in check.
+    // Pillar C: the FIRST qsearch level may additionally expand a budgeted
+    // handful of tactical casts after captures (0 disables; deeper levels
+    // never do)
+    const int spellQsBudget = qsPly == 0 ? SpellQsearchSpells : 0;
+
     MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &gateHistory,
-                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch());
+                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch(),
+                  true, true, spellQsBudget);
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain or a beta
     // cutoff occurs.
@@ -1896,8 +1902,12 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         // Step 6. Pruning
         if (!is_loss(bestValue) && !royalCapture)
         {
-            // Futility pruning and moveCount pruning
-            if (!givesCheck && move.to_sq() != prevSq && !is_loss(futilityBase)
+            // Futility pruning and moveCount pruning. With the pillar-C
+            // budget active, quiet casts are exempt: their value is the
+            // follow-up they enable, not the (empty) destination this
+            // margin would price.
+            if (!givesCheck && !(spellQsBudget && move.is_spell() && !capture)
+                && move.to_sq() != prevSq && !is_loss(futilityBase)
                 && move.type_of() != PROMOTION)
             {
                 if (moveCount > 2)
@@ -1922,8 +1932,8 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
                 }
             }
 
-            // Skip non-captures
-            if (!capture)
+            // Skip non-captures (budgeted tactical casts stay)
+            if (!capture && !(spellQsBudget && move.is_spell()))
                 continue;
 
             // Do not search moves with bad enough SEE values
@@ -1934,7 +1944,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         // Step 7. Make and search the move
         do_move(pos, move, st, givesCheck, ss);
 
-        value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha);
+        value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha, qsPly + 1);
         undo_move(pos, move);
 
         assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);

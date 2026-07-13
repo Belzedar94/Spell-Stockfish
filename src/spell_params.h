@@ -113,6 +113,15 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Structural roadmap pillar C: spell-aware quiescence. At the FIRST qsearch
+// level only, after captures, expand up to this many TACTICAL casts (the
+// existing classifier: freeze covering the enemy king, silencing our king's
+// attacker, or freezing attacked/major material) as pseudo-captures. The
+// variant's most violent resource is a "quiet" move and was invisible to
+// quiescence, which mispriced every horizon stand-pat. 0 = off
+// (bench-identical).
+extern int SpellQsearchSpells;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

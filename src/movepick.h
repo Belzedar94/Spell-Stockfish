@@ -59,7 +59,8 @@ class MovePicker {
                ExtMove**,
                Move*,
                bool allowSpells        = true,
-               bool onlyTacticalSpells = false);
+               bool onlyTacticalSpells = false,
+               int  spellBudget        = -1);
     MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove**, Move*);
     ~MovePicker() { *arenaTop -= MAX_MOVES; }
     Move next_move();
@@ -90,6 +91,9 @@ class MovePicker {
     // the royal context for that classification is computed lazily once
     // per node in SPELL_INIT (mirrors the search's own precompute).
     bool onlyTacticalSpells = false;
+    // Remaining casts the SPELL stage may emit (-1 = unlimited). qsearch
+    // passes SpellQsearchSpells at its first level (pillar C).
+    int spellBudget = -1;
     // SpellMergedOrdering generated the gated quiets inside QUIET_INIT, so
     // the SPELL stage must not regenerate them
     bool      mergedSpells        = false;
