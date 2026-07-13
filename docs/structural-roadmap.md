@@ -1,5 +1,22 @@
 # Roadmap estructural (2026-07-13) — pensar el motor PARA spell chess
 
+> **RETRACTACIÓN (2026-07-13, misma noche)**: la medición fundacional del §0
+> ("depth 2 en 10s vs depth 8") era un ARTEFACTO del arnés de medición: el
+> probe dormía sin leer el stdout del motor, el pipe se llenaba (~1878 líneas
+> de currmove por iteración en startpos) y el motor se BLOQUEABA escribiendo.
+> Con el pipe drenado correctamente, mismas condiciones y carga:
+> **Spell-SF depth 14 / 3,2M nodos / 320k nps vs FSF depth 9 / 1,4M / 143k**.
+> Somos más profundos y más rápidos a tiempo real. Lo que SIGUE siendo cierto:
+> el gap real por tiempo (−111 STC / −55 LTC medido en partidas), la anomalía
+> nodos-fijos −17 vs STC −111 (ahora necesita otra explicación: profundidad
+> "hueca" por sobre-selectividad en spells, time management, o eval en hojas
+> — las profundidades no son comparables entre motores distintos), y el hecho
+> de código de que LMP/skipQuiets no tocan la etapa SPELL. Los pilares A/C/D
+> quedan como hipótesis falsables ya encoladas en SPRT; el pilar B como
+> arquitectura factorizada con valor propio, no como rescate de una crisis.
+> Lección de método: TODO probe de motor debe drenar stdout (hilo lector) —
+> nunca sleep+communicate.
+
 Encargo del propietario: dejar de limar diferencias con la baseline y rediseñar
 desde first principles. Sin código todavía: diagnóstico + plan.
 
