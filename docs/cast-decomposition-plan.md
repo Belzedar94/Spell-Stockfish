@@ -16,20 +16,23 @@ suite de 61 posiciones, d1-d3. Sin esto verde no se toca search.
 
 ## Pasos
 
-### B1. Position: estado pendiente (1 sesión)
-- `StateInfo`: `u8 pendingSpell` (SPELL_NB = ninguno), `u8 pendingGate`.
-- `Position::do_cast(SpellType, Square, StateInfo&)`: aplica EXACTAMENTE la
-  mitad-cast de `do_move` (zona activa, mano--, cooldown, key de spell state)
-  extrayendo esa lógica a un helper compartido `apply_cast_state()` para que
-  do_move(gated) y do_cast no puedan divergir. NO mueve pieza, NO cambia stm,
-  NO toca rule50/ep/game_ply. Marca pending.
-- `Position::undo_cast()` simétrico.
-- Key del nodo pendiente: `key ^= pendingKey[spell][gate]` (tabla Zobrist
-  nueva) — distingue el intermedio de la posición real y de otros gates.
-- `is_draw`/repeticiones: los estados pending NUNCA entran (guard por flag).
-- `Position::do_move(m)` sobre estado pending: completa el ply — fusiona el
-  pending en el gated real (st final byte-idéntico al camino clásico,
-  incluida la cadena previous para undo).
+### B1. Position: estado pendiente (1 sesión) — DISEÑO REFINADO 2026-07-13
+Hallazgo (do_move:1309-1348): el bloque spell de do_move fusiona cast propio +
+limpieza de zonas caducas + tick del rival. NO se extrae: el pending se vuelve
+**declarativo**:
+- `Position` (NO StateInfo): campos `pendingSpell/pendingGate` + accessors.
+- `do_cast(s,g)` = set pending + nada más (O(1), sin StateInfo nuevo);
+  `undo_cast()` = clear. `Position::key()` devuelve
+  `st->key ^ pendingKey[s][g]` cuando hay pending (tabla Zobrist nueva).
+- `do_move(m)` con pending: compone `m2 = m.raw() | spellbits(s,g)`, limpia el
+  pending y ejecuta el do_move CLÁSICO con m2 → el estado final es
+  byte-idéntico por construcción (mismo código, invariante estructural).
+- Movegen del pendiente NO necesita estado aplicado: la restricción freeze
+  sobre orígenes propios es estática (FreezeBlockBB[g]) y la transparencia
+  jump ya se computa stateless por-gate en generate_spell_moves; la zona solo
+  afecta al RIVAL, que juega después de completar el ply.
+- Repeticiones/is_draw: sin StateInfo pending no entran nunca ✓. Eval/TT del
+  nodo pendiente usan key() con pendingKey ✓. undo_move(m2) clásico ✓.
 
 ### B2. Movegen del nodo pendiente (1 sesión)
 - `generate<PENDING_MOVES>`: jugadas base legales bajo la restricción del gate
