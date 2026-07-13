@@ -102,6 +102,9 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
     for (Bitboard b = pos.checkers(); b;)
         os << Notation::square(pop_lsb(b)) << " ";
 
+// The bindings build (SPELL_RULES_ONLY) links the rules closure without
+// syzygy/TT/threads; this debug-print probe is the only TB reference here.
+#ifndef SPELL_RULES_ONLY
     if (Tablebases::MaxCardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))
     {
         StateInfo st;
@@ -114,6 +117,7 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
         os << "\nTablebases WDL: " << std::setw(4) << wdl << " (" << s1 << ")"
            << "\nTablebases DTZ: " << std::setw(4) << dtz << " (" << s2 << ")";
     }
+#endif
 
     return os;
 }
@@ -1343,8 +1347,12 @@ void Position::do_move(Move                      m,
                                      st->spellCooldown[c][sp], st->spellHand[c][sp]);
     }
 
+// first_entry lives in tt.cpp, which drags the thread pool; the bindings
+// build never passes a TT, so the prefetch is compiled out with it.
+#ifndef SPELL_RULES_ONLY
     if (tt)
         prefetch(tt->first_entry(adjust_key50(k)));
+#endif
     // Update the key with the final value
     st->key = k;
 

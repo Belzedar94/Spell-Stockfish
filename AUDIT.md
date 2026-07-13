@@ -816,6 +816,34 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   +3591 -3607 =230, LLR -1.01 → no edge at STC. Early +12 raw Elo at 2k games was
   noise (LLR +0.84 → -1.01). Razoring into a spell-blind qsearch is apparently
   not mispricing anything the tree feels at 8s+0.08.
+- #25 spell-refutation (SpellRefutationBonus=1048576, branch code): stopped by owner
+  at 4,216 games, +2048 -2018 =150, LLR +0.02 → pure neutral. The countermove-style
+  refutation ordering alone does not move Elo at STC; either the (piece, landing)
+  context rarely repeats across siblings in spell trees, or ordering-first is not the
+  binding constraint. Successor #2 (king-relative learned history) stays open.
+- **2026-07-13 bounds raised to [1.00, 6.00]** (owner): neutral patches must die fast
+  in the low-hanging-fruit phase; queue #16-24/#26 respun as **#27-36** with the new
+  bounds and win adj 4/800 (freeze-checker-bonus first). Fine bounds return when the
+  FSF gap closes.
+
+## S6 bindings + Atomic-discipline adoptions (2026-07-13)
+
+- v0.1 tagged (rules + full suite, per the PLAN release ladder).
+- TSan CI job added (threaded bench x2 thread counts); spell-bin v1 schema doc
+  written and pinned: sha256(docs/spell-bin-v1.md) =
+  8453c69a2569062b949e6073428e07ee927d3099a95f4442e1e471819cc1d09c.
+- Bindings step 0: notation.{h,cpp} extracted (StartFEN + square/move/to_move),
+  position.cpp/perft.h de-coupled from uci.h; bench intact 14878698. Closure probe:
+  the rules-only surface links from 10 TUs (position movegen bitboard attacks notation
+  misc memory spell_params tune ucioption) with two SPELL_RULES_ONLY guards in
+  position.cpp (TB pretty-print, TT prefetch) — no threads/TT/search/NNUE runtime.
+- pyffish_spell shipped (src/pyffish.cpp + setup.py): pyffish surface minus SAN,
+  mono-variant stubs, spell_state() extension; deviations documented in the source
+  header. tests/pyffish_test.py: 39 checks PASS incl. move-set and FEN parity vs the
+  engine binary over gated fixture lines (built with mingw g++ against MSYS2
+  python 3.12; wheels via cibuildwheel are the CI story).
+- start_fen() returns the RAW StartFEN (no {} spell block) — byte-matched to the
+  oracle's xboard setup line; get_fen() always emits the explicit block.
 
 ### ubdip round 2 (2026-07-13): gate geometry per spell type
 

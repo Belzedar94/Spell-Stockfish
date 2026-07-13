@@ -43,9 +43,9 @@ molino de ideas cuanto antes; ajustable).
 3. Pipeline: datagen → psv_decode → loader → training step → serialize → carga en motor.
 4. Desde S5: protocol/reprosearch/signature/instrumented aplicables.
 5. Cambios de fuerza: **SPRT en la torre** (STC 8.0+0.08 → LTC 40.0+0.4, bounds
-   [0.00, 5.00], win adj 4/800) — metodología sscg13/fishtest adoptada 2026-07-13;
-   el panel local de 3 TCs queda retirado para iteración (solo progression tests
-   vs release anterior + baseline FSF, presets progtest).
+   gainer [1.00, 6.00] en fase low-hanging-fruit, win adj 4/800) — metodología
+   sscg13/fishtest adoptada 2026-07-13; el panel local de 3 TCs queda retirado para
+   iteración (solo progression tests vs release anterior + baseline FSF, progtest).
 
 ## Releases
 - 0.1: reglas + unit tests completos — **S5 cerrado ⇒ procede etiquetar ya** (sin tag aún).
