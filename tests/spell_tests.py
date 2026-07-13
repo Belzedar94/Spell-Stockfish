@@ -224,6 +224,28 @@ class SpellRules(unittest.TestCase):
         moves = moves_at(fen)
         self.assertIn("b4c3", moves)
 
+    def test_castle_through_check_by_freezing_attacker(self):
+        # chess.com edge case (Discord, rainrat 2026-03-05): you cannot
+        # castle through check, UNLESS the same ply freezes the attacker —
+        # frozen pieces do not attack. Verified against the frozen oracle
+        # (perft totals 1841 == 1841).
+        fen = ("rnbqk1nr/pppp1ppp/8/4p3/2b5/4P3/PPPP1P1P/RNBQK2R"
+               "[JJFFFFFjjfffff] {F@-:0,J@-:0,f@-:0,j@-:0} w KQkq - 0 1")
+        moves = moves_at(fen)
+        self.assertNotIn("e1g1", moves)      # bishop c4 attacks f1
+        self.assertIn("f@c4,e1g1", moves)    # freezing it legalizes O-O
+        self.assertIn("f@d3,e1g1", moves)    # any zone covering c4 works
+
+    def test_frozen_pawn_cannot_capture_en_passant(self):
+        # chess.com edge case (same source): a frozen pawn cannot capture
+        # en passant — origin-blocking covers every move type. Verified
+        # against the oracle (perft totals 2679 == 2679).
+        fen = ("rnbqkbnr/pppp1ppp/8/4P3/8/8/PPPP1PPP/RNBQKBNR"
+               "[JJFFFFFjjfffff] {F@-:0,J@-:0,f@-:0,j@-:0} b KQkq - 0 3")
+        moves = moves_at(fen, ["f@e5,d7d5"])
+        self.assertNotIn("e5d6", moves)      # the EP capture
+        self.assertEqual([m for m in moves if m.startswith("e5")], [])
+
     def test_perft_suite_depth1(self):
         # Every suite position must reproduce its recorded d1 count (the full
         # d2 cross-check against the reference binary runs locally via

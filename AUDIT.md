@@ -758,4 +758,30 @@ SPRT at STC/LTC via the tower (confirm beyond VSTC), SPSA-3 at STC on the tower 
 freed worker, NPS profiling (spell movegen/accumulator hot paths), and the serious-dataset
 RL loop with ubdip's generator-side filters (docs/nnue-training-guide.md).
 
+## Vault refreshed (+1,409 messages, 6 months) — the spell world moved (2026-07-13)
+
+Incremental fairy-vault ingest (21 channels + 15 threads, now current to today). Findings:
+
+1. **Two chess.com rules edge cases** (rainrat, 2026-03-05, found while porting spell to
+   his Fairy-Stockfish-X fork): castling through check IS legal if the same ply freezes
+   the attacker; a frozen pawn cannot capture en passant. **Both verified correct in our
+   engine AND in the frozen oracle** (perft parity 1841==1841 and 2679==2679; the bugs
+   were in rainrat's port, not the PR-37 lineage). Locked as permanent unit tests
+   (test_castle_through_check_by_freezing_attacker, test_frozen_pawn_cannot_capture_en_
+   passant) — 24/24 green.
+2. **MAX_MOVES ground truth**: rainrat hit a REAL spell position requiring **11,046
+   moves** — FSF's all=yes cap (8,192) overflows on it. Our 32,768 arena is validated;
+   NOTE: the frozen baseline binary (all=yes) can overflow in extreme positions during
+   long gauntlets.
+3. **rainrat's 96-game round robin (TODAY)**: run4rl e9 l085 (65.6%) edged run5rl e10 l07
+   (63.5%), winning the head-to-head 8.5/16. Small samples, but queue a run4rl-vs-run5rl
+   bracket on OUR engine — the reference net might not be the strongest available.
+4. **FEN standardization discussion is live upstream** (help, 2026-07-10): dpldgr quoted
+   OUR dialect verbatim as the candidate format; rainrat observed the at-most-one-active-
+   zone invariant (recorded in SPELL_SPEC §5.1). Owner shared the spell branches publicly
+   on 2026-07-10.
+5. Community demand is real: two independent "is there a spell engine?" asks (May/July),
+   an FSF-Tester beat ubdip 2-1 on chess.com's spell archive, and rainrat has an active
+   FSX port (PR gating spell behind allvars, in flux — "don't take the code yet").
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).

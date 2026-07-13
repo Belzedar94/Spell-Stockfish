@@ -195,6 +195,14 @@ rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] w KQkq - 0 1
   emits the block (even when all entries are `-:0`); the parser must accept a missing block and
   any subset of entries (the startpos config FEN omits it entirely).
 - Freeze zone center: the square whose (clipped) 3x3 zone equals the stored zone.
+- **Invariant (community observation, Discord help 2026-07-10)**: since zones live for the
+  cast ply plus exactly one reply, a legal BETWEEN-MOVES position can carry **at most one
+  active zone**, and it always belongs to the side that just moved. A compressed dialect
+  could therefore emit a single owner-less zone (cooldowns still need all four entries).
+  Our wire format keeps the explicit four-entry block — it is the de-facto community
+  format (quoted verbatim in the upstream FEN-standardization discussion) and byte-parity
+  with the frozen oracle is a project gate — but parsers should be aware the four-zone
+  space is mostly unreachable.
 
 ### 5.2 UCI moves
 - Normal moves: standard UCI (`e2e4`, `e7e8q`, castling `e1g1`).
