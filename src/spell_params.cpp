@@ -22,25 +22,27 @@
 
 namespace Stockfish {
 
-// Defaults from the first SPSA session (600 self-play pairs at 150k
-// nodes/move, 2026-07-12 — see AUDIT.md phase 4.5)
-int MaxFreezeGates = 9;
+// Defaults from the second SPSA session — the control tower's first tune
+// (test #2: 1200 iterations x 8 pairs = 19,200 games at 2.0+0.02,
+// 2026-07-13; see AUDIT.md). Notable: both GateHistory weights converged
+// to 0 — the learned gate ordering reads as noise at VSTC.
+int MaxFreezeGates = 8;
 int MaxJumpGates   = 4;
 
-int SpellGateKingBonus     = 11418;
-int SpellGateKingRingBonus = 57185;
+int SpellGateKingBonus     = 11789;
+int SpellGateKingRingBonus = 60993;
 
 int SpellDepthPenaltyTactical = 1;
 int SpellDepthPenaltyQuiet    = 3;
 
-int SpellTacticalLmrBonus = 1272;
+int SpellTacticalLmrBonus = 1297;
 
-int SpellLmrMoveCountCap = 43;
+int SpellLmrMoveCountCap = 46;
 
-int SpellGateHistOrderWeight = 1;
-int SpellGateHistStatWeight  = 1;
+int SpellGateHistOrderWeight = 0;
+int SpellGateHistStatWeight  = 0;
 
-int SpellStageMargin = 400;
+int SpellStageMargin = 365;
 
 int SpellQuietMinDepth = 0;
 
