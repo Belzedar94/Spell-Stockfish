@@ -59,7 +59,8 @@ class MovePicker {
                ExtMove**,
                Move*,
                bool allowSpells        = true,
-               bool onlyTacticalSpells = false);
+               bool onlyTacticalSpells = false,
+               Move spellRefutation    = Move::none());
     MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove**, Move*);
     ~MovePicker() { *arenaTop -= MAX_MOVES; }
     Move next_move();
@@ -90,6 +91,9 @@ class MovePicker {
     // the royal context for that classification is computed lazily once
     // per node in SPELL_INIT (mirrors the search's own precompute).
     bool onlyTacticalSpells = false;
+    // The spell that refuted the opponent's last move in a sibling subtree
+    // (ordered first among the gated moves)
+    Move spellRefutation = Move::none();
     // SpellMergedOrdering generated the gated quiets inside QUIET_INIT, so
     // the SPELL stage must not regenerate them
     bool      mergedSpells        = false;

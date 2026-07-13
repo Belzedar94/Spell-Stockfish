@@ -693,6 +693,8 @@ void Search::Worker::undo_null_move(Position& pos) { pos.undo_null_move(); }
 void Search::Worker::clear() {
     mainHistory.fill(-5);
     gateHistory.fill(0);
+    std::fill(&spellRefutations[0][0], &spellRefutations[0][0] + PIECE_NB * SQUARE_NB,
+              Move::none());
     captureHistory.fill(-699);
 
     // Each thread is responsible for clearing their part of shared history
@@ -1163,9 +1165,15 @@ moves_loop:  // When in check, search starts here
     const bool onlyTacticalSpells =
       allowSpells && !PvNode && !ourRoyalAttackers && depth < SpellQuietMinDepth;
 
+    // Refutation spell for the opponent's last move: ordered first among
+    // the gated moves when SpellRefutationBonus > 0
+    Move spellRefutation = (SpellRefutationBonus && prevSq != SQ_NONE)
+                           ? spellRefutations[pos.piece_on(prevSq)][prevSq]
+                           : Move::none();
+
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &gateHistory,
                   &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch(),
-                  allowSpells, onlyTacticalSpells);
+                  allowSpells, onlyTacticalSpells, spellRefutation);
 
     value = bestValue;
 
@@ -2094,6 +2102,10 @@ void update_all_stats(const Position& pos,
     if (!pos.capture_stage(bestMove))
     {
         update_quiet_histories(pos, ss, workerThread, bestMove, bonus * 824 / 1024);
+
+        // Remember the spell that refuted the opponent's landing
+        if (bestMove.is_spell() && prevSq != SQ_NONE)
+            workerThread.spellRefutations[pos.piece_on(prevSq)][prevSq] = bestMove;
 
         int actualMalus = malus * 1136 / 1024;
         // Decrease stats for all non-best quiet moves

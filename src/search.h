@@ -336,6 +336,9 @@ class Worker {
     ButterflyHistory mainHistory;
     LowPlyHistory    lowPlyHistory;
     GateHistory      gateHistory;
+    // Spell refutation table: the spell that last produced a cutoff after
+    // the opponent landed [piece] on [square] (countermove analog)
+    Move spellRefutations[PIECE_NB][SQUARE_NB];
 
     CapturePieceToHistory           captureHistory;
     CorrectionHistory<Continuation> continuationCorrectionHistory;

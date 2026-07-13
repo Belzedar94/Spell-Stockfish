@@ -170,7 +170,8 @@ MovePicker::MovePicker(const Position&              p,
                        ExtMove**                    at,
                        Move*                        scratch,
                        bool                         spells,
-                       bool                         onlyTactical) :
+                       bool                         onlyTactical,
+                       Move                         refutation) :
     pos(p),
     mainHistory(mh),
     lowPlyHistory(lph),
@@ -183,6 +184,7 @@ MovePicker::MovePicker(const Position&              p,
     ply(pl),
     allowSpells(spells),
     onlyTacticalSpells(onlyTactical),
+    spellRefutation(refutation),
     arenaTop(at),
     moves(*at),
     genScratch(scratch) {
@@ -263,6 +265,10 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
             // histories
             m.value = 2 * (*mainHistory)[us][m.raw() & 0xFFFF];
             m.value += SpellGateHistOrderWeight * (*gateHistory)[us][gate_slot(m)];
+
+            // The refutation spell sorts first among the gated moves
+            if (m == spellRefutation)
+                m.value += SpellRefutationBonus;
             m.value += 2 * sharedHistory->pawn_entry(pos)[pc][to];
             m.value += (*continuationHistory[0])[pc][to];
             m.value += (*continuationHistory[1])[pc][to];

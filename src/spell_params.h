@@ -113,6 +113,15 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Ordering bonus for the refutation spell: the spell that last produced a
+// cutoff after the opponent landed the same piece on the same square
+// (countermove analog keyed [piece][to] -> spell). Position-relative where
+// the retired gate-keyed butterfly was absolute, and O(1) at order time
+// where per-node impact scoring was refuted on NPS cost. ubdip's direct
+// advice: spell-ordering stats are the highest-leverage tweak at this
+// branching factor. 0 = off (bench-identical).
+extern int SpellRefutationBonus;  // 1048576 (first among spells)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

@@ -58,6 +58,11 @@ int SpellNoIIR            = 0;
 int SpellContHistSkip     = 0;
 int SpellRazorGuard       = 0;
 
+// Spell refutation ordering (ubdip's lever): active by default on this
+// branch; the magnitude clears any quiet-history sum, so the refutation
+// sorts strictly first among the gated moves.
+int SpellRefutationBonus = 1048576;
+
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
@@ -81,5 +86,6 @@ TUNE(SetRange(0, 500), SpellCaptureSeeMargin);
 TUNE(SetRange(0, 1), SpellNoIIR);
 TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
+TUNE(SetRange(0, 4194304), SpellRefutationBonus);
 
 }  // namespace Stockfish
