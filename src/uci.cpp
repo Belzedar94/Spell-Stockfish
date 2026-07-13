@@ -32,6 +32,7 @@
 #include <vector>
 
 #include "benchmark.h"
+#include "perft.h"
 #include <fstream>
 #include "datagen.h"
 #include "engine.h"
@@ -182,6 +183,8 @@ void UCIEngine::loop() {
             engine.trace_eval();
         else if (token == "datagen")
             datagen(is);
+        else if (token == "perftdec")
+            perftdec(is);
         else if (token == "evalspell")
             engine.trace_spell_eval();
         else if (token == "compiler")
@@ -350,6 +353,40 @@ void UCIEngine::bench(std::istream& args) {
 // count is the number of POSITIONS (records); games run until it is met.
 // For parallel generation run multiple engine processes with distinct
 // output files and seeds.
+// Pillar B equivalence gate: 'perftdec <depth> [fen]' runs the classic and
+// the decomposed perft on the same position and reports MATCH/MISMATCH.
+void UCIEngine::perftdec(std::istringstream& args) {
+
+    int depth = 1;
+    args >> depth;
+
+    std::string fen, tok;
+    while (args >> tok)
+        fen += tok + " ";
+    if (fen.empty())
+        fen = StartFEN;
+
+    Position  pos;
+    StateInfo st;
+    if (pos.set(fen, false, &st))
+    {
+        sync_cout << "info string perftdec: invalid fen" << sync_endl;
+        return;
+    }
+
+    u64 classic = 0;
+    {
+        Position  p2;
+        StateInfo st2;
+        p2.set(fen, false, &st2);
+        classic = depth <= 1 ? MoveList<LEGAL>(p2).size() : Benchmark::perft<false>(p2, depth);
+    }
+    const u64 dec = Benchmark::perft_dec(pos, depth);
+
+    sync_cout << "perftdec depth " << depth << ": classic " << classic << " decomposed " << dec
+              << (classic == dec ? "  MATCH" : "  MISMATCH") << sync_endl;
+}
+
 void UCIEngine::datagen(std::istringstream& args) {
 
     std::string out         = "spell_data.bin";

@@ -58,6 +58,9 @@ Key spellGate[COLOR_NB][SPELL_NB][SQUARE_NB];
 Key spellCd[COLOR_NB][SPELL_NB][SPELL_COOLDOWN + 1];
 Key spellHand[COLOR_NB][SPELL_NB][8];
 
+// Pillar B: pending-cast half-node overlay (declared in position.h)
+Key pendingCast[SPELL_NB][SQUARE_NB];
+
 }
 
 namespace {
@@ -168,6 +171,10 @@ void Position::init() {
                 Zobrist::spellHand[c][sp][n] = rng.rand<Key>();
         }
 
+    for (int sp = 0; sp < SPELL_NB; ++sp)
+        for (Square s = SQ_A1; s <= SQ_H8; ++s)
+            Zobrist::pendingCast[sp][s] = rng.rand<Key>();
+
     // Prepare the cuckoo tables
     cuckoo.fill(0);
     cuckooMove.fill(Move::none());
@@ -199,6 +206,10 @@ void Position::init() {
 // a PositionSetError describing the problem is returned, otherwise std::nullopt.
 std::optional<PositionSetError>
 Position::set(const string& fenStr, bool isChess960, StateInfo* si) {
+
+    // A reused Position object must never inherit a pending declaration
+    pendingSpell = int(SPELL_NB);
+    pendingGate  = int(SQ_NONE);
     /*
    A FEN string defines a particular position using only the ASCII character set.
 
@@ -676,6 +687,30 @@ Key Position::compute_material_key() const {
 
 // Overload to initialize the position object with the given endgame code string
 // like "KBPKN". It's mainly a helper to get the material key out of an endgame code.
+// ---- Pillar B (cast decomposition): declarative pending cast ----
+// do_cast/undo_cast are pure bookkeeping: the completing move is composed
+// via Move::make_spell and executed by the CLASSIC do_move, so the final
+// state is byte-identical to playing the gated move directly.
+
+void Position::do_cast(SpellType sp, Square gate) {
+    assert(!has_pending_cast());
+    assert(can_cast(sideToMove, sp));
+    pendingSpell = int(sp);
+    pendingGate  = int(gate);
+}
+
+void Position::undo_cast() {
+    assert(has_pending_cast());
+    pendingSpell = int(SPELL_NB);
+    pendingGate  = int(SQ_NONE);
+}
+
+Move Position::compose_pending(Move base) const {
+    assert(has_pending_cast());
+    assert(!base.is_spell());
+    return Move::make_spell(base, pending_spell(), pending_gate());
+}
+
 std::optional<PositionSetError> Position::set(const string& code, Color c, StateInfo* si) {
 
     assert(code[0] == 'K');

@@ -505,4 +505,19 @@ Move* generate<LEGAL>(const Position& pos, Move* moveList) {
     return moveList;
 }
 
+
+// Pillar B (cast decomposition): see movegen.h. Regenerates the LEGAL list
+// and filters - O(universe) per call, acceptable for the equivalence gate.
+Move* generate_pending(const Position& pos, Move* moveList) {
+
+    assert(pos.has_pending_cast());
+
+    for (const auto& m : MoveList<LEGAL>(pos))
+        if (m.is_spell() && m.spell_type() == pos.pending_spell()
+            && m.gate_sq() == pos.pending_gate())
+            *moveList++ = m.base_move();
+
+    return moveList;
+}
+
 }  // namespace Stockfish

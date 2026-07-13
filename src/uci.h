@@ -53,6 +53,7 @@ class UCIEngine {
     static std::string move(Move m, bool chess960 = false);
 
     void               datagen(std::istringstream& args);
+    void               perftdec(std::istringstream& args);
     static std::string wdl(Value v, const Position& pos);
     static std::string to_lower(std::string str);
     static Move        to_move(const Position& pos, std::string str);

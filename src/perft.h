@@ -56,6 +56,74 @@ u64 perft(Position& pos, Depth depth) {
     return nodes;
 }
 
+// Pillar B equivalence gate: enumerate the SAME full-ply universe through
+// the decomposed path - base moves directly; casts as do_cast() followed by
+// generate_pending() completions composed back into classic gated moves.
+// Must equal perft() exactly on every position, at every depth.
+inline u64 perft_dec(Position& pos, Depth depth) {
+
+    StateInfo st;
+    u64       nodes = 0;
+
+    Move base[256];
+    int  nb = 0;
+    struct CastDecl {
+        SpellType sp;
+        Square    g;
+    } casts[SPELL_NB * SQUARE_NB];
+    int  nc = 0;
+    bool seen[SPELL_NB][SQUARE_NB] = {};
+
+    for (const auto& m : MoveList<LEGAL>(pos))
+    {
+        if (!m.is_spell())
+            base[nb++] = m;
+        else if (!seen[m.spell_type()][m.gate_sq()])
+        {
+            seen[m.spell_type()][m.gate_sq()] = true;
+            casts[nc++]                       = {m.spell_type(), m.gate_sq()};
+        }
+    }
+
+    for (int i = 0; i < nb; ++i)
+    {
+        if (depth <= 1)
+        {
+            ++nodes;
+            continue;
+        }
+        pos.do_move(base[i], st);
+        nodes += perft_dec(pos, depth - 1);
+        pos.undo_move(base[i]);
+    }
+
+    for (int i = 0; i < nc; ++i)
+    {
+        pos.do_cast(casts[i].sp, casts[i].g);
+
+        Move        pend[256];
+        Move* const end = generate_pending(pos, pend);
+
+        for (Move* b = pend; b < end; ++b)
+        {
+            if (depth <= 1)
+            {
+                ++nodes;
+                continue;
+            }
+            const Move full = pos.compose_pending(*b);
+            pos.undo_cast();
+            pos.do_move(full, st);
+            nodes += perft_dec(pos, depth - 1);
+            pos.undo_move(full);
+            pos.do_cast(casts[i].sp, casts[i].g);
+        }
+        pos.undo_cast();
+    }
+
+    return nodes;
+}
+
 inline std::variant<u64, PositionSetError>
 perft(const std::string& fen, Depth depth, bool isChess960) {
     StateInfo st;

@@ -52,6 +52,12 @@ inline bool operator<(const ExtMove& f, const ExtMove& s) { return f.value < s.v
 template<GenType>
 Move* generate(const Position& pos, Move* moveList);
 
+// Pillar B (cast decomposition): base moves that complete the declared
+// pending cast - the classic gated universe filtered to that (spell, gate)
+// with the spell bits stripped. Correctness-first implementation; the
+// search integration will use the staged generators instead.
+Move* generate_pending(const Position& pos, Move* moveList);
+
 // The MoveList struct wraps the generate() function and returns a convenient
 // list of moves. Using MoveList is sometimes preferable to directly calling
 // the lower level generate() function.

@@ -111,6 +111,12 @@ struct PositionSetError: std::runtime_error {
 // pieces, side to move, hash keys, castling info, etc. Important methods are
 // do_move() and undo_move(), used by the search to update node info when
 // traversing the search tree.
+namespace Zobrist {
+// Pillar B (cast decomposition): overlay distinguishing a pending-cast
+// half-node from its parent position in keys/TT
+extern Key pendingCast[SPELL_NB][SQUARE_NB];
+}
+
 class Position {
    public:
     static void init();
@@ -198,6 +204,18 @@ class Position {
     Bitboard occupied_for_sliding() const;   // pieces() minus transparent gates
     bool     both_kings_on_board() const;
 
+    // Pillar B (cast decomposition): a declared-but-uncompleted cast. Pure
+    // bookkeeping — no board/spell state is applied until the completing
+    // move runs the CLASSIC do_move path with the composed gated move, so
+    // "cast then move" equals "gated move" by construction. Rules-level
+    // consumers (movegen, FEN, repetition) never see the declaration.
+    bool      has_pending_cast() const { return pendingSpell != int(SPELL_NB); }
+    SpellType pending_spell() const { return SpellType(pendingSpell); }
+    Square    pending_gate() const { return Square(pendingGate); }
+    void      do_cast(SpellType sp, Square gate);
+    void      undo_cast();
+    Move      compose_pending(Move base) const;
+
     // Accessing hash keys
     Key key() const;
     Key prefetch_key(Move m) const;
@@ -269,6 +287,9 @@ class Position {
     int          gamePly;
     Color        sideToMove;
     bool         chess960;
+    // Pillar B: declared pending cast (SPELL_NB = none); see do_cast()
+    int          pendingSpell = int(SPELL_NB);
+    int          pendingGate  = int(SQ_NONE);
     DirtyPiece   scratch_dp;
     DirtyThreats scratch_dts;
 };
@@ -394,7 +415,10 @@ inline Bitboard Position::pinners(Color c) const { return st->pinners[c]; }
 
 inline Bitboard Position::check_squares(PieceType pt) const { return st->checkSquares[pt]; }
 
-inline Key Position::key() const { return adjust_key50(st->key); }
+inline Key Position::key() const {
+    return adjust_key50(st->key)
+         ^ (has_pending_cast() ? Zobrist::pendingCast[pendingSpell][pendingGate] : 0);
+}
 
 template<bool AfterMove>
 inline Key Position::adjust_key50(Key k) const {
