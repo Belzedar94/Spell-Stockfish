@@ -89,7 +89,10 @@ class MovePicker {
     // Shallow non-PV nodes may restrict the SPELL stage to tactical casts;
     // the royal context for that classification is computed lazily once
     // per node in SPELL_INIT (mirrors the search's own precompute).
-    bool      onlyTacticalSpells  = false;
+    bool onlyTacticalSpells = false;
+    // SpellMergedOrdering generated the gated quiets inside QUIET_INIT, so
+    // the SPELL stage must not regenerate them
+    bool      mergedSpells        = false;
     Bitboard  spellRoyalAttackers = 0;
     Square    spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
     ExtMove** arenaTop;

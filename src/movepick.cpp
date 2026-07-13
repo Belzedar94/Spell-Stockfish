@@ -18,6 +18,7 @@
 
 #include "movepick.h"
 
+#include <algorithm>
 #include <cassert>
 #include <limits>
 #include <utility>
@@ -26,6 +27,7 @@
 #include "misc.h"
 #include "position.h"
 #include "spell_order.h"
+#include "spell_params.h"
 
 namespace Stockfish {
 
@@ -358,7 +360,25 @@ top:
     case QUIET_INIT :
         if (!skipQuiets)
         {
-            const Move* endGen = generate<QUIETS>(pos, genScratch);
+            Move* endGen = generate<QUIETS>(pos, genScratch);
+
+            // Spell candidate (SpellMergedOrdering): generate the gated
+            // quiets HERE and order them in one list with the base quiets,
+            // FSF-style, trading the lazy-stage win for first-visit
+            // ordering of the variant's key resource. The useless-spell
+            // filter runs at generation time in this mode (the SPELL-stage
+            // filter never sees these moves).
+            if (SpellMergedOrdering && allowSpells
+                && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
+                    || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
+            {
+                Move* endAll = generate<SPELL_QUIETS>(pos, endGen);
+                if (ply != 0)
+                    endAll = std::remove_if(endGen, endAll,
+                                            [&](Move m) { return is_useless_spell(pos, m); });
+                endGen       = endAll;
+                mergedSpells = true;
+            }
 
             endCur = endGenerated = score<QUIETS>(genScratch, endGen);
 
@@ -385,7 +405,7 @@ top:
         // gate (allowSpells): a cast is worth at most about a tempo plus
         // bounded tactics, so hopeless nodes skip the expansion entirely.
         cur = endCur = endSpells = endGenerated;
-        if (allowSpells
+        if (!mergedSpells && allowSpells
             && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
                 || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
         {

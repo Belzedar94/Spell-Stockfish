@@ -389,7 +389,8 @@ bool Search::Worker::iterative_deepening() {
             selDepth = 0;
 
             // Reset aspiration window starting size
-            delta     = 5 + threadIdx % 8 + std::abs(rootMoves[pvIdx].meanSquaredScore) / 10588;
+            delta = (5 + threadIdx % 8 + std::abs(rootMoves[pvIdx].meanSquaredScore) / 10588)
+                  * SpellAspirationPct / 100;
             Value avg = rootMoves[pvIdx].averageScore;
             alpha     = std::max(avg - delta, -VALUE_INFINITE);
             beta      = std::min(avg + delta, VALUE_INFINITE);
@@ -1000,7 +1001,11 @@ Value Search::Worker::search(
     // Step 7. Razoring
     // If eval is really low, skip search entirely and return the qsearch value.
     // For PvNodes, we must have a guard against mates being returned.
-    if (!PvNode && eval < alpha - 465 - 300 * depth * depth)
+    // Spell candidate: qsearch cannot see casts, so razoring misjudges
+    // positions where a spell saves us — optionally keep searching while we
+    // can still cast.
+    if (!PvNode && eval < alpha - 465 - 300 * depth * depth
+        && !(SpellRazorGuard && (pos.can_cast(us, SPELL_FREEZE) || pos.can_cast(us, SPELL_JUMP))))
         return qsearch<NonPV>(pos, ss, alpha, beta);
 
     // Step 8. Futility pruning: child node
@@ -1020,8 +1025,11 @@ Value Search::Worker::search(
     }
 
     // Step 9. Null move search with verification search
+    // Spell candidate: the null-move assumption is unsound when the reply
+    // can freeze our answer — optionally skip while the opponent can cast.
     if (cutNode && ss->staticEval >= beta - 14 * depth - 45 * improving + 374 && !excludedMove
-        && pos.non_pawn_material(us) && ss->ply >= nmpMinPly && !is_loss(beta))
+        && pos.non_pawn_material(us) && ss->ply >= nmpMinPly && !is_loss(beta)
+        && !(SpellNullMoveGuard && pos.can_cast(~us, SPELL_FREEZE)))
     {
         assert((ss - 1)->currentMove != Move::null());
 
@@ -1059,7 +1067,9 @@ Value Search::Worker::search(
     // Step 10. Internal iterative reductions
     // At sufficient depth, reduce depth for PV/Cut nodes without a TTMove.
     // (*Scaler) Making IIR more aggressive scales poorly.
-    if (!ss->followPV && !allNode && depth >= 6 && !ttData.move)
+    // Spell candidate: at branching ~1650 a missing TT move is common and
+    // IIR compounds the ordering weakness — optionally disabled.
+    if (!ss->followPV && !allNode && depth >= 6 && !ttData.move && !SpellNoIIR)
         depth--;
 
     // Step 11. ProbCut
@@ -1220,7 +1230,9 @@ moves_loop:  // When in check, search starts here
         if (!rootNode && !royalCapture && pos.non_pawn_material(us) && !is_loss(bestValue))
         {
             // Skip quiet moves if movecount exceeds our threshold
-            if (moveCount >= (3 + depth * depth) / (2 - improving))
+            // (SpellLmpScalePct: chess-tuned LMP at spell branching is a
+            // candidate misfire — 100 = stock)
+            if (moveCount >= (3 + depth * depth) / (2 - improving) * SpellLmpScalePct / 100)
                 mp.skip_quiet_moves();
 
             // Reduced depth of the next LMR search
@@ -1243,7 +1255,10 @@ moves_loop:  // When in check, search starts here
 
                 // SEE based pruning for captures and checks
                 // Avoid pruning sacrifices of our last piece for stalemate
-                int margin = 175 * depth + captHist * 34 / 1024;
+                // (gated captures optionally get extra margin: their SEE
+                // undervalues the tempo/tactics of the cast)
+                int margin = 175 * depth + captHist * 34 / 1024
+                           + (move.is_spell() ? SpellCaptureSeeMargin : 0);
                 if ((alpha >= VALUE_DRAW || pos.non_pawn_material(us) != PieceValue[movedPiece])
                     && !pos.see_ge(move, -margin))
                     continue;
@@ -1273,8 +1288,10 @@ moves_loop:  // When in check, search starts here
                 // (*Scaler): Generally, lower divisors scale well
                 lmrDepth += history / lmrDivisor[dIndex];
 
-                Value futilityValue = ss->staticEval + 40 + 138 * !bestMove + 117 * lmrDepth
-                                    + 90 * (ss->staticEval > alpha);
+                Value futilityValue =
+                  ss->staticEval
+                  + (40 + 138 * !bestMove + 117 * lmrDepth + 90 * (ss->staticEval > alpha))
+                      * SpellFutilityScalePct / 100;
 
                 // Futility pruning: parent node
                 // (*Scaler): Generally, more frequent futility pruning
@@ -1377,7 +1394,7 @@ moves_loop:  // When in check, search starts here
         // PotionDepthPenalty policy): one ply for tactical casts (captures,
         // checks, tactical freezes), two for quiet ones. The penalty may
         // drop the move straight into quiescence (floor at 0, not 1).
-        if (move.is_spell() && depth >= 3)
+        if (move.is_spell() && depth >= 3 && !(SpellNoPenaltyPV && PvNode))
             newDepth =
               std::max(0, newDepth
                             - (capture || givesCheck || tacticalSpell ? SpellDepthPenaltyTactical
@@ -2152,7 +2169,10 @@ void update_quiet_histories(
     if (ss->ply < LOW_PLY_HISTORY_SIZE)
         workerThread.lowPlyHistory[ss->ply][move.raw() & 0xFFFF] << bonus * 663 / 1024;
 
-    update_continuation_histories(ss, pos.moved_piece(move), move.to_sq(), bonus * 820 / 1024);
+    // Spell candidate: gated moves share the (piece, to) key with their base
+    // move and can pollute its continuation stats — optionally skipped
+    if (!(SpellContHistSkip && move.is_spell()))
+        update_continuation_histories(ss, pos.moved_piece(move), move.to_sq(), bonus * 820 / 1024);
 
     workerThread.sharedHistory.pawn_entry(pos)[pos.moved_piece(move)][move.to_sq()]
       << bonus * (bonus > -7 ? 1038 : 525) / 1024;

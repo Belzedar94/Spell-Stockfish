@@ -66,6 +66,53 @@ extern int SpellStageMargin;  // 400
 // for at most about a tempo of value. 0 = no restriction (historical).
 extern int SpellQuietMinDepth;  // 0
 
+// ---------------------------------------------------------------------------
+// SPRT candidate toggles (2026-07-13): every default preserves the current
+// behavior EXACTLY (bench-identical), so each idea ships as an options-diff
+// SPRT on the tower. The shared hypothesis: SF-master heuristics are tuned
+// for chess trees (branching ~35) and misfire at spell branching ~1650.
+
+// Generate gated quiets together with the base quiets and order them in one
+// list (FSF-style interleaving) instead of the lazy late SPELL stage. Trades
+// the laziness win for first-visit ordering of the variant's key resource.
+extern int SpellMergedOrdering;  // 0 (off)
+
+// Skip null-move pruning while the OPPONENT has a freeze available: the
+// null-move assumption (a free tempo keeps beta) is unsound when the reply
+// can freeze our answer.
+extern int SpellNullMoveGuard;  // 0 (off)
+
+// Percent scale on the late-move-count pruning threshold (100 = stock).
+// Chess-tuned LMP at 1650-branching nodes skips almost everything.
+extern int SpellLmpScalePct;  // 100
+
+// Percent scale on the parent futility margin (100 = stock).
+extern int SpellFutilityScalePct;  // 100
+
+// Do not apply the spell depth penalties on PV nodes.
+extern int SpellNoPenaltyPV;  // 0 (off)
+
+// Percent scale on the initial aspiration window (100 = stock): spell evals
+// swing harder than chess evals, and re-search storms are costly.
+extern int SpellAspirationPct;  // 100
+
+// Extra margin (cp) added to the SEE pruning threshold of GATED captures:
+// positive values prune fewer spell captures.
+extern int SpellCaptureSeeMargin;  // 0
+
+// Disable internal iterative reductions: at huge branching, a missing TT
+// move is common and IIR compounds the ordering weakness.
+extern int SpellNoIIR;  // 0 (off)
+
+// Do not update continuation histories with spell moves: gated moves share
+// the (piece, to) key with their base move and pollute its stats.
+extern int SpellContHistSkip;  // 0 (off)
+
+// Skip razoring while WE can still cast: razoring drops straight into a
+// qsearch that cannot see spells, so positions with a saving cast get
+// misjudged.
+extern int SpellRazorGuard;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
