@@ -836,6 +836,9 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
 - #29 lmp-scale-200 (SpellLmpScalePct=200): stopped at 1,730 games, +825 -842 =63,
   LLR -0.50 → OUT (pure neutral). Doubling the LMP threshold neither helps nor hurts:
   late-move counting at spell branching is apparently already saturated either way.
+- #30 conthist-skip (SpellContHistSkip=1): stopped at 924 games, +433 -465 =26,
+  LLR -0.61 → OUT. Keeping spells out of continuation history does not pay: the
+  (piece, to) key sharing with base moves is not measurably polluting the stats.
 
 ## S6 bindings + Atomic-discipline adoptions (2026-07-13)
 
