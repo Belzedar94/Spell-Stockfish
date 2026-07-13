@@ -839,6 +839,9 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
 - #30 conthist-skip (SpellContHistSkip=1): stopped at 924 games, +433 -465 =26,
   LLR -0.61 → OUT. Keeping spells out of continuation history does not pay: the
   (piece, to) key sharing with base moves is not measurably polluting the stats.
+- #31 no-iir (SpellNoIIR=1): stopped at 512 games, +224 -261 =27, LLR -0.60 → OUT.
+  Disabling IIR trends straight down; the reduction earns its keep even with
+  spell-sized branching.
 
 ## S6 bindings + Atomic-discipline adoptions (2026-07-13)
 
