@@ -842,6 +842,11 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
 - #31 no-iir (SpellNoIIR=1): stopped at 512 games, +224 -261 =27, LLR -0.60 → OUT.
   Disabling IIR trends straight down; the reduction earns its keep even with
   spell-sized branching.
+- **#33 no-penalty-pv (SpellNoPenaltyPV=1): PASS STC** at 2,620 games,
+  +1360 -1137 =123, LLR +2.99 (~+30 raw Elo) — the first queue survivor, and it
+  confirms the structural diagnosis (docs/structural-roadmap.md): the flat spell
+  depth penalties over-reduce exactly where precision pays, the PV. LTC
+  confirmation queued as #43 (40.0+0.4, same options, bounds [1.00, 6.00]).
 
 ## S6 bindings + Atomic-discipline adoptions (2026-07-13)
 
