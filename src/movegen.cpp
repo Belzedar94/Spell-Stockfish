@@ -273,15 +273,45 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
             int limit = sp == SPELL_FREEZE ? MaxFreezeGates : MaxJumpGates;
             if (sp == SPELL_FREEZE && ringCount > limit)
                 limit = ringCount;
-            if (n > limit)
+
+            // sscg13's equivalence classes: same frozen enemy set == same
+            // search effect, so duplicates only waste candidate slots.
+            // Sort everything, then fill the quota with distinct classes.
+            if (SpellFreezeDedup && sp == SPELL_FREEZE)
             {
-                std::partial_sort(
-                  scored, scored + limit, scored + n,
-                  [](const GateScore& a, const GateScore& b) { return a.score > b.score; });
-                n = limit;
+                std::sort(scored, scored + n,
+                          [](const GateScore& a, const GateScore& b) { return a.score > b.score; });
+                const Bitboard enemies             = pos.pieces(~Us);
+                Bitboard       classes[SQUARE_NB];
+                int            taken = 0;
+                for (int i = 0; i < n && taken < limit; ++i)
+                {
+                    const Bitboard cls  = FreezeZoneBB[scored[i].g] & enemies;
+                    bool           dup = false;
+                    for (int k = 0; k < taken && !dup; ++k)
+                        dup = classes[k] == cls;
+                    if (dup)
+                        continue;
+                    classes[taken++]       = cls;
+                    gateList[gateCount++] = scored[i].g;
+                }
             }
-            for (int i = 0; i < n; ++i)
-                gateList[gateCount++] = scored[i].g;
+            else
+            {
+                if (n > limit)
+                {
+                    std::partial_sort(scored, scored + limit, scored + n,
+                                      [](const GateScore& a, const GateScore& b) {
+                                          return a.score > b.score;
+                                      });
+                    n = limit;
+                }
+                // Jump on an already-transparent square adds nothing
+                for (int i = 0; i < n; ++i)
+                    if (!(SpellFreezeDedup && sp == SPELL_JUMP
+                          && (pos.jump_transparent() & square_bb(scored[i].g))))
+                        gateList[gateCount++] = scored[i].g;
+            }
         }
 
         for (int gi = 0; gi < gateCount; ++gi)

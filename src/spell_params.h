@@ -113,6 +113,16 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// sscg13 (Discord 2026-07-13): "freezes are the same if they affect the
+// same set of pieces". Two freeze gates whose zones cover the same enemy
+// pieces are search transpositions (the zone dies after the reply; only
+// the caster-origin restriction differs), yet they carry the same material
+// score and can waste several MaxFreezeGates slots on duplicates. Dedup by
+// (zone & enemy pieces) during gate selection, keeping the best-scored
+// representative per class. Also prunes jump casts on already-transparent
+// squares (rainrat's FSX does both). 0 = off (bench-identical).
+extern int SpellFreezeDedup;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
