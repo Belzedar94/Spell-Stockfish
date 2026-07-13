@@ -37,6 +37,13 @@ extern int MaxJumpGates;    // 6
 extern int SpellGateKingBonus;      // 10000: zone covers the enemy king
 extern int SpellGateKingRingBonus;  // 50000: zone touches the enemy king ring
 
+// Defensive-freeze bonus (ubdip): the zone covers a piece attacking OUR
+// king — freezing it silences the check. The tactical classifier already
+// knows the motif; this adds it to gate SELECTION/ordering, where a
+// defensive freeze far from the enemy king otherwise scores near zero and
+// can be cut from the QUIETS candidates. 0 = off (bench-identical).
+extern int SpellFreezeCheckerBonus;  // 0 (off)
+
 // Depth penalty (plies) for gated moves: the reference searches spell moves
 // shallower (PotionDepthPenaltyTactical/Quiet), which is where a large share
 // of its strength comes from.

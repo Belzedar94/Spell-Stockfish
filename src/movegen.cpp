@@ -219,6 +219,13 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
     const Bitboard eRing =
       eksq != SQ_NONE ? Attacks::attacks_bb<KING>(eksq) | square_bb(eksq) : Bitboard(0);
 
+    // Attackers of our own king, for the defensive-freeze bonus (skipped
+    // while the knob is 0 so the default pays nothing)
+    const Bitboard ourChk =
+      SpellFreezeCheckerBonus && pos.count<KING>(Us)
+        ? pos.attackers_to(pos.square<KING>(Us)) & pos.pieces(~Us)
+        : Bitboard(0);
+
     // Squares revealed to each own slider by lifting one blocker, scored once
     int  jumpScore[SQUARE_NB];
     bool jumpScoreReady = false;
@@ -260,7 +267,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
                 if (sp == SPELL_FREEZE)
                 {
-                    s = freeze_gate_score(pos, Us, g, eksq, eRing);
+                    s = freeze_gate_score(pos, Us, g, eksq, eRing, ourChk);
                     if (FreezeZoneBB[g] & eRing)
                         ++ringCount;
                 }

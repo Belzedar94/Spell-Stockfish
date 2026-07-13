@@ -34,8 +34,13 @@ namespace Stockfish {
 // blocker would reveal to our sliders.
 
 // Score of freezing with the zone centered on g. eksq/eRing are the enemy
-// king square (or SQ_NONE) and king ring, precomputed by the caller.
-inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eksq, Bitboard eRing) {
+// king square (or SQ_NONE) and king ring, and ourChk the attackers of our
+// own king, all precomputed by the caller. Freezing an attacker silences
+// its check (frozen pieces give no attacks) — the defensive motif ubdip
+// singled out; without the bonus a defensive freeze far from the enemy
+// king can be cut from the QUIETS gate candidates entirely.
+inline int freeze_gate_score(
+  const Position& pos, Color us, Square g, Square eksq, Bitboard eRing, Bitboard ourChk) {
 
     const Bitboard zone = FreezeZoneBB[g];
 
@@ -46,6 +51,8 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
         s += SpellGateKingBonus;
     if (zone & eRing)
         s += SpellGateKingRingBonus;
+    if (zone & ourChk)
+        s += SpellFreezeCheckerBonus;
     return s;
 }
 
