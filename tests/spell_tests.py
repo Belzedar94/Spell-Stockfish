@@ -97,8 +97,8 @@ class SpellRules(unittest.TestCase):
 
     def test_startpos_move_counts(self):
         moves = moves_at()
-        self.assertEqual(len(moves), 1878)
-        self.assertEqual(len([m for m in moves if m.startswith("f@")]), 1188)
+        self.assertEqual(len(moves), 1814)
+        self.assertEqual(len([m for m in moves if m.startswith("f@")]), 1124)
         self.assertEqual(len([m for m in moves if m.startswith("j@")]), 670)
 
     def test_freeze_cast_sets_state_and_hand(self):
@@ -138,10 +138,11 @@ class SpellRules(unittest.TestCase):
         moves = moves_at(moves=["f@e5,d2d4"])
         self.assertIn("g8f6", moves)  # f6 is inside the e5-centered 3x3 zone
 
-    def test_caster_diagonal_neighbor_may_move(self):
-        # f@a1 blocks only a1+orthogonals for the caster: b2 (diagonal) moves
+    def test_caster_freeze_zone_blocks_all_nine_squares(self):
+        # A caster cannot move a piece from any square in its new 3x3 zone,
+        # including a diagonal neighbor.
         moves = moves_at()
-        self.assertIn("f@a1,b2b3", moves)
+        self.assertNotIn("f@a1,b2b3", moves)
         self.assertNotIn("f@a1,a2a3", moves)  # a2 is orthogonal to a1
         self.assertNotIn("f@b1,b2b3", moves)  # b2 is orthogonal to b1
 

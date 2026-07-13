@@ -290,8 +290,8 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
             if (sp == SPELL_FREEZE)
             {
-                // Gate the base moves. The caster's own move may not start on
-                // the gate square or its orthogonal neighbors.
+                // Gate the base moves. The caster's own move may not start in
+                // the newly frozen 3x3 area.
                 const Bitboard blocked = FreezeBlockBB[gate];
 
                 for (Move* it = baseStart; it != baseEnd; ++it)

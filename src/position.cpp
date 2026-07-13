@@ -864,8 +864,8 @@ bool Position::legal(Move m) const {
 
         if (sp == SPELL_FREEZE)
         {
-            // The caster's own base move may not start on the gate or its
-            // orthogonal neighbors (SPELL_SPEC.md §3.1)
+            // The caster's own base move may not start in the newly frozen
+            // 3x3 area.
             if (from == gate || (FreezeBlockBB[gate] & from))
                 return false;
             castFrozen = FreezeZoneBB[gate];
