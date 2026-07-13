@@ -847,6 +847,12 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   confirms the structural diagnosis (docs/structural-roadmap.md): the flat spell
   depth penalties over-reduce exactly where precision pays, the PV. LTC
   confirmation queued as #43 (40.0+0.4, same options, bounds [1.00, 6.00]).
+- **#43 no-penalty-pv LTC: FAIL** at 2,080 games, +912 -1076 =92, LLR -2.67
+  (~-27 raw). STC +30 / LTC -27: the classic short-TC illusion — dropping the PV
+  penalties helps when iterations barely complete, but at depth the unpenalized
+  PV wastes nodes. NO MERGE (methodology needs both). Reading: the penalty
+  structure matters MORE at depth; pillar A's depth-scaled budget is the
+  principled fix.
 
 ## S6 bindings + Atomic-discipline adoptions (2026-07-13)
 
