@@ -228,6 +228,14 @@ void Search::Worker::start_searching() {
         return;
     }
 
+    // Radical experiment: hand the whole search to the PUCT MCTS when
+    // UseMCTS=1 (single-threaded; helpers stay parked)
+    if (UseMCTS)
+    {
+        mcts_search();
+        return;
+    }
+
     // Main thread starts non-main threads, and begins own search.
     threads.start_searching();
     bool uciPvSent = iterative_deepening();

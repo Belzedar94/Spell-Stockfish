@@ -346,6 +346,8 @@ class Worker {
 
    private:
     bool iterative_deepening();
+    // PUCT Monte-Carlo searcher (UseMCTS=1), defined in mcts.cpp
+    void mcts_search();
 
     void do_move(Position& pos, const Move move, StateInfo& st, Stack* const ss);
     void

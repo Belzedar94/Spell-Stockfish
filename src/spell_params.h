@@ -113,6 +113,11 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Radical experiment: replace alpha-beta with PUCT Monte-Carlo tree search
+// (src/mcts.cpp) — heuristic priors, NNUE leaf values, progressive widening.
+// 0 = classic search (bench-identical).
+extern int UseMCTS;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
