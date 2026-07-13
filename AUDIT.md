@@ -825,6 +825,10 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   in the low-hanging-fruit phase; queue #16-24/#26 respun as **#27-36** with the new
   bounds and win adj 4/800 (freeze-checker-bonus first). Fine bounds return when the
   FSF gap closes.
+- #27 freeze-checker-bonus (SpellFreezeCheckerBonus=60000): stopped at 2,856 games,
+  +1336 -1397 =123, LLR -1.32 → OUT (~-7 raw). The -22% fixed-depth tree did not
+  translate: at 60000 the bonus lifts defensive freezes above genuinely better moves.
+  Knob stays neutral in master; magnitude is SPSA-3 material if ever.
 
 ## S6 bindings + Atomic-discipline adoptions (2026-07-13)
 
