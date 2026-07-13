@@ -799,12 +799,32 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
 
 1. **Spell refutation table (countermove analog)**: [opponent piece][to] → the spell that
    last produced a cutoff there. "Rook lands d3 → f@d3 refutes." Cheap, well-founded,
-   position-relative. (IMPLEMENTING FIRST as SpellRefutationBonus toggle.)
+   position-relative. (IMPLEMENTED: branch spell-refutation, bench 17871893, SPRT #25.)
 2. **King-relative learned history**: [spell type][gate geometry bucket relative to enemy
    king] — learns the king/ring bonuses' shape instead of hardcoding two scalars, and
    generalizes across positions unlike absolute gate squares.
 3. **Enriched static impact score**: weight freeze gates by the VALUE of pieces actually
    silenced (attackers, hangers, mobility) rather than binary tactical classification —
    the FSF "gate impact scoring" idea (+100 there) taken further.
+
+### ubdip round 2 (2026-07-13): gate geometry per spell type
+
+His three points, checked against the code:
+
+1. "King ring only makes sense for the freeze" — ALREADY TRUE here: jump gates carry no
+   ring term; jump_gate_scores ranks each blocker by the exact slider reveal.
+2. "Jump along queen lines from the opponent king / pieces pinned against the king" —
+   ALREADY COVERED EXACTLY: jump transparency is gate-square-only in this dialect
+   (spell_zone_bb: FreezeZoneBB for freeze, square_bb for jump), so the tactic is
+   "lift one blocker"; jump_gate_scores scores precisely that reveal, king bonus
+   included, and pins against their king are a subset of those blockers (a sniper with
+   exactly one blocker sees that blocker first from the slider side too).
+3. "Freeze in a ring around checkers" — REAL GAP, now shipped: the tactical classifier
+   knew the motif but the gate impact score did not, so a defensive freeze far from the
+   enemy king could be CUT from the QUIETS gate candidates before ordering ever saw it
+   (no evasion staging: in-check nodes limit gates like any other node).
+   SpellFreezeCheckerBonus (default 0, bench-identical; knob check: bonus 60000 shrinks
+   the fixed-depth bench tree 22%, 14.88M → 11.59M nodes). Branch freeze-checker-bonus,
+   SPRT #26 at 60000.
 
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).
