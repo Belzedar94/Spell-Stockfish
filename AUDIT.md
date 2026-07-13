@@ -851,9 +851,15 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
 - Wheels CI: .github/workflows/wheels.yml (cibuildwheel 2.22.0, 3 OS, cp39-cp313,
   manual/tag-triggered). Windows lane compiles SF sources under MSVC — expect an
   iteration once it first runs; the local mingw build is the validated path.
-- NEXT (structural): synthetic pipeline fixture in CI (datagen→train ephemeral
-  net→serialize→load, no strong weights published — the Atomic pattern), PyPI/npm
-  publication, ecosystem smokes (pychess wheel / Fairyground ffish.js).
+- Synthetic pipeline E2E gate shipped (tests/pipeline_e2e.py): tiny datagen (2,152
+  positions, 45s) → 1 mini-epoch train (GPU, 68s) → serialize → engine loads the
+  EPHEMERAL net and completes bench. PASS end to end; no strong weights involved.
+  Found and locked two contract facts: the fork's feature transformer is CUDA-only
+  (asserts .is_cuda — a CPU fallback is the prerequisite for porting this gate to
+  hosted CI), and bench prints its summary to stderr. Trainer branch
+  spell_nnue-potion pushed to the public repo for reproducibility.
+- NEXT (structural): PyPI/npm publication, ecosystem smokes (pychess wheel /
+  Fairyground ffish.js), CPU fallback in the trainer for a CI-portable E2E.
 
 ### ubdip round 2 (2026-07-13): gate geometry per spell type
 
