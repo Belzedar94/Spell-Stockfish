@@ -1163,6 +1163,12 @@ moves_loop:  // When in check, search starts here
     const bool onlyTacticalSpells =
       allowSpells && !PvNode && !ourRoyalAttackers && depth < SpellQuietMinDepth;
 
+    // Structural pillar D: spell-state volatility of this node (0..4) —
+    // an active enemy zone and castable freezes make static conclusions
+    // unreliable, so selectivity (LMR, parent futility) is softened by it
+    const int spellVolatility = (pos.spell_zone(~us, SPELL_FREEZE) != 0) * 2
+                              + pos.can_cast(us, SPELL_FREEZE) + pos.can_cast(~us, SPELL_FREEZE);
+
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &gateHistory,
                   &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch(),
                   allowSpells, onlyTacticalSpells);
@@ -1291,7 +1297,8 @@ moves_loop:  // When in check, search starts here
                 Value futilityValue =
                   ss->staticEval
                   + (40 + 138 * !bestMove + 117 * lmrDepth + 90 * (ss->staticEval > alpha))
-                      * SpellFutilityScalePct / 100;
+                      * SpellFutilityScalePct / 100
+                  + spellVolatility * SpellVolatilityFutility;
 
                 // Futility pruning: parent node
                 // (*Scaler): Generally, more frequent futility pruning
@@ -1414,6 +1421,8 @@ moves_loop:  // When in check, search starts here
         // depth collapsed to ~12 while the reference reached ~27).
         r -= std::min(moveCount, SpellLmrMoveCountCap) * 62;
         r -= std::abs(correctionValue) / 26131;
+        // Volatile spell states reduce less across the board (pillar D)
+        r -= spellVolatility * SpellVolatilityLmr;
 
         // Increase reduction for cut nodes
         if (cutNode)

@@ -113,6 +113,16 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Structural roadmap pillar D: one selectivity multiplier for spell-state
+// volatility instead of ten unrelated toggles. Per node, volatility =
+// 2*(enemy freeze zone active) + (we can cast freeze) + (they can cast
+// freeze), range 0..4. Volatile nodes get less LMR (millidepth per unit)
+// and wider parent-futility margins (cp per unit). Both 0 = off
+// (bench-identical). Converges with the one ACCEPTED idea of the FSF-spell
+// strength log ("risk-aware selective search").
+extern int SpellVolatilityLmr;       // 0 (off)
+extern int SpellVolatilityFutility;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
