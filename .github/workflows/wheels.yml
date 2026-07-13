@@ -1,0 +1,32 @@
+name: Wheels
+
+# pyffish-spell wheels via cibuildwheel (FSF wheels.yml pattern). Manual or
+# tag-triggered: wheel builds are slow and only needed for releases.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build_wheels:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pypa/cibuildwheel@v2.22.0
+        env:
+          CIBW_BUILD: "cp39-* cp310-* cp311-* cp312-* cp313-*"
+          CIBW_SKIP: "*-musllinux* *i686* *win32*"
+          # Surface checks only: the parity half needs the engine binary,
+          # which is not available inside the cibuildwheel test env.
+          CIBW_TEST_COMMAND: python {project}/tests/pyffish_test.py
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: wheelhouse/*.whl

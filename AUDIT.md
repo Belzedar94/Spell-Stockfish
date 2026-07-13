@@ -844,6 +844,16 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   python 3.12; wheels via cibuildwheel are the CI story).
 - start_fen() returns the RAW StartFEN (no {} spell block) — byte-matched to the
   oracle's xboard setup line; get_fen() always emits the explicit block.
+- ffish-spell.js shipped (src/ffishjs.cpp + scripts/build_ffishjs.sh, emcc 3.1.46):
+  embind Board over the same closure, ffish.js surface minus SAN/PGN, spellState()
+  as JSON string; CJS + ESM builds, node suites 30+4 checks PASS. No pthreads →
+  consumers need no SharedArrayBuffer/COOP/COEP headers.
+- Wheels CI: .github/workflows/wheels.yml (cibuildwheel 2.22.0, 3 OS, cp39-cp313,
+  manual/tag-triggered). Windows lane compiles SF sources under MSVC — expect an
+  iteration once it first runs; the local mingw build is the validated path.
+- NEXT (structural): synthetic pipeline fixture in CI (datagen→train ephemeral
+  net→serialize→load, no strong weights published — the Atomic pattern), PyPI/npm
+  publication, ecosystem smokes (pychess wheel / Fairyground ffish.js).
 
 ### ubdip round 2 (2026-07-13): gate geometry per spell type
 
