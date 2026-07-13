@@ -791,52 +791,16 @@ std::string UCIEngine::wdl(Value v, const Position& pos) {
     return ss.str();
 }
 
-std::string UCIEngine::square(Square s) {
-    return std::string{char('a' + file_of(s)), char('1' + rank_of(s))};
-}
+// Coordinate notation moved to notation.{h,cpp} (rules-only TU shared with
+// the bindings); these wrappers keep the historical UCIEngine:: call sites.
+std::string UCIEngine::square(Square s) { return Notation::square(s); }
 
-std::string UCIEngine::move(Move m, bool chess960) {
-    if (m == Move::none())
-        return "(none)";
+std::string UCIEngine::move(Move m, bool chess960) { return Notation::move(m, chess960); }
 
-    if (m == Move::null())
-        return "0000";
-
-    Square from = m.from_sq();
-    Square to   = m.to_sq();
-
-    if (m.type_of() == CASTLING && !chess960)
-        to = make_square(to > from ? FILE_G : FILE_C, rank_of(from));
-
-    std::string move = square(from) + square(to);
-
-    if (m.type_of() == PROMOTION)
-        move += " pnbrqk"[m.promotion_type()];
-
-    // Spell casts are prefixed to the base move: "f@e7,e2e4" / "j@d6,d7d5"
-    if (m.is_spell())
-        move = std::string(1, m.spell_type() == SPELL_FREEZE ? 'f' : 'j') + "@"
-             + square(m.gate_sq()) + "," + move;
-
-    return move;
-}
-
-
-std::string UCIEngine::to_lower(std::string str) {
-    std::transform(str.begin(), str.end(), str.begin(),
-                   [](unsigned char c) { return std::tolower(c); });
-
-    return str;
-}
+std::string UCIEngine::to_lower(std::string str) { return Notation::to_lower(std::move(str)); }
 
 Move UCIEngine::to_move(const Position& pos, std::string str) {
-    str = to_lower(str);
-
-    for (const auto& m : MoveList<LEGAL>(pos))
-        if (str == move(m, pos.is_chess960()))
-            return m;
-
-    return Move::none();
+    return Notation::to_move(pos, std::move(str));
 }
 
 void UCIEngine::on_update_no_moves(const Engine::InfoShort& info) {

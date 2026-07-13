@@ -37,7 +37,7 @@
 #include "movegen.h"
 #include "syzygy/tbprobe.h"
 #include "tt.h"
-#include "uci.h"
+#include "notation.h"
 
 using std::string;
 
@@ -100,7 +100,7 @@ std::ostream& operator<<(std::ostream& os, const Position& pos) {
        << std::setw(16) << pos.key() << std::setfill(' ') << std::dec << "\nCheckers: ";
 
     for (Bitboard b = pos.checkers(); b;)
-        os << UCIEngine::square(pop_lsb(b)) << " ";
+        os << Notation::square(pop_lsb(b)) << " ";
 
     if (Tablebases::MaxCardinality >= popcount(pos.pieces()) && !pos.can_castle(ANY_CASTLING))
     {
@@ -736,7 +736,7 @@ string Position::fen() const {
             ss << (c == WHITE ? (sp == SPELL_FREEZE ? 'F' : 'J') : (sp == SPELL_FREEZE ? 'f' : 'j'))
                << '@';
             if (spell_gate(c, sp) != SQ_NONE)
-                ss << UCIEngine::square(spell_gate(c, sp));
+                ss << Notation::square(spell_gate(c, sp));
             else
                 ss << '-';
             ss << ':' << int(st->spellCooldown[c][sp]);
@@ -760,7 +760,7 @@ string Position::fen() const {
     if (!can_castle(ANY_CASTLING))
         ss << '-';
 
-    ss << (ep_square() == SQ_NONE ? " - " : " " + UCIEngine::square(ep_square()) + " ")
+    ss << (ep_square() == SQ_NONE ? " - " : " " + Notation::square(ep_square()) + " ")
        << st->rule50 << " " << 1 + (gamePly - (sideToMove == BLACK)) / 2;
 
     return ss.str();

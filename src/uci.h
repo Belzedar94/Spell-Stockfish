@@ -26,6 +26,7 @@
 
 #include "engine.h"
 #include "misc.h"
+#include "notation.h"
 #include "search.h"
 #include "xboard.h"
 
@@ -37,8 +38,8 @@ class Score;
 enum Square : u8;
 using Value = int;
 
-constexpr auto StartFEN =
-  "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] w KQkq - 0 1";
+// StartFEN and the coordinate notation live in notation.h (rules-only TU,
+// shared with the bindings); uci.h re-exports them for its consumers.
 
 class UCIEngine {
    public:
