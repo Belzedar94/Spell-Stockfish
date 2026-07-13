@@ -27,12 +27,12 @@ Decisiones de alcance (propietario):
 | S0 | Baseline congelado, spec, suite perft (61 pos), harness | ✅ |
 | S1 | Reglas completas sobre SF master (perft 61/61, FEN byte-idéntico, 22 tests, KING nativo, constantes de compilación) | ✅ |
 | S2 | NNUE legacy `0x7AF32F20` (paridad exacta, incremental+Finny, export byte-idéntico) | ✅ |
-| S3 | Búsqueda fuerte (de -568 a LTC -105 / nodos-fijos -17 con red idéntica) | 🔶 pausado; se retoma vía OpenBench |
+| S3 | Búsqueda fuerte: de -568 histórico a **VSTC -146 / STC -111 / LTC -55** (panel formal 2026-07-13, binario sano + SPSA-2, ambos run5rl). Continúa como métrica del molino S8 | 🔶 continuo vía OpenBench |
 | S4 | Pipeline end-to-end ✅ CERRADO (2026-07-12): 1,9M posiciones propias → barrido λ {0.25/0.75/1.0} ×4 épocas → bracket (λ1.0 gana monótono) → **λ1.0 vs sin-red: VSTC +179 LOS 100%** — pipeline validado por el propietario. Red: spell_run6a_l10.nnue. Dataset serio (loop RL 100M/iter) = trabajo futuro | ✅ |
-| S5 | Suite obligatoria: spell_tests ampliado (release+debug), perft ✅, protocolo UCI ✅, repro ✅, signature ✅ (2,395,529 run5rl; registrada en BENCH_LOG), orquestador run_suite ✅, CI yml ✅ (bloqueado por billing); pendiente: instrumented (asserts/debug — espera fin de granja por exe-lock; ASan/UBSan en Linux CI), suite completa no-quick, sección XBoard | 🔶 |
-| S6 | Protocolos y bindings: XBoard/CECP ✅ (src/xboard.{h,cpp}, adaptador externo sin tocar search; setup/piece lines idénticos al oráculo; tests/xboard_test.py PASS; firma bench intacta 2395529); pendiente: API compartida, wheel pyffish-spell, ffish.js CJS+ESM, WASM, tests de paridad native/Python/JS/WASM | 🔶 |
-| S7 | OpenBench multi-proyecto (torre de control para Spell-Stockfish, Atomic-Stockfish y sucesivos): servidor + workers multi-máquina, SPRT, SPSA, redes por SHA; ruteo variante→runner — ver docs/openbench-spell.md. Pasos 1-2 ✅: `tools/uci_pair_runner.py` (TC real, salida compatible-worker, smoke 8 partidas PASS) + tabla VARIANTS en el fork (rama `spell-runner` @2b8720c). Paso 3 (servidor local): runbook en docs/openbench-server-runbook.md; OJO flujo private-engine requiere Actions (billing) | 🔶 |
-| S8 | Molino de ideas: búsqueda (candidatos en AUDIT: dominancia del base, descomposición aditiva del producto base×gate, forense de derrotas) y redes (arquitecturas, datos, distill) con gates SPRT | ⏳ |
+| S5 | Suite obligatoria ✅ CERRADO (2026-07-13): units (24) + protocolo UCI + repro + signature + XBoard + XBoard hostil + perft vs oráculo, orquestador run_suite (quick/full), **CI verde en GitHub Actions** (build+bench+firma y job de sanitizers ASan/UBSan con units+perft+bench d5; el assert de evaluate-en-jaque cazado por ASan se retiró con racional — spell evalúa en jaque por diseño) | ✅ |
+| S6 | Protocolos y bindings: XBoard/CECP ✅ endurecido (ronda adversarial: UAF en quit, deadlock analyze, '.', atoi; 6 escenarios hostiles en suite); pendiente: API compartida (notation.{h,cpp}), wheel pyffish-spell, ffish.js CJS+ESM, WASM Board + WASM UCI/NNUE, paridad cross-surface — plan en docs/bindings-port-plan.md | 🔶 |
+| S7 | OpenBench ✅ CERRADO (2026-07-13): torre operativa multi-proyecto — servidor público (repo Belzedar94/OpenBench@spell-runner), web vía túnel cloudflare, worker 24T local, ruteo SPELL→uci_pair_runner endurecido, SPSA (2 sesiones, 19.2k partidas) y SPRT a escala (cola de 10+ tests), redes/books por SHA, presets metodología sscg13. Docs: openbench-spell.md, openbench-server-runbook.md, AGENTS.md del fork (guía multi-agente) | ✅ |
+| S8 | Molino de ideas EN MARCHA: metodología fishtest/sscg13 (SPRT STC→LTC→merge), 10 toggles branching-1650 en cola (#16-24), tabla de refutación de spells (#25) y bono freeze-jaqueadores (#26, consejo ubdip); SPSA-2 aplicada como defaults; refutados: merged-ordering (LLR -2.01), razor-guard (-1.01 parado), C9 quiet-min-depth, redundant-freeze (rules-dead) | 🔶 |
 
 Orden propuesto: S4 → S5 → S7 → S6 → S8 (OpenBench antes que bindings para desbloquear el
 molino de ideas cuanto antes; ajustable).
@@ -42,11 +42,13 @@ molino de ideas cuanto antes; ajustable).
 2. Batería completa: perft 61/61 d2 vs oráculo, unit tests, eval-parity exit 0, bench firmado en BENCH_LOG.
 3. Pipeline: datagen → psv_decode → loader → training step → serialize → carga en motor.
 4. Desde S5: protocol/reprosearch/signature/instrumented aplicables.
-5. Cambios de fuerza (cuando aplique): panel 3 TCs (2000+20 / 10000+100 / 30000+300,
-   LOS 100%, >100 partidas) — vía OpenBench SPRT cuando S7 esté operativo.
+5. Cambios de fuerza: **SPRT en la torre** (STC 8.0+0.08 → LTC 40.0+0.4, bounds
+   [0.00, 5.00], win adj 4/800) — metodología sscg13/fishtest adoptada 2026-07-13;
+   el panel local de 3 TCs queda retirado para iteración (solo progression tests
+   vs release anterior + baseline FSF, presets progtest).
 
 ## Releases
-- 0.1: reglas + unit tests completos (≈ ya cumplido; etiquetar tras S5-parcial).
+- 0.1: reglas + unit tests completos — **S5 cerrado ⇒ procede etiquetar ya** (sin tag aún).
 - 0.2: XBoard + Python + JS + WASM completos (S6).
 - 0.5: pipeline NNUE completo con red propia entrenada (run6+) y búsqueda no inferior a la actual.
 - 1.0: suite completa + OpenBench operativo + mejora demostrada sobre baseline en los 3 TCs.
@@ -62,12 +64,11 @@ molino de ideas cuanto antes; ajustable).
 - **Trainer moderno**: sscg13 tiene `bullet` (el trainer estándar actual) soportando la
   arquitectura SF oficial y "probablemente adaptable" a variantes tipo-ajedrez (rey + 5
   tipos en 8x8). Candidato para la era spell-bin-v2/NNUE-v2 (S8) en vez del pytorch legacy.
-- **Candidatos S8 del brainstorm de heurísticas (2025-09-29)** no cubiertos aún:
-  (a) endurecer el filtro de jumps: solo mantener jumps cuya jugada habilitada captura, da
-  jaque o escapa presión táctica severa; (b) "skip redundant freezes" (zonas solapando área
-  ya congelada). Ya cubiertos por nuestro trabajo: bonus rey/anillo (tacticalSpell), filtro
-  de inutilidad, history por gate. OJO: la idea "penalizar freezes que congelan material
-  propio" es rules-incorrecta (la zona solo bloquea al rival).
+- **Candidatos S8 del brainstorm de heurísticas (2025-09-29)**: (a) endurecer el filtro de
+  jumps (solo si la jugada habilitada captura/da jaque/escapa) — AÚN SIN TESTEAR;
+  (b) "skip redundant freezes" — REFUTADO 2026-07-13: rules-dead, la zona propia nunca
+  está activa en el turno propio. Ya cubiertos: bonus rey/anillo, filtro de inutilidad,
+  history por gate (retirado por SPSA-2: pesos→0).
 - **Historia**: el bug de config chess-mode del trainer (PIECE_TYPES 6/POCKETS false → datos
   sin potions) que corregimos en F6 es exactamente el que el propietario sufrió el
   2025-09-30 durante run5. El crash por MAX_MOVES=4096 reportado por moky (2025-10-01)
@@ -78,7 +79,10 @@ molino de ideas cuanto antes; ajustable).
   natural para el propietario cuando el proyecto esté presentable.
 
 ## Notas operativas
-- CI de GitHub bloqueado por billing de la cuenta (decisión pendiente del propietario);
-  mientras tanto, todos los gates corren en local.
+- CI de GitHub ✅ verde en master (repo público desde 2026-07-12; sanitizers incluidos).
 - Rotar el token del bot de Discord al cierre del proyecto (se pegó en chat).
 - Redes y datasets se referencian por SHA-256.
+- Anuncio público hecho en el Discord de FSF (2026-07-13); ubdip aporta ideas de search
+  (registradas en AUDIT y convertidas en SPRTs #25/#26).
+- Syzygy/tablebases: N/A para spell por diseño (reyes capturables + spells en mano no
+  tienen TB definibles) — exclusión justificada, sin equivalente del hito Syzygy de Atomic.
