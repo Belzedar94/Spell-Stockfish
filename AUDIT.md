@@ -729,4 +729,33 @@ baseline read VSTC -306 / STC -252 / LTC -381 — impossibly worse than the hist
   ~1.5k lines over 2-3 sessions. Implementation deliberately NOT started tonight —
   Elo campaign takes the CPU/GPU budget.
 
+## SPSA-2 harvested + formal M1 panel: the gap halves at LTC (2026-07-13, amanecer)
+
+**SPSA test #2 finished clean**: 19,200/19,200 games, 1200/1200 iterations. 8 of 12 params
+moved; applied rounded as defaults (a130fd74). Headline: **both GateHistory weights
+converged to 0** — the learned gate ordering is noise at VSTC (static gate-impact ordering
+was already refuted at -676; now the LEARNED version also loses its seat; ordering value
+lives in the king/king-ring bonuses, which SPSA pushed UP: KingRing +3808). Side effect:
+NPS 415k → 462k (history lookups gone). New signature 2,657,127; plain bench 14,878,698.
+
+**Formal 3-TC panel vs frozen baseline (both run5rl, sane binary + SPSA-2 defaults)**:
+
+| TC | Games | Result | Historical best |
+|---|---|---|---|
+| VSTC 2+0.02 | 108 | **-146.4 ±70.8** | -168 ±43 |
+| STC 10+0.1 | 100 | **-111.4 ±70.8** | -142 ±42 |
+| LTC 30+0.3 | 200 | **-54.7 normalised** (83W 114L 3D) | -105 ±41 |
+
+Every TC improved; the scaling ladder steepened (VSTC→LTC now ~+92 Elo per ladder, was
++63) — the SF-master-core-scales-better bet keeps compounding. **The LTC gap — the one M1
+is decided on — has halved** (-105 → -55) in one night of infrastructure-driven iteration.
+Zero time losses on either side at LTC.
+
+**Night ledger (Elo-relevant)**: broken-PGO discovery (+~100 phantom Elo recovered at TC),
+plain-15 build (+4.5% NPS), SPSA-2 (+30-50 across TCs), gate kept, C9 refuted cheaply,
+GateHistory retired by evidence. Next levers queued: dedicated GateHistory-off vs on
+SPRT at STC/LTC via the tower (confirm beyond VSTC), SPSA-3 at STC on the tower with the
+freed worker, NPS profiling (spell movegen/accumulator hot paths), and the serious-dataset
+RL loop with ubdip's generator-side filters (docs/nnue-training-guide.md).
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).
