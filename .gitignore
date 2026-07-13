@@ -22,3 +22,7 @@ tests/syzygy
 tests/bench_tmp.epd
 src/*.log
 src/bench_*.txt
+tests/js/cjs/
+tests/js/esm/
+build/
+*.pyd
