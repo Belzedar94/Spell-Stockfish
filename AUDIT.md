@@ -821,6 +821,12 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   refutation ordering alone does not move Elo at STC; either the (piece, landing)
   context rarely repeats across siblings in spell trees, or ordering-first is not the
   binding constraint. Successor #2 (king-relative learned history) stays open.
+- #47 cast-decomposition v2 (SpellDecompose=1): FAIL at 702 games, +233 -446 =23,
+  LLR -2.98 (~-110 raw). The 2-4 ply depth deficit vs classic dominates the extra
+  cast coverage, as the clean 10s probes predicted (d13-14 vs d16-18). Cheap and
+  informative: phase 2 (pending-node TT, geometric cast history, staged
+  completions - docs/big-bets.md apuesta 3) is the path if resumed; the B1/B2
+  foundation (declarative pending, equivalence gate) stays sound and merged-ready.
 - **2026-07-13 bounds raised to [1.00, 6.00]** (owner): neutral patches must die fast
   in the low-hanging-fruit phase; queue #16-24/#26 respun as **#27-36** with the new
   bounds and win adj 4/800 (freeze-checker-bonus first). Fine bounds return when the
