@@ -829,6 +829,10 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   +1336 -1397 =123, LLR -1.32 → OUT (~-7 raw). The -22% fixed-depth tree did not
   translate: at 60000 the bonus lifts defensive freezes above genuinely better moves.
   Knob stays neutral in master; magnitude is SPSA-3 material if ever.
+- #28 nullmove-guard (SpellNullMoveGuard=1): stopped at 3,082 games, +1467 -1485 =130,
+  LLR -0.72 → OUT (neutral-negative). Restricting null move while the opponent holds
+  a freeze does not pay at STC — the unsoundness it guards against is apparently
+  rarer than the pruning it gives up.
 
 ## S6 bindings + Atomic-discipline adoptions (2026-07-13)
 
