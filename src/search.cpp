@@ -1163,9 +1163,19 @@ moves_loop:  // When in check, search starts here
     const bool onlyTacticalSpells =
       allowSpells && !PvNode && !ourRoyalAttackers && depth < SpellQuietMinDepth;
 
+    // Structural pillar A (progressive widening): depth-scaled budget for
+    // QUIET casts on non-PV nodes with a safe king and no active enemy zone.
+    // Keeps the per-iteration cost polynomial so iterations actually complete
+    // (2026-07-13 probe: depth 2 in 10s vs baseline depth 8). Tactical casts
+    // never count against the budget; -1 = unlimited (current behavior).
+    int spellBudget = -1;
+    if (SpellBudgetPerDepth > 0 && allowSpells && !PvNode && !ourRoyalAttackers
+        && !pos.spell_zone(~us, SPELL_FREEZE))
+        spellBudget = SpellBudgetBase + SpellBudgetPerDepth * depth;
+
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &gateHistory,
                   &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch(),
-                  allowSpells, onlyTacticalSpells);
+                  allowSpells, onlyTacticalSpells, spellBudget);
 
     value = bestValue;
 

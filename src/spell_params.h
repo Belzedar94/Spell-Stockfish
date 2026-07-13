@@ -113,6 +113,15 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Structural roadmap pillar A (progressive widening): on non-PV nodes with a
+// safe king and no active enemy zone, at most Base + PerDepth*depth QUIET
+// casts are searched per node (top-scored first; tactical casts are always
+// exempt). Fixes the iteration blowup measured 2026-07-13: depth 2 in 10s vs
+// baseline depth 8 because no count-based pruning ever touched the spell
+// stage. PerDepth = 0 disables the budget entirely (bench-identical).
+extern int SpellBudgetBase;      // 2
+extern int SpellBudgetPerDepth;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

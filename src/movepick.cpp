@@ -170,7 +170,8 @@ MovePicker::MovePicker(const Position&              p,
                        ExtMove**                    at,
                        Move*                        scratch,
                        bool                         spells,
-                       bool                         onlyTactical) :
+                       bool                         onlyTactical,
+                       int                          budget) :
     pos(p),
     mainHistory(mh),
     lowPlyHistory(lph),
@@ -183,6 +184,7 @@ MovePicker::MovePicker(const Position&              p,
     ply(pl),
     allowSpells(spells),
     onlyTacticalSpells(onlyTactical),
+    spellBudget(budget),
     arenaTop(at),
     moves(*at),
     genScratch(scratch) {
@@ -409,9 +411,9 @@ top:
             && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
                 || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
         {
-            // Royal context for the tactical-only restriction, mirroring
-            // the search's own per-node precompute
-            if (onlyTacticalSpells)
+            // Royal context for the tactical-only restriction and for the
+            // budget's tactical exemption, mirroring the search's precompute
+            if (onlyTacticalSpells || spellBudget >= 0)
             {
                 const Color us = pos.side_to_move();
                 if (pos.count<KING>(us))
@@ -439,9 +441,18 @@ top:
                     return true;
                 if (is_useless_spell(pos, *cur))
                     return false;
-                return !onlyTacticalSpells
-                    || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
-                                         spellOurRoyal);
+                if (onlyTacticalSpells || spellBudget >= 0)
+                {
+                    if (is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
+                                          spellOurRoyal))
+                        return true;
+                    if (onlyTacticalSpells || spellBudget == 0)
+                        return false;
+                    // Budgeted quiet cast: the list is score-sorted, so the
+                    // budget keeps the top-ranked ones
+                    --spellBudget;
+                }
+                return true;
             }))
             return *(cur - 1);
 
