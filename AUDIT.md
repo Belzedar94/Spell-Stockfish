@@ -807,6 +807,16 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
    silenced (attackers, hangers, mobility) rather than binary tactical classification —
    the FSF "gate impact scoring" idea (+100 there) taken further.
 
+## SPRT queue verdicts (running tally, STC 8.0+0.08, bounds [0.00, 5.00])
+
+- #14 merged-ordering (SpellMergedOrdering=1): stopped by owner at 3,790 games,
+  +1785 -1892 =113, LLR -2.01 → DISCARDED. Lazy late SPELL stage beats FSF-style
+  interleaving; the laziness win outweighs first-visit ordering.
+- #15 razor-guard (SpellRazorGuard=1): stopped by owner at 7,428 games,
+  +3591 -3607 =230, LLR -1.01 → no edge at STC. Early +12 raw Elo at 2k games was
+  noise (LLR +0.84 → -1.01). Razoring into a spell-blind qsearch is apparently
+  not mispricing anything the tree feels at 8s+0.08.
+
 ### ubdip round 2 (2026-07-13): gate geometry per spell type
 
 His three points, checked against the code:
