@@ -784,4 +784,27 @@ Incremental fairy-vault ingest (21 channels + 15 threads, now current to today).
    an FSF-Tester beat ubdip 2-1 on chess.com's spell archive, and rainrat has an active
    FSX port (PR gating spell behind allvars, in flux — "don't take the code yet").
 
+## ubdip's direct advice: spell-ordering stats are THE lever (2026-07-13)
+
+Quote (via owner): "one of the search tweaks with the biggest potential is having good
+heuristics/stats on which spells are promising, somewhat similar as the gating history in
+Fairy-SF (though that one is also fairly crude), since move ordering really is key with
+that branching factor."
+
+Reconciled with our evidence: SPSA-2 retired the crude gate-keyed butterfly (weights→0,
+noise) while RAISING the static king/king-ring bonuses — i.e., absolute-square learned
+stats generalize poorly, king-relative geometry is the real signal. The ordering CEILING
+remains the opportunity (it also explains why chess-tuned LMP/futility misfire: they
+assume ordering quality spell nodes do not have). Successor designs, to SPRT in order:
+
+1. **Spell refutation table (countermove analog)**: [opponent piece][to] → the spell that
+   last produced a cutoff there. "Rook lands d3 → f@d3 refutes." Cheap, well-founded,
+   position-relative. (IMPLEMENTING FIRST as SpellRefutationBonus toggle.)
+2. **King-relative learned history**: [spell type][gate geometry bucket relative to enemy
+   king] — learns the king/ring bonuses' shape instead of hardcoding two scalars, and
+   generalizes across positions unlike absolute gate squares.
+3. **Enriched static impact score**: weight freeze gates by the VALUE of pieces actually
+   silenced (attackers, hangers, mobility) rather than binary tactical classification —
+   the FSF "gate impact scoring" idea (+100 there) taken further.
+
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).
