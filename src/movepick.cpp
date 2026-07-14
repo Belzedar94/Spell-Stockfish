@@ -411,7 +411,8 @@ top:
         {
             // Royal context for the tactical-only restriction, mirroring
             // the search's own per-node precompute
-            if (onlyTacticalSpells)
+            const bool wantAsym = SpellFreezeGoodBias || SpellFreezeBadBias;
+            if (onlyTacticalSpells || wantAsym)
             {
                 const Color us = pos.side_to_move();
                 if (pos.count<KING>(us))
@@ -426,6 +427,20 @@ top:
             const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
 
             endCur = endSpells = score<QUIETS>(genScratch, endGen);
+
+            // Freeze/jump asymmetry (ubdip): good freezes are more
+            // predictable than good jumps - tactical freezes rise above
+            // tactical jumps - while a freeze our classifier does NOT
+            // call tactical is more often truly useless than an
+            // unclassified jump (more false negatives on jumps), so bad
+            // freezes sink below bad jumps.
+            if (wantAsym)
+                for (ExtMove* m = cur; m < endCur; ++m)
+                    if (m->spell_type() == SPELL_FREEZE)
+                        m->value += is_tactical_spell(pos, *m, spellRoyalAttackers,
+                                                      spellEnemyRoyal, spellOurRoyal)
+                                    ? SpellFreezeGoodBias
+                                    : -SpellFreezeBadBias;
 
             partial_insertion_sort(cur, endCur, -3560 * depth);
         }

@@ -99,6 +99,8 @@ extern int SpellAspirationPct;  // 100
 // Extra margin (cp) added to the SEE pruning threshold of GATED captures:
 // positive values prune fewer spell captures.
 extern int SpellCaptureSeeMargin;  // 0
+extern int SpellFreezeGoodBias;    // 0 - ordering: tactical freezes above tactical jumps
+extern int SpellFreezeBadBias;     // 0 - ordering: non-tactical freezes below non-tactical jumps
 
 // Disable internal iterative reductions: at huge branching, a missing TT
 // move is common and IIR compounds the ordering weakness.
