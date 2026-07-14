@@ -827,6 +827,18 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   informative: phase 2 (pending-node TT, geometric cast history, staged
   completions - docs/big-bets.md apuesta 3) is the path if resumed; the B1/B2
   foundation (declarative pending, equivalence gate) stays sound and merged-ready.
+- #44 pillar A depth-budget (SpellBudgetPerDepth=3): stopped at 4,224 games,
+  LLR -0.54 -> OUT (neutral). With the depth-2 crisis retracted, budgeting quiet
+  casts neither helps nor hurts at STC.
+- #46 pillar C qsearch-spells (SpellQsearchSpells=2): stopped at 2,688 games,
+  LLR -1.10 -> OUT. Tactical casts at the first qs level cost more than the
+  horizon errors they fix, at least with the binary classifier as the gate —
+  revisit gated by spell-SEE (big bet 1 consumer #2) if SEE ordering passes.
+- **Policy dataset extracted** (tools/policy_extract.py over run6a, 1.9M recs):
+  12.92% of PV moves cast (247k examples, freeze:jump 7:1); cast rate by phase
+  21.2% opening / 14.5% middle / 0.8% late; top gates e7,d7,e2,d2. Trainable the
+  moment the owner green-lights the tiny policy head; also suggests phase-scaled
+  cast budgets as an SPSA candidate.
 - **2026-07-13 bounds raised to [1.00, 6.00]** (owner): neutral patches must die fast
   in the low-hanging-fruit phase; queue #16-24/#26 respun as **#27-36** with the new
   bounds and win adj 4/800 (freeze-checker-bonus first). Fine bounds return when the
