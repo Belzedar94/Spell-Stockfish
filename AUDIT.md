@@ -851,6 +851,13 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   so the head learned plausible-vs-absurd, not best-vs-good, and at 4096 the
   logit swamps the material impact score. v2 plan: hard negatives (other
   top-scored candidate gates), lower weight sweep.
+- #32 futility-scale-150: culled at 14,976 games, LLR -0.38 -> OUT (the early
+  +0.75 faded; wider futility margins are noise at STC).
+- #35 aspiration-200: culled at 7,408 games, LLR -0.73 -> OUT.
+  With these, ALL twelve branching-1650 toggles are resolved: 0 passes. The
+  hypothesis "chess-tuned pruning misfires at spell branching" is dead in its
+  single-knob form; remaining live signal sits in capture-see-120 (#34) and
+  freeze-dedup (#48).
 - **2026-07-13 bounds raised to [1.00, 6.00]** (owner): neutral patches must die fast
   in the low-hanging-fruit phase; queue #16-24/#26 respun as **#27-36** with the new
   bounds and win adj 4/800 (freeze-checker-bonus first). Fine bounds return when the
