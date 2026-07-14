@@ -30,10 +30,8 @@ namespace Stockfish {
 // FreezeZoneBB[s]:  the full 3x3 freeze area centered on s (clipped at the
 //                   board edges). It restricts the *opponent* on their turn
 //                   and marks pieces that give no attacks while frozen.
-// FreezeBlockBB[s]: the plus-shaped area (s + orthogonal neighbors) that
-//                   restricts the *caster's own* base-move origin on the
-//                   casting ply only (reference rule 5264a3f7: diagonal
-//                   neighbors may still move).
+// FreezeBlockBB[s]: the complete 3x3 freeze area that restricts the
+//                   *caster's own* base-move origin on the casting ply.
 
 inline constexpr auto FreezeZoneBB = []() constexpr {
     std::array<Bitboard, SQUARE_NB> zones{};
@@ -46,8 +44,7 @@ inline constexpr auto FreezeBlockBB = []() constexpr {
     std::array<Bitboard, SQUARE_NB> zones{};
     for (Square s = SQ_A1; s <= SQ_H8; ++s)
     {
-        Bitboard b = square_bb(s);
-        zones[s]   = b | shift<NORTH>(b) | shift<SOUTH>(b) | shift<EAST>(b) | shift<WEST>(b);
+        zones[s] = Attacks::king_attack(s) | square_bb(s);
     }
     return zones;
 }();
