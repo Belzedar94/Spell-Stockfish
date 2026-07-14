@@ -1144,6 +1144,8 @@ moves_loop:  // When in check, search starts here
         {
             ourRoyal          = pos.square<KING>(us);
             ourRoyalAttackers = pos.attackers_to(ourRoyal) & pos.pieces(~us);
+            if (SpellJumpCheckers && pos.can_cast(~us, SPELL_JUMP))
+                ourRoyalAttackers |= spell_jump_snipers(pos, us);
         }
         if (pos.count<KING>(~us))
             enemyRoyal = pos.square<KING>(~us);

@@ -242,6 +242,22 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
     }
 
 
+    // Squares from which a slider would attack the enemy king through
+    // exactly one piece: with a jump in hand, landing there is a latent
+    // check (and often a latent king capture). Bonus mirrors the real
+    // check bonus below, scaled down.
+    Bitboard jumpCheckR = 0, jumpCheckB = 0;
+    if constexpr (Type == QUIETS)
+        if (SpellJumpCheckBonus && pos.can_cast(us, SPELL_JUMP) && pos.count<KING>(~us))
+        {
+            Square   eksq   = pos.square<KING>(~us);
+            Bitboard occ    = pos.pieces();
+            Bitboard directR = Attacks::attacks_bb<ROOK>(eksq, occ);
+            Bitboard directB = Attacks::attacks_bb<BISHOP>(eksq, occ);
+            jumpCheckR = Attacks::attacks_bb<ROOK>(eksq, occ ^ (directR & occ)) & ~directR;
+            jumpCheckB = Attacks::attacks_bb<BISHOP>(eksq, occ ^ (directB & occ)) & ~directB;
+        }
+
     ExtMove* it = cur;
     for (const Move* mit = begin; mit != end; ++mit)
     {
@@ -272,6 +288,12 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
 
             // bonus for checks
             m.value += ((pos.check_squares(pt) & to) && pos.see_ge(m, -75)) * 16384;
+
+            // bonus for landing a slider one jump-gate away from the king
+            if (!m.is_spell()
+                && ((jumpCheckR & to) ? (pt == ROOK || pt == QUEEN)
+                                      : ((jumpCheckB & to) && (pt == BISHOP || pt == QUEEN))))
+                m.value += SpellJumpCheckBonus;
 
             // penalty for moving to a square threatened by a lesser piece
             // or bonus for escaping an attack by a lesser piece.
@@ -418,6 +440,8 @@ top:
                 {
                     spellOurRoyal       = pos.square<KING>(us);
                     spellRoyalAttackers = pos.attackers_to(spellOurRoyal) & pos.pieces(~us);
+                    if (SpellJumpCheckers && pos.can_cast(~us, SPELL_JUMP))
+                        spellRoyalAttackers |= spell_jump_snipers(pos, us);
                 }
                 if (pos.count<KING>(~us))
                     spellEnemyRoyal = pos.square<KING>(~us);

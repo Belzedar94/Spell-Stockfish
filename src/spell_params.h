@@ -99,6 +99,8 @@ extern int SpellAspirationPct;  // 100
 // Extra margin (cp) added to the SEE pruning threshold of GATED captures:
 // positive values prune fewer spell captures.
 extern int SpellCaptureSeeMargin;  // 0
+extern int SpellJumpCheckers;      // 0 - snipers one gate from our king count as royal attackers
+extern int SpellJumpCheckBonus;    // 0 - ordering bonus for quiets landing one gate from their king
 
 // Disable internal iterative reductions: at huge branching, a missing TT
 // move is common and IIR compounds the ordering weakness.
