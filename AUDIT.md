@@ -988,3 +988,36 @@ His three points, checked against the code:
    SPRT #26 at 60000.
 
 **Decision**: Phase 0 accepted. Next: Phase 1 (core rules on SF master).
+
+## 2026-07-14 (tarde) — veredicto policy v2, revisión de escalado y lote ubdip
+
+- **#56 policy-v2 FAIL** (2646 partidas, +1183 −1355 =108, LLR −2.95). La AUC
+  0.846 con hard negatives NO transfirió a Elo con peso 4096 en el ordering.
+  Autopsia pendiente de decidir: o la señal es redundante con las histories a
+  este peso, o el sitio de inyección (bonus de score) es el equivocado — el
+  plan stages-v2 (logit como FRONTERA de partición, no como bonus) sigue vivo
+  porque usa la señal de forma cualitativamente distinta.
+- **Revisión "muertos prematuros" para escalado LTC** (encargo del dueño): la
+  única correlación STC→LTC medida (no-penalty-pv) INVIRTIÓ el signo, así que
+  el filtro STC no es fiable en spell. Re-encolados a LTC directo los dos
+  muertos con mecanismo pro-profundidad: **futility-150** (flotó +0.6/+0.75
+  miles de partidas; podar menos paga más con tiempo) y **spell-refutation**
+  (ordering se compone con profundidad; rebasada al master post-reglas, bench
+  propio 20576167). Descartados del re-run: volatility/gatehist (picos que se
+  desinflaron = paseo aleatorio), razor/nullmove/conthist/no-iir/lmp/aspiration
+  (mecanismos anti-LTC o neutros claros).
+- **Lote ubdip** (feedback 2026-07-14 13:47, de sus propias partidas): tres
+  ramas nuevas, knobs off por defecto, bench master 12231192 intacto:
+  1. `jump-checkers` — spell_jump_snipers() (snipers a UN bloqueador de
+     cualquier color del rey = atacantes latentes con jump en mano) se OR-ea
+     al contexto real de search y movepicker; + bonus de ordering 12288 para
+     quiets que aterrizan un slider a un gate del rey rival. Bench on 14326052.
+  2. `jump-see-cost` — el umbral SEE good/bad de capturas jump-gated exige
+     +100cp (los jumps son EL spell de ganar material; empatar el cambio
+     quemando un jump suele ser perder). Solo ordering. Bench on 13398542.
+  3. `spell-order-asym` — freezes tácticos +16000 / no tácticos −16000 dentro
+     de la etapa SPELL (buenos freezes más predecibles que buenos jumps; malos
+     freezes peores que malos jumps). Bench on 17826335.
+  Las tres en SPRT STC [1.00,6.00] con win_adj movecount=4 score=800.
+- Infra: watchdog permanente del worker (relanza si muere, cada 5 min) —
+  primer relanzamiento automático 17:55.
