@@ -1065,3 +1065,104 @@ visible (reinicio como proceso propio + log), el diagnóstico correcto:
   antes de creer su resultado (ya pasó con el pipe-blocking, hoy con
   --variants y con "el log se escribe = la granja funciona"). La única señal
   de salud de la granja es el contador de partidas del DB avanzando.
+
+## 2026-07-14 — Spell-NNUE v2, fases P0 y P1
+
+Implementación cerrada en la rama local `nnue-v2`, sin push. La rama partía de
+`master` `dac6f507` y ya contenía cuatro commits P0 coherentes y separables
+(`bc2b0041`, `214f358e`, `2dcbfab5`, `6fddfd30`), por lo que se continuó sobre
+ellos en vez de descartarlos. `master` no se modificó y `src/spellnnue/` sigue
+intacto como ruta legacy coexistente.
+
+### P0 — motor
+
+- `SpellKAv2`: 26.910 entradas propias + 60.720 `FullThreats` = **87.630** por
+  perspectiva. Bloques añadidos: freeze 4.096 king-bucketeado, jump 128 plano,
+  frozen 128 plano y globales 30 (14 manos + 12 cooldown + 4 ready).
+- Buckets: **16 stacks y 16 PSQT**, con
+  `min(3,(pieceCount-1)/8)*4 + min(3,totalPotions/4)`.
+- `DirtySpell`: cota dura **28**. Derivación legal: cast freeze 15 flips y tick
+  rival simultáneo 13; los diffs de frozen ya incluyen la pieza movida.
+  `requires_refresh` conserva la regla HalfKA (sólo rey propio) y las entradas
+  Finny guardan gates, frozen, manos y cooldowns.
+- SPL2: magic/version **`0x53504C32`**, hash-chain y LEB128 de Stockfish. La
+  selección por magic de `EvalFile` carga SpellNetwork; sin SPL2 se mantiene la
+  ruta stock. El comando público `eval` traza la misma ruta v2 que usa search.
+- Generador random: FT/stacks aleatorios pequeños y PSQT material convencional.
+  Esta PSQT sólo evita que ruido no entrenado dispare un árbol de bench
+  patológico; la red continúa siendo random y valida todo el formato.
+
+Build obligatorio, PASS (180,1 s), sin PGO:
+
+```text
+MSYSTEM=MINGW64 /c/msys64/usr/bin/bash -lc 'cd "<repo>/src" && make -j8 build ARCH=x86-64-bmi2 COMP=mingw'
+```
+
+Gates P0 medidos:
+
+| Gate | Resultado |
+|---|---|
+| Bench sin SPL2 | **PASS**, 12.231.192 nodos, 39.004 ms, 313.588 nps |
+| `tests/run_suite.py --quick` sin SPL2 | **PASS 6/6**: unit 2 s, UCI 3 s, reproducibilidad 18 s, XBoard 2 s, CECP hostil 9 s, perft d1 5 s |
+| Random SPL2 seed 42 | round-trip bit-idéntico; 92.290.530 bytes (88,0 MiB); schema hash `0x2256ACDF`; SHA-256 `48D4E924FDA55FA97E6E4D372E014DA91354B66604D02FE908772812CE277342` |
+| Bench con random | **PASS**, 29.038.347 nodos, 151.797 ms, 191.297 nps (153,3 s pared) |
+| Suite rápida con random | **PASS 6/6**: unit 6 s, UCI 4 s, reproducibilidad 50 s, XBoard 7 s, CECP hostil 11 s, perft d1 10 s |
+| Perft | **PASS**, d1 contra el oráculo incluido en ambas suites; la eval no participa en generación |
+
+Incidencias P0: la primera red totalmente caótica superó 300 s en el bench de
+profundidad; se corrigió el generador con la PSQT material descrita y se repitió
+el bench completo. Una primera suite random dio 4/6 porque un `EvalFile`
+relativo se resolvía desde `tests/`; con la ruta absoluta al mismo fichero dio
+6/6. No fueron crashes del motor final.
+
+### P1 — herramientas, paridad y overfit
+
+- `tools/spellnnue-pytorch/` contiene extractor Python puro, modelo
+  87.630→1024 pairwise y 16 stacks 1024→32→64→32→128→1, PSQT 16,
+  SqrCReLU/CReLU, skip `fc_0[30]-fc_0[31]`, cuantización y serializador SPL2.
+- Factorización train-only: plano virtual freeze de 64 casillas coalescido en
+  las 4.096 filas reales al exportar. Frozen se representa como la suma natural
+  de la fila de pieza HalfKA siempre activa y su delta frozen plano.
+- Loss eval/WDL con schedule lineal de lambda. El gate usó **1,0→0,5**.
+  Una jugada registrada que capture al rey recibe target mate 32.000 cp; el PSV
+  usado contenía 0 de estos casos en el primer millón.
+- `run7`: header 32 bytes + registro fijo **44 bytes**, pack/unpack completo de
+  board, FEN, manos, cooldowns, gates y targets. Fuente PSV de 76 bytes:
+  145.327.580 bytes = 1.912.205 registros; conversión gate: 1.000.000 registros,
+  fichero 44.000.032 bytes. `tools/policy_train.py` no existe en este checkout;
+  el contrato de la fuente se tomó del `tools/psv_decode.py` versionado.
+- Curva completa de 79 puntos guardada en
+  `tools/spellnnue-pytorch/p1-overfit-curve.json`.
+
+Gates P1 medidos sobre la red final exacta:
+
+| Gate | Resultado |
+|---|---|
+| Tests estructurales Python + run7 round-trip | **PASS** |
+| Paridad motor `eval` ↔ forward entero Python | **PASS**, 1.000 posiciones, 0 listas de features distintas, diferencia máxima **0 cp** |
+| Overfit | **PASS**, 1.000.000 registros × 2 épocas = 2.000.000 muestras; 7.814 steps; loss ventana **0,05474097 → 0,03569945** (0,652152×); 1.492,797 s |
+| SPL2 entrenada | 92.489.486 bytes; SHA-256 `0C3F926709695C0E4E32FBBF821BBB6CC69759DFCBD8BECEDABC5690522C5147` |
+| Carga + bench entrenada | **PASS**, carga explícita `Spell NNUE v2 loaded`; 18.610.510 nodos, 111.683 ms, 166.636 nps (116,3 s pared) |
+
+Decisiones y diferencias comprobadas frente al texto de diseño:
+
+- El P1 pedido explícitamente aquí usa dataloader/extractor Python puro en vez
+  del fork C++ mencionado como orientación en §6; el formato final y el forward
+  se validan contra el motor, no por semejanza estructural solamente.
+- El `FullThreats` real de este chasis conserva su enumeración stock por
+  ocupación, pese a que el racional de §1 dice que ya ve gates/frozen. P0 debía
+  dejar ese camino sin cambios; el extractor replica el código existente y la
+  paridad 1.000/1.000 lo prueba. Cambiar attacks de threats sería una fase y un
+  experimento distintos.
+- Los terminales útiles para NNUE son posiciones pre-captura (ambos kings aún
+  presentes, best move captura rey). Un registro post-captura no tiene king
+  bucket y se descarta defensivamente.
+
+### Pendiente para P2
+
+No queda trabajo de P0/P1. P2 debe generar el bootstrap run7 real de 50 M con
+self-play post-reglas (~40k nodos, libro spell, temperatura inicial, filtros y
+rescoring), incluir suficientes ejemplos pre-captura de rey y auditar la
+distribución por los 16 buckets, manos, cooldowns y gates para descartar el
+sesgo de “90 % manos llenas”. Después corresponde entrenar net-1 con esos datos;
+SPRT STC/LTC y retirar la ruta legacy pertenecen a P3, no a este cambio.
