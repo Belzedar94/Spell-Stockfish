@@ -839,6 +839,9 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   21.2% opening / 14.5% middle / 0.8% late; top gates e7,d7,e2,d2. Trainable the
   moment the owner green-lights the tiny policy head; also suggests phase-scaled
   cast budgets as an SPSA candidate.
+- #49 MCTS (UseMCTS=1): culled at 74 games, +5 -69 =0 (~-600). Policy-less PUCT
+  at b~1650 loses as predicted; the searcher is the skeleton the learned policy
+  (bet 2, AUC 0.781 shipped) plugs into. Cheapest possible answer to the question.
 - **2026-07-13 bounds raised to [1.00, 6.00]** (owner): neutral patches must die fast
   in the low-hanging-fruit phase; queue #16-24/#26 respun as **#27-36** with the new
   bounds and win adj 4/800 (freeze-checker-bonus first). Fine bounds return when the
