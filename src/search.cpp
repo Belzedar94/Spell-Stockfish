@@ -1194,6 +1194,29 @@ moves_loop:  // When in check, search starts here
             ss->moveCount = ++moveCount;
             pos.do_cast(move.spell_type(), move.gate_sq());
 
+            // Big bet 3.1: the pending half-node has its own TT identity
+            // (Zobrist overlay), so cast transpositions — equivalent gates,
+            // cast/move orderings — become cutoffs instead of re-searches.
+            const Key pendKey                    = pos.key();
+            auto [pendHit, pendData, pendWriter] = tt.probe(pendKey);
+            if (pendHit && pendData.depth >= depth && is_valid(pendData.value)
+                && !is_decisive(pendData.value))
+            {
+                if ((pendData.bound & BOUND_LOWER) && pendData.value >= beta)
+                {
+                    pos.undo_cast();
+                    bestValue = std::max(bestValue, pendData.value);
+                    break;
+                }
+                if ((pendData.bound & BOUND_UPPER) && pendData.value <= alpha)
+                {
+                    pos.undo_cast();
+                    continue;
+                }
+            }
+            Value castBest = -VALUE_INFINITE;
+            Move  castMove = Move::none();
+
             Move        comp[256];
             Move* const endComp = generate_pending(pos, comp);
 
@@ -1248,6 +1271,11 @@ moves_loop:  // When in check, search starts here
                     return VALUE_ZERO;
                 }
 
+                if (value > castBest)
+                {
+                    castBest = value;
+                    castMove = full;
+                }
                 if (value > bestValue)
                 {
                     bestValue = value;
@@ -1263,6 +1291,12 @@ moves_loop:  // When in check, search starts here
                 }
             }
             pos.undo_cast();
+
+            // Store the half-node verdict for the transposed casts
+            if (castBest != -VALUE_INFINITE && !is_decisive(castBest))
+                pendWriter.write(pendKey, castBest, false,
+                                 castBest >= beta ? BOUND_LOWER : BOUND_UPPER, depth, castMove,
+                                 VALUE_NONE, tt.generation());
 
             if (bestValue >= beta)
                 break;
