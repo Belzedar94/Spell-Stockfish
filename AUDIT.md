@@ -828,6 +828,16 @@ queuing them. The frozen FSF_Spell_test_baseline.exe keeps the old rule:
 cross-engine gauntlets against it are rules-divergent on this point until a
 rebuilt baseline replaces it.
 
+- #55 spell-stages v1 (SpellStages=1): FAIL at 896 games, +341 -537, LLR -3.04
+  (~-77 raw) despite +3 plies at fixed nodes — hollow depth again. Autopsy
+  hypothesis: exiling ALL non-tactical casts after the bad quiets (and erasing
+  them under skipQuiets) deletes coverage the binary classifier cannot see
+  (positional/tempo freezes). The STRUCTURE (stage surgery) stays right per
+  ubdip; the PARTITION BOUNDARY is the failure. v2 direction: policy logit as
+  the partition score with a tunable boundary, and/or late stage before the
+  bad quiets with a top-K cap instead of exile. Consistent with the campaign
+  meta-lesson: every idea that searches FEWER spells fails; the one pass
+  (capture-see-120) searches MORE.
 - **#34 capture-see-120 (SpellCaptureSeeMargin=120): PASS STC** at 10,308 games,
   +5074 -4773 =461, LLR +2.98 (~+10 raw) — the second survivor, and the first
   with a live LTC path. Pruning FEWER gated captures pays: gated captures carry
