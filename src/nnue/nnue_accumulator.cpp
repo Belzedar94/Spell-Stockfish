@@ -57,17 +57,19 @@ AccumulatorState& AccumulatorStack::mut_latest() noexcept { return accumulators[
 void AccumulatorStack::reset() noexcept {
     accumulators[0].dirtyPiece = {};
     new (&accumulators[0].dirtyThreats) DirtyThreats;
+    new (&accumulators[0].dirtySpell) DirtySpell;
     accumulators[0].computed.fill(false);
     size = 1;
 }
 
-std::pair<DirtyPiece&, DirtyThreats&> AccumulatorStack::push() noexcept {
+std::tuple<DirtyPiece&, DirtyThreats&, DirtySpell&> AccumulatorStack::push() noexcept {
     assert(size < MaxSize);
     auto& st = accumulators[size];
     st.computed.fill(false);
     new (&st.dirtyThreats) DirtyThreats;
+    new (&st.dirtySpell) DirtySpell;
     size++;
-    return {st.dirtyPiece, st.dirtyThreats};
+    return {st.dirtyPiece, st.dirtyThreats, st.dirtySpell};
 }
 
 void AccumulatorStack::pop() noexcept {

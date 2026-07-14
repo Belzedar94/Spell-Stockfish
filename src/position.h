@@ -178,9 +178,10 @@ class Position {
                  DirtyPiece&               dp,
                  DirtyThreats&             dts,
                  const TranspositionTable* tt,
-                 const SharedHistories*    worker);
+                 const SharedHistories*    worker,
+                 DirtySpell*               dsp = nullptr);
     void undo_move(Move m);
-    void do_null_move(StateInfo& newSt);
+    void do_null_move(StateInfo& newSt, DirtySpell* dsp = nullptr);
     void undo_null_move();
 
     // Static Exchange Evaluation

@@ -661,7 +661,8 @@ void Search::Worker::do_move(
     bool capture = pos.capture_stage(move);
     ++nodes;
 
-    auto [dirtyPiece, dirtyThreats] = accumulatorStack.push();
+    auto [dirtyPiece, dirtyThreats, dirtySpell] = accumulatorStack.push();
+    (void) dirtySpell;
     pos.do_move(move, st, givesCheck, dirtyPiece, dirtyThreats, &tt, &sharedHistory);
 
     if (ss != nullptr)
@@ -2006,9 +2007,9 @@ TimePoint Search::Worker::elapsed() const {
 }
 
 Value Search::Worker::evaluate(const Position& pos) {
-    // With a spell net loaded (EvalFile), evaluation matches the reference
-    // engine exactly (including its outer scaling); the stock chess networks
-    // remain the spell-blind bootstrap fallback.
+    // With a legacy spell net loaded (EvalFile), evaluation matches the
+    // reference engine exactly (including its outer scaling); the stock
+    // chess networks remain the spell-blind bootstrap fallback.
     if (SpellNNUE::loaded())
         return std::clamp(SpellNNUE::evaluate_scaled(pos, &spellRefreshCache),
                           VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);

@@ -35,6 +35,7 @@
 #include "history.h"
 #include "misc.h"
 #include "movegen.h"
+#include "nnue/features/spell_ka_v2.h"
 #include "syzygy/tbprobe.h"
 #include "tt.h"
 #include "notation.h"
@@ -1104,21 +1105,108 @@ bool Position::gives_check(Move m) const {
 }
 
 
+namespace {
+
+// Snapshot of the spell state (plus the derived frozen-piece bitboards) taken
+// before and after a move; the diff is emitted as DirtySpellEvents for the
+// Spell-NNUE v2 incremental update (docs/spell-nnue-v2.md §4).
+struct SpellSnap {
+    u8       gate[COLOR_NB][SPELL_NB];
+    i8       cd[COLOR_NB][SPELL_NB];
+    i8       hand[COLOR_NB][SPELL_NB];
+    Bitboard frozen[COLOR_NB];
+};
+
+void snap_spell(const Position& pos, SpellSnap& s) {
+    for (Color c : {WHITE, BLACK})
+    {
+        for (int sp = 0; sp < SPELL_NB; ++sp)
+        {
+            s.gate[c][sp] = u8(pos.spell_gate(c, SpellType(sp)));
+            s.cd[c][sp]   = i8(pos.spell_cooldown(c, SpellType(sp)));
+            s.hand[c][sp] = i8(pos.spells_in_hand(c, SpellType(sp)));
+        }
+        s.frozen[c] = pos.pieces(c) & pos.frozen_squares(c);
+    }
+}
+
+void diff_spell(const SpellSnap& o, const SpellSnap& n, DirtySpell& dsp) {
+    using Ev = DirtySpellEvent;
+
+    for (Color c : {WHITE, BLACK})
+    {
+        for (int spi = 0; spi < SPELL_NB; ++spi)
+        {
+            const SpellType sp = SpellType(spi);
+
+            // Zone gates: one live zone per (color, spell); a moved gate is
+            // remove + add (only reachable from hand-crafted FENs)
+            if (o.gate[c][spi] != n.gate[c][spi])
+            {
+                const auto block = sp == SPELL_FREEZE ? Ev::FREEZE_GATE : Ev::JUMP_GATE;
+                if (o.gate[c][spi] != SQ_NONE)
+                    dsp.list.push_back(Ev(false, block, c, o.gate[c][spi]));
+                if (n.gate[c][spi] != SQ_NONE)
+                    dsp.list.push_back(Ev(true, block, c, n.gate[c][spi]));
+            }
+
+            // Hand and cooldown thermometers: level k active while counter > k
+            const int slotH = Eval::NNUE::Features::SpellKAv2::slot_hand(sp);
+            for (int k = n.hand[c][spi]; k < o.hand[c][spi]; ++k)
+                dsp.list.push_back(Ev(false, Ev::GLOBAL, c, slotH + k));
+            for (int k = o.hand[c][spi]; k < n.hand[c][spi]; ++k)
+                dsp.list.push_back(Ev(true, Ev::GLOBAL, c, slotH + k));
+
+            const int slotC = Eval::NNUE::Features::SpellKAv2::slot_cd(sp);
+            for (int k = n.cd[c][spi]; k < o.cd[c][spi]; ++k)
+                dsp.list.push_back(Ev(false, Ev::GLOBAL, c, slotC + k));
+            for (int k = o.cd[c][spi]; k < n.cd[c][spi]; ++k)
+                dsp.list.push_back(Ev(true, Ev::GLOBAL, c, slotC + k));
+
+            // Ready bit: hand > 0 and cooldown == 0
+            const bool oldReady = o.hand[c][spi] > 0 && o.cd[c][spi] == 0;
+            const bool newReady = n.hand[c][spi] > 0 && n.cd[c][spi] == 0;
+            if (oldReady != newReady)
+                dsp.list.push_back(Ev(newReady, Ev::GLOBAL, c,
+                                      Eval::NNUE::Features::SpellKAv2::slot_ready(sp)));
+        }
+
+        // Frozen pieces: the bitboards are already per piece color, so the
+        // set differences are exact even when a capture swaps the color
+        // standing on a frozen square
+        Bitboard rem = o.frozen[c] & ~n.frozen[c];
+        while (rem)
+            dsp.list.push_back(Ev(false, Ev::FROZEN, c, pop_lsb(rem)));
+        Bitboard add = n.frozen[c] & ~o.frozen[c];
+        while (add)
+            dsp.list.push_back(Ev(true, Ev::FROZEN, c, pop_lsb(add)));
+    }
+}
+
+}  // namespace
+
 // Makes a move, and saves all information necessary
 // to a StateInfo object. The move is assumed to be legal. Pseudo-legal
 // moves should be filtered out before this function is called.
 // If a pointer to the TT table is passed, the entry for the new position
 // will be prefetched, and likewise for shared history.
+// If a DirtySpell is passed, the spell-state feature flips of the move are
+// recorded for the Spell-NNUE v2 incremental update.
 void Position::do_move(Move                      m,
                        StateInfo&                newSt,
                        bool                      givesCheck,
                        DirtyPiece&               dp,
                        DirtyThreats&             dts,
                        const TranspositionTable* tt      = nullptr,
-                       const SharedHistories*    history = nullptr) {
+                       const SharedHistories*    history = nullptr,
+                       DirtySpell*               dsp) {
 
     assert(m.is_ok());
     assert(&newSt != st);
+
+    SpellSnap spellBefore;
+    if (dsp)
+        snap_spell(*this, spellBefore);
 
     Key k = st->key ^ Zobrist::side;
 
@@ -1391,6 +1479,16 @@ void Position::do_move(Move                      m,
 
     // Set capture piece
     st->capturedPiece = captured;
+
+    // Spell-NNUE v2: emit the spell feature flips of this move (cast, ticks,
+    // zone expiries, pieces entering/leaving live zones) by diffing the
+    // before/after spell state — board and spell mutations are complete here
+    if (dsp)
+    {
+        SpellSnap spellAfter;
+        snap_spell(*this, spellAfter);
+        diff_spell(spellBefore, spellAfter, *dsp);
+    }
 
     sideToMove = ~sideToMove;
 
@@ -1735,11 +1833,17 @@ void Position::do_castling(Color               us,
 
 // Used to do a "null move": it flips
 // the side to move without executing any move on the board.
-void Position::do_null_move(StateInfo& newSt) {
+// The spell clock still ticks, so a DirtySpell (when passed) records the
+// resulting feature flips for the Spell-NNUE v2 incremental update.
+void Position::do_null_move(StateInfo& newSt, DirtySpell* dsp) {
 
     // Spell chess: null moves are allowed even with the king attacked
     // (self-check is legal; the search treats these as normal nodes)
     assert(&newSt != st);
+
+    SpellSnap spellBefore;
+    if (dsp)
+        snap_spell(*this, spellBefore);
 
     std::memcpy(&newSt, st, sizeof(StateInfo));
 
@@ -1791,6 +1895,13 @@ void Position::do_null_move(StateInfo& newSt) {
             for (int sp = 0; sp < SPELL_NB; ++sp)
                 st->key ^= spell_state_key(c, SpellType(sp), Square(st->spellGate[c][sp]),
                                            st->spellCooldown[c][sp], st->spellHand[c][sp]);
+    }
+
+    if (dsp)
+    {
+        SpellSnap spellAfter;
+        snap_spell(*this, spellAfter);
+        diff_spell(spellBefore, spellAfter, *dsp);
     }
 
     sideToMove = ~sideToMove;

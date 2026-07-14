@@ -24,6 +24,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <tuple>
 #include <utility>
 
 #include "../types.h"
@@ -90,9 +91,24 @@ struct AccumulatorCaches {
 };
 
 
+// Spell-NNUE v2 machinery (implemented in spell_v2.cpp)
+namespace SpellV2 {
+class FeatureTransformerV2;
+struct Caches;
+}
+
 struct AccumulatorState: public Accumulator {
     DirtyPiece   dirtyPiece;
     DirtyThreats dirtyThreats;
+
+    // Spell-NNUE v2 extension: the spell-event delta of the move and the
+    // 16-bucket PSQT accumulator of the v2 net. The L1 `accumulation` and the
+    // `computed` flags of the base Accumulator are shared with the master
+    // path: the two evaluation paths are mutually exclusive within a search
+    // (dispatch on SpellV2::loaded()) and the stack is reset at search start.
+    DirtySpell dirtySpell;
+    alignas(CacheLineSize)
+      std::array<std::array<i32, SpellPSQTBuckets>, COLOR_NB> spellPsqtAccumulation;
 };
 
 class AccumulatorStack {
@@ -101,14 +117,20 @@ class AccumulatorStack {
 
     [[nodiscard]] const AccumulatorState& latest() const noexcept;
 
-    void                                  reset() noexcept;
-    std::pair<DirtyPiece&, DirtyThreats&> push() noexcept;
-    void                                  pop() noexcept;
+    void                                               reset() noexcept;
+    std::tuple<DirtyPiece&, DirtyThreats&, DirtySpell&> push() noexcept;
+    void                                               pop() noexcept;
 
     void evaluate(const Position&           pos,
                   const FeatureTransformer& featureTransformer,
                   // Silence spurious warning on GCC 10
                   [[maybe_unused]] AccumulatorCaches& cache) noexcept;
+
+    // Spell-NNUE v2 twin of evaluate(): same walk, SpellKAv2 feature set,
+    // 16 PSQT buckets, spell-aware Finny caches
+    void evaluate_spell(const Position&                      pos,
+                        const SpellV2::FeatureTransformerV2& featureTransformer,
+                        SpellV2::Caches&                     cache) noexcept;
 
    private:
     [[nodiscard]] AccumulatorState& mut_latest() noexcept;
@@ -130,6 +152,13 @@ class AccumulatorStack {
                                      const Position&           pos,
                                      const FeatureTransformer& featureTransformer,
                                      const usize               end) noexcept;
+
+    void evaluate_spell_side(Color                                perspective,
+                             const Position&                      pos,
+                             const SpellV2::FeatureTransformerV2& featureTransformer,
+                             SpellV2::Caches&                     cache) noexcept;
+
+    [[nodiscard]] usize find_last_usable_accumulator_spell(Color perspective) const noexcept;
 
     std::array<AccumulatorState, MaxSize> accumulators;
     usize                                 size = 1;

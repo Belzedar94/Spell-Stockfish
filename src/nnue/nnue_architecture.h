@@ -47,6 +47,12 @@ constexpr int       L3 = 32;
 constexpr IndexType PSQTBuckets = 8;
 constexpr IndexType LayerStacks = 8;
 
+// Spell-NNUE v2 output buckets: a 2D material x potions grid,
+// stack = min(3, (pieceCount-1)/8) * 4 + min(3, potionsInHandBothSides/4)
+// (docs/spell-nnue-v2.md §3). The per-stack architecture is unchanged.
+constexpr IndexType SpellPSQTBuckets = 16;
+constexpr IndexType SpellLayerStacks = 16;
+
 // If vector instructions are enabled, we update and refresh the
 // accumulator tile by tile such that each tile fits in the CPU's
 // vector registers.
