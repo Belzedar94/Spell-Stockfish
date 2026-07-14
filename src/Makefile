@@ -79,7 +79,7 @@ PGOBENCH = $(RUN_PREFIX) ./$(EXE) bench
 SRCS = attacks.cpp benchmark.cpp bitboard.cpp evaluate.cpp main.cpp notation.cpp \
 	misc.cpp movegen.cpp movepick.cpp position.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp \
-	nnue/nnue_accumulator.cpp nnue/nnue_misc.cpp nnue/network.cpp \
+	nnue/nnue_accumulator.cpp nnue/nnue_misc.cpp nnue/network.cpp nnue/spell_v2.cpp \
 	nnue/features/half_ka_v2_hm.cpp nnue/features/full_threats.cpp nnue/features/spell_ka_v2.cpp \
 	datagen.cpp spell_params.cpp spellnnue/spell_nnue.cpp \
 	engine.cpp score.cpp memory.cpp xboard.cpp

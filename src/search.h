@@ -36,6 +36,7 @@
 #include "movegen.h"
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
+#include "nnue/spell_v2.h"
 #include "numa.h"
 #include "position.h"
 #include "score.h"
@@ -425,6 +426,10 @@ class Worker {
     // Per-thread accumulator refresh cache for the spell NNUE (Finny-style:
     // keyed by perspective and own king square)
     SpellNNUE::RefreshCache spellRefreshCache;
+
+    // Per-thread Finny caches for the Spell-NNUE v2 net; allocated lazily on
+    // the first evaluation after a v2 net is loaded (~290 KB per thread)
+    std::unique_ptr<Eval::NNUE::SpellV2::Caches> spellV2Refresh;
 
     // MovePickers claim slots RAII/LIFO from the bump arena — ply-keyed
     // slots would collide when a singular verification search re-enters

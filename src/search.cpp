@@ -662,8 +662,8 @@ void Search::Worker::do_move(
     ++nodes;
 
     auto [dirtyPiece, dirtyThreats, dirtySpell] = accumulatorStack.push();
-    (void) dirtySpell;
-    pos.do_move(move, st, givesCheck, dirtyPiece, dirtyThreats, &tt, &sharedHistory);
+    pos.do_move(move, st, givesCheck, dirtyPiece, dirtyThreats, &tt, &sharedHistory,
+                Eval::NNUE::SpellV2::loaded() ? &dirtySpell : nullptr);
 
     if (ss != nullptr)
     {
@@ -676,7 +676,20 @@ void Search::Worker::do_move(
 }
 
 void Search::Worker::do_null_move(Position& pos, StateInfo& st, Stack* const ss) {
-    pos.do_null_move(st);
+    // Spell chess: a null move still ticks the spell clock (zones expire,
+    // cooldowns advance), so with a v2 net active the accumulator stack gets
+    // a piece-less entry carrying only the spell feature flips. Without one,
+    // the stack is untouched exactly like stock (no board features change).
+    if (Eval::NNUE::SpellV2::loaded())
+    {
+        auto [dirtyPiece, dirtyThreats, dirtySpell] = accumulatorStack.push();
+        (void) dirtyPiece, (void) dirtyThreats;
+        dirtySpell.isNull = true;
+        pos.do_null_move(st, &dirtySpell);
+    }
+    else
+        pos.do_null_move(st);
+
     ss->currentMove                   = Move::null();
     ss->continuationHistory           = &continuationHistory[0][0][NO_PIECE][0];
     ss->continuationCorrectionHistory = &continuationCorrectionHistory[NO_PIECE][0];
@@ -687,7 +700,11 @@ void Search::Worker::undo_move(Position& pos, const Move move) {
     accumulatorStack.pop();
 }
 
-void Search::Worker::undo_null_move(Position& pos) { pos.undo_null_move(); }
+void Search::Worker::undo_null_move(Position& pos) {
+    pos.undo_null_move();
+    if (Eval::NNUE::SpellV2::loaded())
+        accumulatorStack.pop();
+}
 
 
 // Reset histories, usually before a new game
@@ -2007,6 +2024,16 @@ TimePoint Search::Worker::elapsed() const {
 }
 
 Value Search::Worker::evaluate(const Position& pos) {
+    // Spell-NNUE v2 (SPL2 EvalFile): the modern chassis with the SpellKAv2
+    // feature set; blended exactly like the stock path.
+    if (Eval::NNUE::SpellV2::loaded())
+    {
+        if (!spellV2Refresh)
+            spellV2Refresh = std::make_unique<Eval::NNUE::SpellV2::Caches>();
+        return Eval::NNUE::SpellV2::evaluate(pos, accumulatorStack, *spellV2Refresh,
+                                             optimism[pos.side_to_move()]);
+    }
+
     // With a legacy spell net loaded (EvalFile), evaluation matches the
     // reference engine exactly (including its outer scaling); the stock
     // chess networks remain the spell-blind bootstrap fallback.

@@ -184,6 +184,10 @@ void UCIEngine::loop() {
             datagen(is);
         else if (token == "evalspell")
             engine.trace_spell_eval();
+        else if (token == "evalv2")
+            engine.trace_spell_v2_eval();
+        else if (token == "featuresv2")
+            engine.dump_spell_v2_features();
         else if (token == "compiler")
             sync_cout << compiler_info() << sync_endl;
         else if (token == "export_net")
