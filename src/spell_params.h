@@ -113,6 +113,19 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Big bet 2: learned cast-gate policy (tiny MLP, tools/policy_train.py,
+// owner green-lit). The logit scales into the gate impact score with this
+// weight; 0 = off (bench-identical).
+extern int SpellPolicyWeight;  // 0 (off)
+
+// Structural roadmap pillar B: cast decomposition. The SPELL stage emits ONE
+// declaration sentinel per viable (spell, gate) instead of the full gated
+// product (~130 vs ~1650 edges); the search expands the quiet completions
+// at the same ply through the classic do_move (equivalence proven by
+// perftdec). Gated captures keep flowing through the capture stages. The
+// root never decomposes (UCI surface untouched). 0 = off (bench-identical).
+extern int SpellDecompose;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

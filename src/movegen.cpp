@@ -28,6 +28,7 @@
 #include "spell.h"
 #include "spell_order.h"
 #include "spell_params.h"
+#include "spellpolicy/spell_policy.h"
 
 namespace Stockfish {
 
@@ -266,6 +267,11 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 }
                 else
                     s = jumpScore[g];
+
+                // Learned policy prior (big bet 2)
+                if (SpellPolicyWeight)
+                    s += int(SpellPolicy::gate_logit(pos, Us, sp, g)
+                             * float(SpellPolicyWeight));
 
                 scored[n++] = {g, s};
             }
