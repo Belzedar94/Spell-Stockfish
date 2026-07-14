@@ -378,6 +378,48 @@ struct DirtyThreats {
     DirtyThreatList list;
 };
 
+// Keep track of what spell state a move changes (used by the Spell-NNUE v2
+// feature set SpellKAv2, see docs/spell-nnue-v2.md §4). Events are stored in
+// absolute terms (owner color, absolute square / global slot); the feature
+// set translates them per perspective. One event = one 0/1 feature flip.
+struct DirtySpellEvent {
+    // Feature blocks of SpellKAv2 beyond the HalfKA piece planes
+    enum Block : u8 {
+        FREEZE_GATE = 0,  // king-bucketed gate square of a live freeze zone
+        JUMP_GATE   = 1,  // flat gate square of a live jump zone
+        FROZEN      = 2,  // flat square of a frozen piece (color = piece color)
+        GLOBAL      = 3   // hand/cooldown thermometers and ready bits (slot 0..14)
+    };
+
+    DirtySpellEvent() = default;
+    DirtySpellEvent(bool add, Block block, Color c, int index) :
+        data((u32(add) << 31) | (u32(block) << 8) | (u32(c) << 6) | u32(index)) {}
+
+    bool  add() const { return data >> 31; }
+    Block block() const { return Block((data >> 8) & 3); }
+    Color color() const { return Color((data >> 6) & 1); }
+    int   index() const { return int(data & 0x3F); }
+
+   private:
+    u32 data;
+};
+
+// Worst case flips in one do_move (each term is a hard bound, see the
+// derivation in nnue/features/spell_ka_v2.h):
+//   globals <= 9 (hand 1 + cooldowns 5 + ready bits 3)
+//   gates   <= 3 (own cast add 1, both opponent zones expiring 2)
+//   frozen  <= 22 (own freeze cast 9, opponent freeze expiry 9, board moves 4)
+// Total <= 34; the list is sized with a small margin on top of that.
+struct DirtySpell {
+    static constexpr int MaxEvents = 40;
+
+    ValueList<DirtySpellEvent, MaxEvents> list;
+
+    // True for accumulator entries created by a null move: there is no piece
+    // or threat delta to apply, only the spell-clock tick recorded above.
+    bool isNull = false;
+};
+
     #define ENABLE_INCR_OPERATORS_ON(T) \
         constexpr T& operator++(T& d) { return d = T(int(d) + 1); } \
         constexpr T& operator--(T& d) { return d = T(int(d) - 1); }
