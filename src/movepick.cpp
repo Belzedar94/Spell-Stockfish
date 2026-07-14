@@ -40,12 +40,17 @@ enum Stages {
     MAIN_TT,
     CAPTURE_INIT,
     GOOD_CAPTURE,
+    // ubdip staging (SpellStages): tactical casts BEFORE the quiets,
+    // everything else after the bad quiets (LSPELL)
+    TSPELL_INIT,
+    TSPELL,
     QUIET_INIT,
     GOOD_QUIET,
     SPELL_INIT,
     SPELL,
     BAD_CAPTURE,
     BAD_QUIET,
+    LSPELL,
 
     // generate evasion moves
     EVASION_TT,
@@ -357,6 +362,79 @@ top:
         ++stage;
         [[fallthrough]];
 
+    case TSPELL_INIT :
+        // ubdip's staging: ONE spell generation, partitioned. The tactical
+        // classes (royal freezes, silencing our king's attackers, freezing
+        // attacked/major material, jumps revealing the king or big material)
+        // are emitted HERE, before the quiets; every other cast is stashed
+        // at the arena top for the LSPELL stage after the bad quiets.
+        if (SpellStages && ply != 0 && allowSpells && !mergedSpells && !onlyTacticalSpells
+            && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
+                || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
+        {
+            const Color us = pos.side_to_move();
+            if (pos.count<KING>(us))
+            {
+                spellOurRoyal       = pos.square<KING>(us);
+                spellRoyalAttackers = pos.attackers_to(spellOurRoyal) & pos.pieces(~us);
+            }
+            if (pos.count<KING>(~us))
+                spellEnemyRoyal = pos.square<KING>(~us);
+
+            int jumpGain[SQUARE_NB];
+            if (pos.can_cast(us, SPELL_JUMP))
+                jump_gate_scores(pos, us, spellEnemyRoyal, jumpGain);
+            else
+                std::fill_n(jumpGain, SQUARE_NB, 0);
+
+            const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
+
+            ExtMove* const tacBegin = cur;
+            ExtMove*       tacEnd   = score<QUIETS>(genScratch, endGen);
+
+            // Partition in place: tactical stays at the front, the rest is
+            // copied (score included) to the stash at the arena top
+            ExtMove* top  = moves + MAX_MOVES;
+            ExtMove* keep = tacBegin;
+            int      nLate = 0;
+            for (ExtMove* it = tacBegin; it != tacEnd; ++it)
+            {
+                if (is_useless_spell(pos, *it))
+                    continue;
+                const bool tactical =
+                  it->spell_type() == SPELL_JUMP
+                    ? jumpGain[it->gate_sq()] >= SpellStageJumpGain
+                    : is_tactical_spell(pos, *it, spellRoyalAttackers, spellEnemyRoyal,
+                                        spellOurRoyal);
+                if (tactical)
+                    *keep++ = *it;
+                else
+                    *(top - ++nLate) = *it;
+            }
+            endCur = keep;
+            partial_insertion_sort(cur, endCur, std::numeric_limits<int>::min());
+
+            lateStart = top - nLate;
+            lateEnd   = top;
+            std::sort(lateStart, lateEnd,
+                      [](const ExtMove& x, const ExtMove& y) { return x.value > y.value; });
+
+            stagedSpells = true;
+        }
+        else
+            endCur = cur;  // empty tactical segment
+
+        ++stage;
+        [[fallthrough]];
+
+    case TSPELL :
+        if (select([]() { return true; }))
+            return *(cur - 1);
+
+        quietsStart = cur;  // base quiets are written from here on
+        ++stage;
+        [[fallthrough]];
+
     case QUIET_INIT :
         if (!skipQuiets)
         {
@@ -405,7 +483,7 @@ top:
         // gate (allowSpells): a cast is worth at most about a tempo plus
         // bounded tactics, so hopeless nodes skip the expansion entirely.
         cur = endCur = endSpells = endGenerated;
-        if (!mergedSpells && allowSpells
+        if (!mergedSpells && !stagedSpells && allowSpells
             && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
                 || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
         {
@@ -457,17 +535,31 @@ top:
             return *(cur - 1);
 
         // Prepare the pointers to loop over the base quiets again
-        cur    = endCaptures;
+        // (quietsStart skips the tactical-cast segment when staging is on)
+        cur    = quietsStart ? quietsStart : endCaptures;
         endCur = endGenerated;
 
         ++stage;
         [[fallthrough]];
 
     case BAD_QUIET :
-        if (!skipQuiets)
-            return select([&]() { return cur->value <= goodQuietThreshold; });
+        if (!skipQuiets && select([&]() { return cur->value <= goodQuietThreshold; }))
+            return *(cur - 1);
 
-        return Move::none();
+        // ubdip staging: the non-tactical cast mass comes dead last, and
+        // skipQuiets (LMP) finally applies to it
+        if (!stagedSpells || skipQuiets || lateStart == lateEnd)
+            return Move::none();
+
+        cur    = lateStart;
+        endCur = lateEnd;
+        ++stage;
+        [[fallthrough]];
+
+    case LSPELL :
+        if (skipQuiets)
+            return Move::none();
+        return select([]() { return true; });
 
     case EVASION_INIT : {
         const Move* endGen = generate<EVASIONS>(pos, genScratch);

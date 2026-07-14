@@ -58,6 +58,10 @@ int SpellNoIIR            = 0;
 int SpellContHistSkip     = 0;
 int SpellRazorGuard       = 0;
 
+// ubdip staging (off by default)
+int SpellStages        = 0;
+int SpellStageJumpGain = 800;
+
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
@@ -81,5 +85,7 @@ TUNE(SetRange(0, 500), SpellCaptureSeeMargin);
 TUNE(SetRange(0, 1), SpellNoIIR);
 TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
+TUNE(SetRange(0, 1), SpellStages);
+TUNE(SetRange(100, 12000), SpellStageJumpGain);
 
 }  // namespace Stockfish

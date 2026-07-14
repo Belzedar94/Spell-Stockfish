@@ -113,6 +113,16 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// ubdip's stage taxonomy (Discord 2026-07-14): restructure move PICKING, not
+// just ordering. ONE spell generation, partitioned: the handful of tactical
+// casts (royal freezes, silencing our king's attackers, freezing attacked or
+// major material, jumps revealing the king or big material) are searched
+// BEFORE the quiets; every other cast drops to a LATE stage after the bad
+// quiets and is skipped entirely under skipQuiets — LMP finally applies to
+// the spell mass. 0 = classic staging (bench-identical).
+extern int SpellStages;         // 0 (off)
+extern int SpellStageJumpGain;  // 800: min jump reveal (cp-ish) for the early stage
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

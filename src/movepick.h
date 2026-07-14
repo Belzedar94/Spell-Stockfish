@@ -93,6 +93,13 @@ class MovePicker {
     // SpellMergedOrdering generated the gated quiets inside QUIET_INIT, so
     // the SPELL stage must not regenerate them
     bool      mergedSpells        = false;
+    // SpellStages partitioned the casts at TSPELL_INIT (ubdip staging):
+    // classic SPELL stage skipped; late casts stashed at the arena top
+    bool      stagedSpells = false;
+    ExtMove * lateStart = nullptr, *lateEnd = nullptr;
+    // First base quiet in the arena (tactical casts may sit between the
+    // captures and the quiets when staging is on)
+    ExtMove* quietsStart = nullptr;
     Bitboard  spellRoyalAttackers = 0;
     Square    spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
     ExtMove** arenaTop;
