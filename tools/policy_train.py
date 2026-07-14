@@ -1,8 +1,12 @@
 """Big bet 2: train the tiny cast-gate policy head (owner green-lit).
 
 Dataset: PSV records whose PV move casts (tools/policy_extract.py stats).
-Sample = (position, gate) pairs: the played gate as positive, K random other
-gates as negatives. Features are DELIBERATELY the ones the engine can compute
+Sample = (position, gate) pairs: the played gate as positive, K HARD negatives
+(v2): the top competing gates by enemy-material-in-zone + king proximity —
+the model must separate BEST from GOOD, not plausible from absurd (v1's
+random negatives did not transfer: SPRT #53). Records whose paired base move
+originates inside the new 3x3 caster block (illegal after the 2026-07-14
+rules fix) are excluded. Features are DELIBERATELY the ones the engine can compute
 in two bitboard ops per gate (they must match src inference exactly):
 
   0 isFreeze          1 cheb(gate, enemyK)/7   2 cheb(gate, ourK)/7
@@ -95,12 +99,37 @@ def main():
                 continue
             d = decode(rec)
             gate = (move >> 18) & 0x3F
+            frm = (move >> 6) & 0x3F
+
+            # Rules fix 2026-07-14: the caster cannot move from the new 3x3
+            # zone. Old-universe records whose base move does so are no
+            # longer legal examples.
+            if spell_bits == 1 and frm in zone_squares(gate, True):
+                continue
+
             X.append(features(d, gate, spell_bits))
             Y.append(1.0)
-            for _ in range(negs):
-                g = rng.randrange(64)
-                while g == gate:
-                    g = rng.randrange(64)
+
+            # HARD negatives: the strongest competing gates by enemy material
+            # in zone (tie-break: proximity to the enemy king), i.e. the ones
+            # the engine's own candidate ranking would surface
+            stm = d["stm"]
+            them = 1 - stm
+            ek = d["bk"] if stm == 0 else d["wk"]
+            def gate_key(g):
+                emat = 0.0
+                for sq in zone_squares(g, spell_bits == 1):
+                    pc = d["board"].get(sq)
+                    if pc is not None and pc[1] == them and pc[0] < 6:
+                        emat += VALS[pc[0]]
+                prox = -max(abs((g & 7) - (ek & 7)), abs((g >> 3) - (ek >> 3))) if ek < 64 else 0
+                return (emat, prox)
+            if spell_bits == 2:
+                cands = [sq for sq in d["board"] if sq != gate]
+            else:
+                cands = [g for g in range(64) if g != gate]
+            cands.sort(key=gate_key, reverse=True)
+            for g in cands[:negs]:
                 X.append(features(d, g, spell_bits))
                 Y.append(0.0)
             kept += 1
@@ -120,7 +149,7 @@ def main():
     model = nn.Sequential(nn.Linear(11, 24), nn.Tanh(), nn.Linear(24, 1)).to(dev)
     opt = torch.optim.Adam(model.parameters(), lr=3e-3)
     lossf = nn.BCEWithLogitsLoss()
-    for epoch in range(6):
+    for epoch in range(16):
         model.train()
         for i in range(0, len(tr), 16384):
             idx = tr[i:i + 16384]
