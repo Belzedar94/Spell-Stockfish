@@ -1,0 +1,575 @@
+{
+  "data": "C:\\Users\\djime\\Documents\\Chess_variants\\Codex\\Fairy-Stockfish organization\\Spell-Stockfish\\.scratch\\run6a-1m.run7",
+  "requested_records": 1000000,
+  "epochs": 2,
+  "positions_seen": 2000000,
+  "steps": 7814,
+  "batch_size": 256,
+  "device": "cuda",
+  "seed": 1,
+  "lambda_start": 1.0,
+  "lambda_end": 0.5,
+  "freeze_gate_factorization": "64 virtual rows coalesced into 4096 export rows",
+  "frozen_factorization": "HalfKA base piece plus flat frozen delta",
+  "initial_loss": 0.054740974754095076,
+  "final_loss": 0.03569944955408573,
+  "convergence_ratio": 0.6521522445380846,
+  "gate_ratio": 0.9,
+  "converged": true,
+  "elapsed_s": 1492.7970000000205,
+  "curve": [
+    {
+      "epoch": 1,
+      "step": 1,
+      "positions": 256,
+      "loss": 0.05866328254342079,
+      "elapsed_s": 0.625
+    },
+    {
+      "epoch": 1,
+      "step": 100,
+      "positions": 25600,
+      "loss": 0.04333239048719406,
+      "elapsed_s": 12.813000000081956
+    },
+    {
+      "epoch": 1,
+      "step": 200,
+      "positions": 51200,
+      "loss": 0.02709805592894554,
+      "elapsed_s": 22.875
+    },
+    {
+      "epoch": 1,
+      "step": 300,
+      "positions": 76800,
+      "loss": 0.07091830670833588,
+      "elapsed_s": 30.563000000081956
+    },
+    {
+      "epoch": 1,
+      "step": 400,
+      "positions": 102400,
+      "loss": 0.056205131113529205,
+      "elapsed_s": 39.54700000002049
+    },
+    {
+      "epoch": 1,
+      "step": 500,
+      "positions": 128000,
+      "loss": 0.03773297742009163,
+      "elapsed_s": 59.35900000017136
+    },
+    {
+      "epoch": 1,
+      "step": 600,
+      "positions": 153600,
+      "loss": 0.03366367891430855,
+      "elapsed_s": 77.53100000019185
+    },
+    {
+      "epoch": 1,
+      "step": 700,
+      "positions": 179200,
+      "loss": 0.03718479722738266,
+      "elapsed_s": 94.14100000006147
+    },
+    {
+      "epoch": 1,
+      "step": 800,
+      "positions": 204800,
+      "loss": 0.061703942716121674,
+      "elapsed_s": 108.54700000002049
+    },
+    {
+      "epoch": 1,
+      "step": 900,
+      "positions": 230400,
+      "loss": 0.046250518411397934,
+      "elapsed_s": 127.76600000006147
+    },
+    {
+      "epoch": 1,
+      "step": 1000,
+      "positions": 256000,
+      "loss": 0.025739440694451332,
+      "elapsed_s": 148.71900000004098
+    },
+    {
+      "epoch": 1,
+      "step": 1100,
+      "positions": 281600,
+      "loss": 0.03717721253633499,
+      "elapsed_s": 160.3279999999795
+    },
+    {
+      "epoch": 1,
+      "step": 1200,
+      "positions": 307200,
+      "loss": 0.03084072470664978,
+      "elapsed_s": 178.4220000000205
+    },
+    {
+      "epoch": 1,
+      "step": 1300,
+      "positions": 332800,
+      "loss": 0.0371173657476902,
+      "elapsed_s": 196.18800000008196
+    },
+    {
+      "epoch": 1,
+      "step": 1400,
+      "positions": 358400,
+      "loss": 0.051124781370162964,
+      "elapsed_s": 213.1720000000205
+    },
+    {
+      "epoch": 1,
+      "step": 1500,
+      "positions": 384000,
+      "loss": 0.03156310319900513,
+      "elapsed_s": 231.0779999999795
+    },
+    {
+      "epoch": 1,
+      "step": 1600,
+      "positions": 409600,
+      "loss": 0.04382828623056412,
+      "elapsed_s": 248.65600000019185
+    },
+    {
+      "epoch": 1,
+      "step": 1700,
+      "positions": 435200,
+      "loss": 0.015502791851758957,
+      "elapsed_s": 266.125
+    },
+    {
+      "epoch": 1,
+      "step": 1800,
+      "positions": 460800,
+      "loss": 0.032367102801799774,
+      "elapsed_s": 284.0779999999795
+    },
+    {
+      "epoch": 1,
+      "step": 1900,
+      "positions": 486400,
+      "loss": 0.030190812423825264,
+      "elapsed_s": 302.6720000000205
+    },
+    {
+      "epoch": 1,
+      "step": 2000,
+      "positions": 512000,
+      "loss": 0.04679909348487854,
+      "elapsed_s": 321.51600000006147
+    },
+    {
+      "epoch": 1,
+      "step": 2100,
+      "positions": 537600,
+      "loss": 0.027223490178585052,
+      "elapsed_s": 339.39100000006147
+    },
+    {
+      "epoch": 1,
+      "step": 2200,
+      "positions": 563200,
+      "loss": 0.041509032249450684,
+      "elapsed_s": 357.2029999999795
+    },
+    {
+      "epoch": 1,
+      "step": 2300,
+      "positions": 588800,
+      "loss": 0.03255889564752579,
+      "elapsed_s": 376.26600000006147
+    },
+    {
+      "epoch": 1,
+      "step": 2400,
+      "positions": 614400,
+      "loss": 0.036983318626880646,
+      "elapsed_s": 396.219000000041
+    },
+    {
+      "epoch": 1,
+      "step": 2500,
+      "positions": 640000,
+      "loss": 0.03133292496204376,
+      "elapsed_s": 414.7029999999795
+    },
+    {
+      "epoch": 1,
+      "step": 2600,
+      "positions": 665600,
+      "loss": 0.0380994938313961,
+      "elapsed_s": 433.56300000008196
+    },
+    {
+      "epoch": 1,
+      "step": 2700,
+      "positions": 691200,
+      "loss": 0.03100299835205078,
+      "elapsed_s": 451.98400000017136
+    },
+    {
+      "epoch": 1,
+      "step": 2800,
+      "positions": 716800,
+      "loss": 0.03509032726287842,
+      "elapsed_s": 472.2029999999795
+    },
+    {
+      "epoch": 1,
+      "step": 2900,
+      "positions": 742400,
+      "loss": 0.022876620292663574,
+      "elapsed_s": 490.844000000041
+    },
+    {
+      "epoch": 1,
+      "step": 3000,
+      "positions": 768000,
+      "loss": 0.03458013758063316,
+      "elapsed_s": 510.31300000008196
+    },
+    {
+      "epoch": 1,
+      "step": 3100,
+      "positions": 793600,
+      "loss": 0.04426001012325287,
+      "elapsed_s": 532.0160000000615
+    },
+    {
+      "epoch": 1,
+      "step": 3200,
+      "positions": 819200,
+      "loss": 0.03283558413386345,
+      "elapsed_s": 548.0310000001919
+    },
+    {
+      "epoch": 1,
+      "step": 3300,
+      "positions": 844800,
+      "loss": 0.0231013223528862,
+      "elapsed_s": 566.344000000041
+    },
+    {
+      "epoch": 1,
+      "step": 3400,
+      "positions": 870400,
+      "loss": 0.047830406576395035,
+      "elapsed_s": 588.3910000000615
+    },
+    {
+      "epoch": 1,
+      "step": 3500,
+      "positions": 896000,
+      "loss": 0.05151805654168129,
+      "elapsed_s": 607.5779999999795
+    },
+    {
+      "epoch": 1,
+      "step": 3600,
+      "positions": 921600,
+      "loss": 0.028174230828881264,
+      "elapsed_s": 625.7810000001919
+    },
+    {
+      "epoch": 1,
+      "step": 3700,
+      "positions": 947200,
+      "loss": 0.049705374985933304,
+      "elapsed_s": 645.6720000000205
+    },
+    {
+      "epoch": 1,
+      "step": 3800,
+      "positions": 972800,
+      "loss": 0.025775276124477386,
+      "elapsed_s": 666.2970000000205
+    },
+    {
+      "epoch": 1,
+      "step": 3900,
+      "positions": 998400,
+      "loss": 0.03342743217945099,
+      "elapsed_s": 685.5160000000615
+    },
+    {
+      "epoch": 2,
+      "step": 4000,
+      "positions": 1023808,
+      "loss": 0.017665967345237732,
+      "elapsed_s": 705.8910000000615
+    },
+    {
+      "epoch": 2,
+      "step": 4100,
+      "positions": 1049408,
+      "loss": 0.04481011629104614,
+      "elapsed_s": 723.719000000041
+    },
+    {
+      "epoch": 2,
+      "step": 4200,
+      "positions": 1075008,
+      "loss": 0.10466699302196503,
+      "elapsed_s": 742.6090000001714
+    },
+    {
+      "epoch": 2,
+      "step": 4300,
+      "positions": 1100608,
+      "loss": 0.04585892707109451,
+      "elapsed_s": 763.0470000000205
+    },
+    {
+      "epoch": 2,
+      "step": 4400,
+      "positions": 1126208,
+      "loss": 0.05110619217157364,
+      "elapsed_s": 783.0160000000615
+    },
+    {
+      "epoch": 2,
+      "step": 4500,
+      "positions": 1151808,
+      "loss": 0.03399902582168579,
+      "elapsed_s": 802.6410000000615
+    },
+    {
+      "epoch": 2,
+      "step": 4600,
+      "positions": 1177408,
+      "loss": 0.02179919183254242,
+      "elapsed_s": 821.594000000041
+    },
+    {
+      "epoch": 2,
+      "step": 4700,
+      "positions": 1203008,
+      "loss": 0.04242696613073349,
+      "elapsed_s": 842.1090000001714
+    },
+    {
+      "epoch": 2,
+      "step": 4800,
+      "positions": 1228608,
+      "loss": 0.01880594715476036,
+      "elapsed_s": 862.4529999999795
+    },
+    {
+      "epoch": 2,
+      "step": 4900,
+      "positions": 1254208,
+      "loss": 0.0368962436914444,
+      "elapsed_s": 882.6560000001919
+    },
+    {
+      "epoch": 2,
+      "step": 5000,
+      "positions": 1279808,
+      "loss": 0.03807005286216736,
+      "elapsed_s": 903.563000000082
+    },
+    {
+      "epoch": 2,
+      "step": 5100,
+      "positions": 1305408,
+      "loss": 0.041366107761859894,
+      "elapsed_s": 923.75
+    },
+    {
+      "epoch": 2,
+      "step": 5200,
+      "positions": 1331008,
+      "loss": 0.02100428193807602,
+      "elapsed_s": 944.4220000000205
+    },
+    {
+      "epoch": 2,
+      "step": 5300,
+      "positions": 1356608,
+      "loss": 0.015172400511801243,
+      "elapsed_s": 964.625
+    },
+    {
+      "epoch": 2,
+      "step": 5400,
+      "positions": 1382208,
+      "loss": 0.027624398469924927,
+      "elapsed_s": 984.625
+    },
+    {
+      "epoch": 2,
+      "step": 5500,
+      "positions": 1407808,
+      "loss": 0.05652540177106857,
+      "elapsed_s": 1006.5779999999795
+    },
+    {
+      "epoch": 2,
+      "step": 5600,
+      "positions": 1433408,
+      "loss": 0.036392513662576675,
+      "elapsed_s": 1027.1090000001714
+    },
+    {
+      "epoch": 2,
+      "step": 5700,
+      "positions": 1459008,
+      "loss": 0.025647340342402458,
+      "elapsed_s": 1047.219000000041
+    },
+    {
+      "epoch": 2,
+      "step": 5800,
+      "positions": 1484608,
+      "loss": 0.037478722631931305,
+      "elapsed_s": 1067.5310000001919
+    },
+    {
+      "epoch": 2,
+      "step": 5900,
+      "positions": 1510208,
+      "loss": 0.0336037315428257,
+      "elapsed_s": 1089.063000000082
+    },
+    {
+      "epoch": 2,
+      "step": 6000,
+      "positions": 1535808,
+      "loss": 0.03717567026615143,
+      "elapsed_s": 1110.0779999999795
+    },
+    {
+      "epoch": 2,
+      "step": 6100,
+      "positions": 1561408,
+      "loss": 0.050450779497623444,
+      "elapsed_s": 1131.0310000001919
+    },
+    {
+      "epoch": 2,
+      "step": 6200,
+      "positions": 1587008,
+      "loss": 0.045947253704071045,
+      "elapsed_s": 1152.9060000001919
+    },
+    {
+      "epoch": 2,
+      "step": 6300,
+      "positions": 1612608,
+      "loss": 0.032816559076309204,
+      "elapsed_s": 1174.75
+    },
+    {
+      "epoch": 2,
+      "step": 6400,
+      "positions": 1638208,
+      "loss": 0.039603300392627716,
+      "elapsed_s": 1195.469000000041
+    },
+    {
+      "epoch": 2,
+      "step": 6500,
+      "positions": 1663808,
+      "loss": 0.03976442664861679,
+      "elapsed_s": 1216.188000000082
+    },
+    {
+      "epoch": 2,
+      "step": 6600,
+      "positions": 1689408,
+      "loss": 0.028183449059724808,
+      "elapsed_s": 1237.5470000000205
+    },
+    {
+      "epoch": 2,
+      "step": 6700,
+      "positions": 1715008,
+      "loss": 0.03318464383482933,
+      "elapsed_s": 1257.6720000000205
+    },
+    {
+      "epoch": 2,
+      "step": 6800,
+      "positions": 1740608,
+      "loss": 0.03537160903215408,
+      "elapsed_s": 1277.969000000041
+    },
+    {
+      "epoch": 2,
+      "step": 6900,
+      "positions": 1766208,
+      "loss": 0.037609927356243134,
+      "elapsed_s": 1297.9220000000205
+    },
+    {
+      "epoch": 2,
+      "step": 7000,
+      "positions": 1791808,
+      "loss": 0.018659807741642,
+      "elapsed_s": 1318.688000000082
+    },
+    {
+      "epoch": 2,
+      "step": 7100,
+      "positions": 1817408,
+      "loss": 0.025544509291648865,
+      "elapsed_s": 1340.9220000000205
+    },
+    {
+      "epoch": 2,
+      "step": 7200,
+      "positions": 1843008,
+      "loss": 0.03131864219903946,
+      "elapsed_s": 1362.25
+    },
+    {
+      "epoch": 2,
+      "step": 7300,
+      "positions": 1868608,
+      "loss": 0.040113404393196106,
+      "elapsed_s": 1383.969000000041
+    },
+    {
+      "epoch": 2,
+      "step": 7400,
+      "positions": 1894208,
+      "loss": 0.009500756859779358,
+      "elapsed_s": 1406.594000000041
+    },
+    {
+      "epoch": 2,
+      "step": 7500,
+      "positions": 1919808,
+      "loss": 0.02401135116815567,
+      "elapsed_s": 1427.8910000000615
+    },
+    {
+      "epoch": 2,
+      "step": 7600,
+      "positions": 1945408,
+      "loss": 0.03554927557706833,
+      "elapsed_s": 1448.969000000041
+    },
+    {
+      "epoch": 2,
+      "step": 7700,
+      "positions": 1971008,
+      "loss": 0.033917833119630814,
+      "elapsed_s": 1469.188000000082
+    },
+    {
+      "epoch": 2,
+      "step": 7800,
+      "positions": 1996608,
+      "loss": 0.032774798572063446,
+      "elapsed_s": 1490.188000000082
+    }
+  ]
+}
