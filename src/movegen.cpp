@@ -253,6 +253,12 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 jumpScoreReady = true;
             }
 
+            // Spell-SEE consumer #1 (gate selection): tension points once
+            // per node, exchange delta per candidate gate
+            SpellTensionList tension;
+            if (SpellSeeOrderWeight && sp == SPELL_FREEZE)
+                spell_collect_tension(pos, Us, tension);
+
             for (Bitboard b = allGates; b;)
             {
                 const Square g = pop_lsb(b);
@@ -261,6 +267,8 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 if (sp == SPELL_FREEZE)
                 {
                     s = freeze_gate_score(pos, Us, g, eksq, eRing);
+                    if (SpellSeeOrderWeight)
+                        s += spell_see_freeze(pos, Us, g, tension) * SpellSeeOrderWeight / 16;
                     if (FreezeZoneBB[g] & eRing)
                         ++ringCount;
                 }

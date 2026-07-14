@@ -149,6 +149,111 @@ inline void jump_gate_scores(const Position& pos, Color us, Square eksq, int out
     }
 }
 
+
+// ---------------------------------------------------------------------------
+// Spell-SEE (big bet 1): static exchange value FOR CASTS.
+//
+// spell_swap: classic SEE swap-off of 'us' capturing on 'to', except enemy
+// attackers under 'frozenEnemy' give no recaptures (frozen pieces do not
+// attack). Legality niceties are ignored exactly like classic SEE — and in
+// spell chess self-check is legal anyway, so this is if anything MORE exact
+// here than in chess. Attackers are recomputed per iteration (magic lookups),
+// which handles x-rays for free.
+inline int spell_swap(const Position& pos, Color us, Square to, Bitboard frozenEnemy) {
+
+    int   gain[24];
+    int   d   = 0;
+    Color stm = us;
+
+    Bitboard occ = pos.pieces();
+    gain[0]      = PieceValue[pos.piece_on(to)];
+
+    while (true)
+    {
+        Bitboard atts = pos.attackers_to(to, occ) & occ & pos.pieces(stm);
+        if (stm == ~us)
+            atts &= ~frozenEnemy;
+        if (!atts || d + 2 >= int(sizeof(gain) / sizeof(gain[0])))
+            break;
+
+        // least valuable attacker
+        Square   from = SQ_NONE;
+        for (PieceType pt : {PAWN, KNIGHT, BISHOP, ROOK, QUEEN, KING})
+            if (Bitboard b = atts & pos.pieces(stm, pt))
+            {
+                from = lsb(b);
+                break;
+            }
+        if (from == SQ_NONE)
+            break;
+
+        ++d;
+        gain[d] = PieceValue[pos.piece_on(from)] - gain[d - 1];
+        occ ^= square_bb(from);
+        stm = ~stm;
+    }
+
+    while (--d > 0)
+        gain[d - 1] = -std::max(-gain[d - 1], gain[d]);
+    return gain[0] > 0 && d >= 0 ? std::max(0, gain[0]) : std::max(0, gain[0]);
+}
+
+// Tension points of the position: enemy pieces we already attack, with their
+// defender sets. Computed once per node, consumed per candidate gate.
+struct SpellTension {
+    Square   sq;
+    Bitboard defenders;
+    int      baseGain;  // swap value with nothing frozen
+};
+
+struct SpellTensionList {
+    SpellTension t[16];
+    int          n = 0;
+};
+
+inline void spell_collect_tension(const Position& pos, Color us, SpellTensionList& out) {
+
+    out.n = 0;
+    const Bitboard ourAttacks =
+      pos.attacks_by<PAWN>(us) | pos.attacks_by<KNIGHT>(us) | pos.attacks_by<BISHOP>(us)
+      | pos.attacks_by<ROOK>(us) | pos.attacks_by<QUEEN>(us) | pos.attacks_by<KING>(us);
+
+    Bitboard targets = pos.pieces(~us) & ourAttacks;
+    while (targets && out.n < 16)
+    {
+        const Square s      = pop_lsb(targets);
+        out.t[out.n].sq     = s;
+        out.t[out.n].defenders = pos.attackers_to(s, pos.pieces()) & pos.pieces(~us);
+        out.t[out.n].baseGain  = spell_swap(pos, us, s, 0);
+        ++out.n;
+    }
+}
+
+// Tactical value the freeze at g buys: the best IMPROVEMENT over the
+// unfrozen exchange across the position's tension points ("freeze the
+// defender, then take"). 0 when the zone changes no exchange.
+inline int
+spell_see_freeze(const Position& pos, Color us, Square g, const SpellTensionList& tension) {
+
+    const Bitboard zone   = FreezeZoneBB[g];
+    const Bitboard frozen = zone & pos.pieces(~us);
+    if (!frozen)
+        return 0;
+
+    int best = 0;
+    for (int i = 0; i < tension.n; ++i)
+    {
+        const SpellTension& t = tension.t[i];
+        // The zone must touch the exchange to change it: either a defender
+        // of the target or the target itself is frozen
+        if (!(t.defenders & frozen) && !(square_bb(t.sq) & frozen))
+            continue;
+        const int withFreeze = spell_swap(pos, us, t.sq, frozen);
+        best                 = std::max(best, withFreeze - t.baseGain);
+    }
+    return best;
+}
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_ORDER_H_INCLUDED

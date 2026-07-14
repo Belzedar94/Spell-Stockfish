@@ -113,6 +113,13 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Big bet 1 (docs/big-bets.md): Spell-SEE. Static exchange value FOR CASTS:
+// "what does freezing at g win tactically?" computed with the classic SEE
+// swap algorithm under a frozen-defenders mask (frozen pieces give no
+// attacks, so defenders inside the zone do not recapture). Added to the
+// freeze gate impact score with this weight/16; 0 = off (bench-identical).
+extern int SpellSeeOrderWeight;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
