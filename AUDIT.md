@@ -807,6 +807,31 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
    silenced (attackers, hangers, mobility) rather than binary tactical classification —
    the FSF "gate impact scoring" idea (+100 there) taken further.
 
+## RULES CHANGE (2026-07-14): caster freeze block is the FULL 3x3 — RainRat PR #5
+
+Verified live on chess.com's analysis board (freeze staged at d2 after 1.e4 c5):
+the e1 king (DIAGONAL to the gate) cannot move; c2 with an outside destination
+cannot move (origin-based); out-of-zone pieces complete the turn (PGN
+"freeze@d2 Nf3"). The plus-shape "relaxation" (reference commit 5264a3f7,
+2026-01-22) was the actual bug — the old private 1814 was right all along, and
+both this engine and upstream FSF inherited the wrong rule until RainRat's
+report. Merged 936ab213 + completion package b07bdc57: SPELL_SPEC 3.1 rewritten,
+perft refs regenerated (startpos 1814 / 3,061,102), new bench 12231192, CI
+SPELL_BENCH_SIG updated. FSF baseline branch patched separately
+(freeze_block_zone_from_square -> full zone) and pushed.
+
+OPERATIONAL DOMINO: every dev branch forked before 936ab213 plays the OLD
+universe. Running tests (both sides old) stay internally valid; NEW tests
+pairing the new master against pre-change branches would produce illegal-move
+forfeits in the runner (it does not arbitrate). REBASE dev branches before
+queuing them. The frozen FSF_Spell_test_baseline.exe keeps the old rule:
+cross-engine gauntlets against it are rules-divergent on this point until a
+rebuilt baseline replaces it.
+
+- #51 spell-see ordering (SpellSeeOrderWeight=16): culled at 954 games,
+  LLR -1.32 -> OUT. The exchange-delta signal does not improve gate selection
+  at this weight; keep spell_swap for pillar-C v2 gating rather than ordering.
+
 ## SPRT queue verdicts (running tally, STC 8.0+0.08, bounds [0.00, 5.00])
 
 - #14 merged-ordering (SpellMergedOrdering=1): stopped by owner at 3,790 games,
