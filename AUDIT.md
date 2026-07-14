@@ -1021,3 +1021,22 @@ His three points, checked against the code:
   Las tres en SPRT STC [1.00,6.00] con win_adj movecount=4 score=800.
 - Infra: watchdog permanente del worker (relanza si muere, cada 5 min) —
   primer relanzamiento automático 17:55.
+
+## 2026-07-14 (noche) — causa raíz de las muertes del worker: CAZADA
+
+Con el watchdog v3 (`python -u` + logs preservados por muerte) el traceback
+apareció a la primera muerte orgánica (20:15): el server entrega un workload
+de **Atomic #50**, los motores Atomic BENCHAN bien (338376), pero
+`cutechess-ob.exe` de este Client **no soporta `-variant atomic`** → las 3
+copias del runner fallan al instante → `RuntimeError: 3 game runner copies
+failed` → el proceso cliente entero sale. Cada ~100 min la cola le acababa
+entregando Atomic y moría. Deprioridad (4) no bastaba: con huecos de
+throughput se lo seguía entregando.
+
+Acción: `awaiting=1` en #50 y #52 (no se reparten; reversible con un flag,
+no borra nada del agente Atomic). Sus tests no pueden correr en ESTE worker
+hasta que su config apunte a un runner con soporte atomic — anotado para
+comunicárselo al dueño. Falsa pista descartada por el camino: las "muertes
+rápidas" de 19:36-19:40 eran los TaskStop de mis propios reciclajes de
+watchdog matando el árbol de procesos (lección: no reciclar el watchdog con
+el worker colgando de él).
