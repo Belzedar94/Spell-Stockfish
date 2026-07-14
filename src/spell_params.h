@@ -99,6 +99,7 @@ extern int SpellAspirationPct;  // 100
 // Extra margin (cp) added to the SEE pruning threshold of GATED captures:
 // positive values prune fewer spell captures.
 extern int SpellCaptureSeeMargin;  // 0
+extern int SpellJumpSeeCost;       // 0 - extra SEE demanded of jump-gated captures (good/bad split)
 
 // Disable internal iterative reductions: at huge branching, a missing TT
 // move is common and IIR compounds the ordering weakness.

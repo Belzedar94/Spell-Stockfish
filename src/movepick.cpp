@@ -347,7 +347,15 @@ top:
                 // except at the root, where searchmoves may force it
                 if (ply != 0 && is_useless_spell(pos, *cur))
                     return false;
-                if (pos.see_ge(*cur, -cur->value / 18))
+                // Jump-gated captures burn a scarce resource for the
+                // material: demand the exchange also cover the spell
+                // (ubdip: jumps are the material-gain spell, so a jump
+                // capture that merely breaks even is usually a loss)
+                if (pos.see_ge(*cur,
+                               -cur->value / 18
+                                 + (cur->is_spell() && cur->spell_type() == SPELL_JUMP
+                                      ? SpellJumpSeeCost
+                                      : 0)))
                     return true;
                 std::swap(*endBadCaptures++, *cur);
                 return false;
