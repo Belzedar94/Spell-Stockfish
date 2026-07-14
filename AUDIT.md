@@ -1040,3 +1040,28 @@ comunicárselo al dueño. Falsa pista descartada por el camino: las "muertes
 rápidas" de 19:36-19:40 eran los TaskStop de mis propios reciclajes de
 watchdog matando el árbol de procesos (lección: no reciclar el watchdog con
 el worker colgando de él).
+
+## 2026-07-14 (noche, corrección) — la causa raíz REAL era otra
+
+Retracto parcialmente la entrada anterior. Con la consola del server por fin
+visible (reinicio como proceso propio + log), el diagnóstico correcto:
+
+- **Causa real del atasco silencioso (20:21-20:53)**: el server respondía
+  `{"error": "Invalid Secret Token"}` (HTTP 200, 33 bytes) a CADA post de
+  resultados/heartbeat, y el cliente de OpenBench traga todo error que no sea
+  "Bad Client Version" — jugaba a fondo perdido sin acreditar nada. Origen:
+  registros de máquina duplicados (filas 1 y 3) tras la tanda de muertes y
+  relanzamientos; el secret rotó y el machine.txt cacheado quedó inválido.
+  Fix: matar worker + borrar machine.txt (registro virgen) + server con
+  consola visible. Verificado: posts `{}` de 2 bytes y contadores creciendo.
+- **RETRACTACIÓN**: "cutechess-ob no soporta -variant atomic" era FALSO (el
+  probe --variants no era fiable). El worker juega Atomic correctamente
+  (3 copias, partidas acreditadas). El fallo "3 game runner copies failed"
+  de 20:15 queda sin explicar pero no recurre; si vuelve, el death log y la
+  consola del server lo capturan. awaiting=1 en #50/#52 revertido (además el
+  selector de workloads solo excluye finished/deleted — awaiting ni filtraba).
+- Lección de método (recurrente hoy): probes con salida no verificada generan
+  conclusiones falsas con confianza — SIEMPRE validar el mecanismo del probe
+  antes de creer su resultado (ya pasó con el pipe-blocking, hoy con
+  --variants y con "el log se escribe = la granja funciona"). La única señal
+  de salud de la granja es el contador de partidas del DB avanzando.
