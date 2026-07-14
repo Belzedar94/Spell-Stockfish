@@ -846,6 +846,11 @@ assume ordering quality spell nodes do not have). Successor designs, to SPRT in 
   neither help nor hurt; SPSA-2's zeroing stands as-is).
 - #45 pillar D volatility-scale: culled at 9,468 games, LLR -0.06 -> OUT (early
   +1.26 faded; one-knob volatility softening is noise at STC).
+- #53 spell-policy v1 (SpellPolicyWeight=4096): FAIL at 1,522 games, LLR -2.98
+  (~-44 raw). Offline AUC 0.781 did not transfer: negatives were RANDOM squares,
+  so the head learned plausible-vs-absurd, not best-vs-good, and at 4096 the
+  logit swamps the material impact score. v2 plan: hard negatives (other
+  top-scored candidate gates), lower weight sweep.
 - **2026-07-13 bounds raised to [1.00, 6.00]** (owner): neutral patches must die fast
   in the low-hanging-fruit phase; queue #16-24/#26 respun as **#27-36** with the new
   bounds and win adj 4/800 (freeze-checker-bonus first). Fine bounds return when the
