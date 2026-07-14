@@ -103,10 +103,10 @@ class SpellKAv2 {
     //   piece planes  <= 32 (one per piece on the board)
     //   zone gates    <=  4 (one live zone per (color, spell))
     //   frozen pieces <= 18 (two live freeze zones x 9 covered squares)
-    //   globals       <= 30 (14 hand + 12 cooldown thermometers + 4 ready)
-    // Total <= 84. A Finny-cache diff needs at most that many removals plus
-    // as many additions, held in two separate lists, so 84 bounds each list;
-    // 96 leaves headroom for the assert margin.
+    //   globals       <= 26 (14 hand + max(3 cooldown, 1 ready) x 4)
+    // Total <= 80. A Finny-cache diff has separate removal/addition lists, so
+    // 80 bounds each list. The extra 16 entries match the unmasked-vector tail
+    // margin used by DirtyThreatList.
     static constexpr IndexType MaxActiveDimensions = 96;
     using IndexList                                = ValueList<IndexType, MaxActiveDimensions>;
 

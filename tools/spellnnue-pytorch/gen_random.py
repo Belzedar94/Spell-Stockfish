@@ -4,7 +4,8 @@
 P0 gate tool (docs/spell-nnue-v2.md §8): the engine must load the file, run
 bench and the test suite without crashing, and keep perft intact. Weights are
 drawn small so the i16 accumulator stays far from saturation with ~130 active
-features.
+features. A conventional material PSQT keeps the untrained gate network from
+creating a pathological depth-bench tree by accident.
 
 Usage: python gen_random.py [out.nnue] [--seed N]
 """
@@ -21,25 +22,31 @@ import spl2
 
 def random_params(rng):
     p = spl2.empty_params()
-    p["ft_bias"] = rng.integers(-64, 65, spl2.L1, dtype=np.int64).astype(np.int16)
-    p["ft_weight"] = rng.integers(-8, 9, (spl2.SPELL_DIMS, spl2.L1),
+    p["ft_bias"] = rng.integers(64, 193, spl2.L1, dtype=np.int64).astype(np.int16)
+    p["ft_weight"] = rng.integers(-2, 3, (spl2.SPELL_DIMS, spl2.L1),
                                   dtype=np.int64).astype(np.int16)
-    p["threat_weight"] = rng.integers(-8, 9, (spl2.THREAT_DIMS, spl2.L1),
+    p["threat_weight"] = rng.integers(-2, 3, (spl2.THREAT_DIMS, spl2.L1),
                                       dtype=np.int64).astype(np.int8)
-    p["psqt_weight"] = rng.integers(-512, 513, (spl2.SPELL_DIMS, spl2.PSQT_BUCKETS),
-                                    dtype=np.int64).astype(np.int32)
-    p["threat_psqt_weight"] = rng.integers(
-        -512, 513, (spl2.THREAT_DIMS, spl2.PSQT_BUCKETS), dtype=np.int64).astype(np.int32)
+
+    # Material-shaped PSQT keeps a random gate net useful as a depth-bench
+    # smoke test instead of letting accidental chaotic ordering explode the
+    # tree. It remains entirely untrained; FT and all stacks are random.
+    for king_bucket in range(32):
+        base = king_bucket * 704
+        for piece_type, value in enumerate((126, 781, 825, 1276, 2538)):
+            own = base + piece_type * 128
+            p["psqt_weight"][own:own + 64, :] = value * 16
+            p["psqt_weight"][own + 64:own + 128, :] = -value * 16
 
     for s in p["stacks"]:
-        s["fc0_bias"] = rng.integers(-1000, 1001, spl2.FC0_OUT, dtype=np.int64).astype(np.int32)
-        s["fc0_weight"] = rng.integers(-32, 33, (spl2.FC0_OUT, spl2.L1),
+        s["fc0_bias"].fill(0)
+        s["fc0_weight"] = rng.integers(-1, 2, (spl2.FC0_OUT, spl2.L1),
                                        dtype=np.int64).astype(np.int8)
-        s["fc1_bias"] = rng.integers(-1000, 1001, spl2.FC1_OUT, dtype=np.int64).astype(np.int32)
-        s["fc1_weight"] = rng.integers(-64, 65, (spl2.FC1_OUT, spl2.FC1_IN),
+        s["fc1_bias"].fill(0)
+        s["fc1_weight"] = rng.integers(-2, 3, (spl2.FC1_OUT, spl2.FC1_IN),
                                        dtype=np.int64).astype(np.int8)
-        s["fc2_bias"] = rng.integers(-1000, 1001, 1, dtype=np.int64).astype(np.int32)
-        s["fc2_weight"] = rng.integers(-64, 65, (1, spl2.FC2_IN),
+        s["fc2_bias"].fill(0)
+        s["fc2_weight"] = rng.integers(-2, 3, (1, spl2.FC2_IN),
                                        dtype=np.int64).astype(np.int8)
     return p
 

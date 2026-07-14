@@ -433,6 +433,15 @@ void Engine::save_network(const std::optional<std::filesystem::path>& file) {
 // utility functions
 
 void Engine::trace_eval() const {
+    // ``eval`` is the public parity surface.  A SPL2 EvalFile must therefore
+    // trace the evaluator that search actually uses, while the no-v2 path
+    // remains byte-for-byte the stock trace.
+    if (Eval::NNUE::SpellV2::loaded())
+    {
+        trace_spell_v2_eval();
+        return;
+    }
+
     StateListPtr trace_states(new std::deque<StateInfo>(1));
     Position     p;
     p.set(pos.fen(), options["UCI_Chess960"], &trace_states->back());

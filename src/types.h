@@ -404,14 +404,13 @@ struct DirtySpellEvent {
     u32 data;
 };
 
-// Worst case flips in one do_move (each term is a hard bound, see the
-// derivation in nnue/features/spell_ka_v2.h):
-//   globals <= 9 (hand 1 + cooldowns 5 + ready bits 3)
-//   gates   <= 3 (own cast add 1, both opponent zones expiring 2)
-//   frozen  <= 22 (own freeze cast 9, opponent freeze expiry 9, board moves 4)
-// Total <= 34; the list is sized with a small margin on top of that.
+// Exact worst case for a legal do_move (docs/spell-nnue-v2.md section 4):
+//   freeze cast: hand 1 + cooldown 3 + ready 1 + gate 1 + frozen 9 = 15
+//   rival tick/expiry: cooldowns 2 + ready 1 + gate 1 + frozen 9 = 13
+// The moved piece is already included in the before/after frozen set diff, so
+// it is not an additional term. Total = 28 feature flips.
 struct DirtySpell {
-    static constexpr int MaxEvents = 40;
+    static constexpr int MaxEvents = 28;
 
     ValueList<DirtySpellEvent, MaxEvents> list;
 
