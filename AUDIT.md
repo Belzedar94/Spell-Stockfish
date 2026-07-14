@@ -828,6 +828,12 @@ queuing them. The frozen FSF_Spell_test_baseline.exe keeps the old rule:
 cross-engine gauntlets against it are rules-divergent on this point until a
 rebuilt baseline replaces it.
 
+- **#34 capture-see-120 (SpellCaptureSeeMargin=120): PASS STC** at 10,308 games,
+  +5074 -4773 =461, LLR +2.98 (~+10 raw) — the second survivor, and the first
+  with a live LTC path. Pruning FEWER gated captures pays: gated captures carry
+  more tactical value than their SEE suggests (the zone/transparency payoff is
+  invisible to the exchange count). LTC queued on a REBASED label branch
+  (post-rules-change master both sides, bench 12231192).
 - #51 spell-see ordering (SpellSeeOrderWeight=16): culled at 954 games,
   LLR -1.32 -> OUT. The exchange-delta signal does not improve gate selection
   at this weight; keep spell_swap for pillar-C v2 gating rather than ordering.
