@@ -1347,3 +1347,242 @@ el dispatch frío necesarios para medir/cumplir los gates sin penalizar stock.
   Dentro del gate ±3%. El guard useSpellV2 es correcto (nullptr sin red v2);
   el residuo es layout/icache del binario crecido + ruido térmico. Follow-up
   para antes del SPRT de P3: probar reordenación/PGO-parcial del hot path.
+
+## P2-a — `datagen` run7 nativo y auditor de distribución (2026-07-15)
+
+### Alcance y commits
+
+Implementación realizada sobre `nnue-v2`, sin tocar `master`, sin push desde
+esta ejecución, sin escribir en `../openbench-spell` y sin matar procesos
+ajenos:
+
+- `a2c12e23` — productor run7 in-engine, self-play independiente por hilo,
+  qsearch sin lecturas de TT para el filtro y merge de shards.
+- `8998be26` — auditor streaming, `--strict` y documentación del pipeline.
+
+Mientras corría el piloto apareció sobre la misma rama el commit externo del
+propietario `4cc22372` (13:22:40): cambia el plan productivo de 40k/50M a
+10k/20M. Se preservó intacto. Los gates de esta petición ya estaban fijados
+explícitamente en **40.000 nodos, 200.000 posiciones y proyección a 50M**, y
+son los medidos abajo. La estimación para el plan v3 se separa de la medición.
+
+### Gates
+
+| Gate | Resultado | Números |
+|---|---|---|
+| Build obligatorio | **PASS** | `make -j8 build ARCH=x86-64-bmi2 COMP=mingw`; 48,5 s; binario SHA-256 `4E8560F43070541C335ED7BB9936D486FA24C9EF18D383C2F1120D3B5F47EC82` |
+| Bench por defecto | **PASS** | **12.231.192** nodos; 19.597 ms; 624.135 n/s |
+| Suite rápida | **PASS 6/6** | unit 1 s; UCI 2 s; reproducibilidad 7 s; XBoard 1 s; CECP hostil 4 s; perft d1 1 s; total mostrado 15 s |
+| Piloto contractual | **PASS** | 200.000 registros; 8 hilos; 40.000 nodos; 6.559,642 s; 30,489469 pos/s; 3,811184 pos/s/hilo; sin crash |
+| Cabecera/tamaño | **PASS** | `(count, source_count, flags)=(200000, 367293, 0)`; `8.800.032 = 32 + 200000×44` bytes |
+| Round-trip | **PASS** | 100/100 FEN extendidos + score + result exactos contra sidecar; 100/100 payloads repack byte-idéntico |
+| Auditor completo | **PASS con warning informativo de piloto** | 200.000/200.000 registros leídos en 6,5 s; phase 3 = 0,004% < 5%; `--strict` devuelve 1 como debe |
+
+Build ejecutado con el entorno obligatorio:
+
+```text
+MSYSTEM=MINGW64 /c/msys64/usr/bin/bash -lc 'make -j8 build ARCH=x86-64-bmi2 COMP=mingw'
+```
+
+### Receta exacta del piloto
+
+```text
+datagen book ../openbench-spell/Client/Books/spell_openings.epd nodes 40000 count 200000 random_multi_pv 4 random_multi_pv_diff 100 random_move_count 8 random_move_min_ply 1 random_move_max_ply 20 write_min_ply 5 eval_limit 10000 eval_diff_limit 32000 filter_captures 1 filter_checks 1 filter_promotions 0 threads 8 seed 20260715 out .scratch/run7-p2a-pilot-200k.run7 --debug-sample 100
+```
+
+Libro leído en modo solo lectura: 36.948 líneas, 3.782.734 bytes, SHA-256
+`EC8380629CDB3CA4844B7BE3718A723E503C4B70E68D32D7424541CC443978D3`.
+Host: AMD Ryzen 9 5950X; Windows expuso 13 cores / 25 procesadores lógicos
+durante la medición.
+
+### Artefactos del piloto
+
+| Artefacto local ignorado | Bytes | SHA-256 |
+|---|---:|---|
+| `.scratch/run7-p2a-pilot-200k.run7` | 8.800.032 | `4FB27A52A16079225B6AF5BBC4F248F35B1ABB857FD43488EBFB68FCE6EFA209` |
+| `.scratch/run7-p2a-pilot-200k.run7.debug.txt` | 10.311 | `DA9C8FD204116DC00BFF456E76901323B14ECA5EA3096ACA49C167BB7BA73EB5` |
+| `.scratch/run7-p2a-pilot-200k.run7.meta.json` | 3.237 | `EC1BB04151BEC20687FA3D8C7FCA8EE6D51B70E48A814EF4A2DC3E7108D84269` |
+
+Se buscaron 367.293 posiciones y se escribieron 200.000: write-rate
+**54,452%**. Eso equivale a 55,992842 búsquedas/s totales,
+6,999105 búsquedas/s/hilo y 14.691.720.000 nodos nominales. El throughput
+nominal fue 2.239.713,692 nodos/s total y 279.964,211 nodos/s/hilo.
+
+| Worker | Seed derivada | Registros | Posiciones fuente | Partidas | Segundos | Registros/s |
+|---:|---:|---:|---:|---:|---:|---:|
+| 0 | 5.259.096.814.563.940.356 | 25.000 | 46.389 | 788 | 6.559,619 | 3,811197 |
+| 1 | 2.276.226.931.116.856.876 | 25.000 | 45.720 | 719 | 6.418,860 | 3,894773 |
+| 2 | 2.258.388.767.881.466.517 | 25.000 | 45.486 | 713 | 6.326,564 | 3,951592 |
+| 3 | 17.879.119.497.884.244.761 | 25.000 | 45.894 | 755 | 6.458,274 | 3,871003 |
+| 4 | 13.068.319.672.877.955.904 | 25.000 | 45.959 | 772 | 6.520,254 | 3,834206 |
+| 5 | 15.141.486.788.979.551.057 | 25.000 | 45.936 | 727 | 6.486,853 | 3,853949 |
+| 6 | 7.589.535.176.702.615.324 | 25.000 | 45.814 | 719 | 6.403,660 | 3,904017 |
+| 7 | 4.480.092.999.242.603.967 | 25.000 | 46.095 | 737 | 6.456,715 | 3,871938 |
+
+Duración total: **6.559,642 s = 1:49:19,642**. Throughput escrito:
+**30,489469 pos/s total; 3,811184 pos/s/hilo**. Proyección lineal medida:
+**151,843565 h = 6,326815 días para 50M a 24 hilos**, 4,465987× las 34 h
+del plan original. Para el commit v3 posterior (20M a 10k), escalar linealmente
+por nodos da **15,184355 h a 24 hilos**; es inferencia, no una medición a 10k.
+
+### WDL y partidas
+
+Resultados exactos sobre 5.930 partidas completas:
+
+| Resultado | Partidas | % |
+|---|---:|---:|
+| Ganan blancas | 2.494 | 42,057% |
+| Ganan negras | 2.525 | 42,580% |
+| Tablas | 911 | **15,363%** |
+
+La referencia del plan era ≈50% / 47% / 3%; el piloto difiere −7,943 pp,
+−4,420 pp y **+12,363 pp** respectivamente. Ponderado por registros, blancas
+ganan 76.749 (38,374%), negras 69.944 (34,972%) y hay 53.307 tablas
+(26,654%). Targets POV del bando al mover: win 74.019 (37,010%), draw 53.307
+(26,654%), loss 72.674 (36,337%).
+
+Registros por partida: media **33,726813**, mínimo 1, máximo 217; 0 partidas
+sin registros. Histograma del informe:
+
+| Registros/partida | Partidas | % |
+|---|---:|---:|
+| 0 | 0 | 0,000% |
+| 1–4 | 1.128 | 19,022% |
+| 5–9 | 639 | 10,776% |
+| 10–19 | 686 | 11,568% |
+| 20–39 | 991 | 16,712% |
+| 40–79 | 2.114 | 35,649% |
+| 80–159 | 364 | 6,138% |
+| 160+ | 8 | 0,135% |
+
+### Distribución de pociones
+
+| Fase `min(3,total//4)` | Registros | % | Gate 5% |
+|---|---:|---:|---|
+| 0 (0–3) | 157.401 | 78,701% | PASS |
+| 1 (4–7) | 31.225 | 15,613% | PASS |
+| 2 (8–11) | 11.365 | 5,683% | PASS |
+| 3 (12–14) | 9 | **0,004%** | **WARNING informativo** |
+
+La medición histórica del plan era 57,5% / 31,3% / 11,2% para fases 0/1/2;
+el piloto da 78,701% / 15,613% / 5,683%, además del bucket 3 casi vacío.
+
+| Pociones totales | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Registros | 135.688 | 5.805 | 10.539 | 5.369 | 11.400 | 5.453 | 9.185 | 5.187 | 4.846 | 4.306 | 1.979 | 234 | 9 | 0 | 0 |
+| % | 67,844 | 2,902 | 5,269 | 2,684 | 5,700 | 2,727 | 4,593 | 2,594 | 2,423 | 2,153 | 0,990 | 0,117 | 0,004 | 0,000 | 0,000 |
+
+Manos por spell, `cantidad=registros (%)`:
+
+```text
+white freeze  0=138968 (69,48) 1=15944 (7,97) 2=17213 (8,61) 3=19626 (9,81) 4=8132 (4,07) 5=117 (0,06)
+white jump    0=191994 (96,00) 1=7836  (3,92) 2=170   (0,09)
+black freeze  0=138414 (69,21) 1=16044 (8,02) 2=17074 (8,54) 3=19556 (9,78) 4=8799 (4,40) 5=113 (0,06)
+black jump    0=188234 (94,12) 1=11422 (5,71) 2=344   (0,17)
+```
+
+Manos totales por color para cantidades 0..7:
+
+```text
+white  138968, 15931, 17011, 15329, 9332, 3305, 124, 0
+black  138414, 16040, 16767, 13889, 9228, 5394, 268, 0
+```
+
+Cooldown por spell para valores 0..3, `registros (%)`:
+
+```text
+white freeze  142398 (71,20), 23877 (11,94), 21198 (10,60), 12527 (6,26)
+white jump    181101 (90,55),  8466  (4,23),  7366  (3,68),  3067 (1,53)
+black freeze  143105 (71,55), 23579 (11,79), 20872 (10,44), 12444 (6,22)
+black jump    179089 (89,54), 10592  (5,30),  7396  (3,70),  2923 (1,46)
+```
+
+Número de spells en cooldown por color para valores 0..2:
+
+```text
+white  137388 (68,69), 48723 (24,36), 13889 (6,94)
+black  136438 (68,22), 49318 (24,66), 14244 (7,12)
+```
+
+### Zonas vivas y material
+
+| Zona viva | Registros | % | Gate |
+|---|---:|---:|---|
+| White freeze | 12.527 | 6,263% | informativo |
+| Black freeze | 12.444 | 6,222% | informativo |
+| **Cualquier freeze** | **24.971** | **12,486%** | **PASS ≥3%** |
+| White jump | 3.067 | 1,534% | informativo |
+| Black jump | 2.923 | 1,462% | informativo |
+| **Cualquier jump** | **5.990** | **2,995%** | **PASS ≥1,5%** |
+
+| Bucket material | Registros | % |
+|---|---:|---:|
+| 0 (1–8 piezas) | 6.567 | 3,284% |
+| 1 (9–16) | 47.795 | 23,898% |
+| 2 (17–24) | 67.779 | 33,889% |
+| 3 (25–32) | 77.859 | 38,929% |
+
+Matriz material × fase, `registros (%)`:
+
+| Material \ fase | 0 | 1 | 2 | 3 |
+|---:|---:|---:|---:|---:|
+| 0 | 6.567 (3,3) | 0 | 0 | 0 |
+| 1 | 47.795 (23,9) | 0 | 0 | 0 |
+| 2 | 67.704 (33,9) | 75 (0,0) | 0 | 0 |
+| 3 | 35.335 (17,7) | 31.150 (15,6) | 11.365 (5,7) | 9 (0,0) |
+
+### Evals y plies
+
+| Eval cp | Registros | % |
+|---|---:|---:|
+| < −10000 | 0 | 0,000% |
+| −10000..−2001 | 4.954 | 2,477% |
+| −2000..−1001 | 19.499 | 9,749% |
+| −1000..−501 | 41.916 | 20,958% |
+| −500..−201 | 16.379 | 8,190% |
+| −200..−101 | 5.018 | 2,509% |
+| −100..−1 | 8.230 | 4,115% |
+| 0 | 840 | 0,420% |
+| 1..100 | 9.102 | 4,551% |
+| 101..200 | 5.813 | 2,906% |
+| 201..500 | 14.926 | 7,463% |
+| 501..1000 | 40.739 | 20,369% |
+| 1001..2000 | 22.182 | 11,091% |
+| 2001..10000 | 6.060 | 3,030% |
+| >10000 (terminales) | 4.342 | 2,171% |
+
+| Game ply | Registros | % |
+|---|---:|---:|
+| 0–4 | 29 | 0,015% |
+| 5–9 | 10.789 | 5,394% |
+| 10–19 | 29.187 | 14,594% |
+| 20–39 | 47.897 | 23,948% |
+| 40–79 | 75.696 | 37,848% |
+| 80–119 | 28.716 | 14,358% |
+| 120–199 | 7.299 | 3,650% |
+| 200–399 | 387 | 0,194% |
+| 400+ | 0 | 0,000% |
+
+### Decisiones e incidencias
+
+- Writer elegido: shards run7 temporales por hilo, cuotas estáticas de 25.000,
+  cabeceras parcheadas y merge determinista por id. Evita lock por registro y
+  conserva partidas completas; los shards solo se borran tras merge y sidecar
+  verificados.
+- Seed de validación fuera de la spec: `20260715`, elegida para reproducibilidad.
+- `eval_diff_limit=32000` desactiva qsearch. Cuando se habilita, la qsearch
+  ignora lecturas/escrituras TT en todo el árbol para que `|search-qsearch|`
+  sea una diferencia real; smoke adicional: 20 registros, 100 nodos, límite
+  1000, 1 hilo, 1 partida, 28,33 pos/s, PASS.
+- El plan no fija bordes para histogramas de eval, ply o registros/partida;
+  los rangos impresos arriba son la decisión de presentación del auditor. Los
+  tres umbrales sí son literales: fase 5%, freeze 3%, jump 1,5%.
+- Dos intentos iniciales de smoke enviaron BOM desde PowerShell y UCI rechazó
+  `﻿datagen`; no ejecutaron generación. La redirección ASCII por Bash pasó.
+- La llamada contenedora del piloto expiró a 120 s, pero dejó vivo su propio
+  hijo `stockfish.exe` PID 10696. No se mató ni reinició: la misma ejecución
+  original terminó a los 6.559,642 s y publicó los tres artefactos.
+- El warning de fase 3 y la desviación de tablas son informativos a 200k según
+  el gate solicitado, pero predicen que el 50M no debería lanzarse/entrenarse
+  sin revisar primero la política productiva. No se maquillaron cambiando
+  libro, filtros, `write_min_ply`, adjudicación ni seeding sintético.

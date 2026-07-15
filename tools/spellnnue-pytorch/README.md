@@ -31,12 +31,16 @@ $psv = '..\..\..\spell-data\run6a\run6a_full.bin'
 
 The engine's blocking UCI `datagen` command performs independent self-play in
 each worker and writes the 44-byte records defined by `run7.py`.  This is the
-canonical run7-plan invocation (change `threads`, `seed`, and output path for
-the host):
+original P2-a validation/50M invocation (change `threads`, `seed`, and output
+path for the host):
 
 ```text
 datagen book spell_openings.epd nodes 40000 count 50000000 random_multi_pv 4 random_multi_pv_diff 100 random_move_count 8 random_move_min_ply 1 random_move_max_ply 20 write_min_ply 5 eval_limit 10000 eval_diff_limit 32000 filter_captures 1 filter_checks 1 filter_promotions 0 threads 24 seed 20260715 out .scratch/run7-50m.run7 --debug-sample 100
 ```
+
+Production volume/depth is intentionally controlled by `docs/run7-plan.md`.
+Its current v3 bootstrap is 20M records at 10k nodes; only those two values
+change, while the format and all remaining flags stay identical.
 
 `random_move_min_ply` and `random_move_max_ply` are one-origin and inclusive.
 Every playable position receives a fixed-node search.  On the selected random
