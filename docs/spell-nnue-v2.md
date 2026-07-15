@@ -49,10 +49,12 @@ está en el Zobrist y en `StateInfo` → el diff incremental es natural.
 4. **Lo táctico explícito, no derivable.** El FT es lineal: no puede hacer
    AND entre planos. Si "pieza congelada" importa (importa: es la mecánica
    central del juego), es un feature, no una inferencia.
-5. **No pagar por lo que el chasis ya regala.** FullThreats se computa de los
-   attack maps del motor, que en nuestro chassis ya ven a través de gates de
-   jump → **la red ve los ataques por transparencia gratis**, con su propia
-   maquinaria incremental. No se duplica.
+5. **No pagar por lo que el chasis ya regala.** ~~FullThreats ya ve los
+   ataques a través de gates~~ — **CORREGIDO en P0 (verificación de Codex,
+   2026-07-15)**: la enumeración de threats del chasis usa ocupación stock,
+   NO los attack maps spell-aware; la paridad 1000/1000 lo prueba. Hacer los
+   threats spell-aware (que un slider "amenace a través" de un gate vivo) es
+   un EXPERIMENTO FUTURO propio, con su SPRT — no un regalo ya cobrado.
 
 ## 2. Feature set `SpellKAv2` (por perspectiva)
 
