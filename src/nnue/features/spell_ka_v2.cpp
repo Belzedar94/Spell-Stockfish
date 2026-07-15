@@ -105,9 +105,11 @@ void SpellKAv2::append_changed_indices(Color             perspective,
             added.push_back(make_index(perspective, dp.add_sq, dp.add_pc, ksq));
     }
 
-    // Spell events (one feature flip each)
+    // Board spell events remain individual rows. GLOBAL thermometer events
+    // are folded into one exact old->new row by FeatureTransformerV2.
     for (const auto& ev : ds.list)
-        (ev.add() ? added : removed).push_back(make_spell_index(perspective, ksq, ev));
+        if (ev.block() != DirtySpellEvent::GLOBAL)
+            (ev.add() ? added : removed).push_back(make_spell_index(perspective, ksq, ev));
 }
 
 }  // namespace Stockfish::Eval::NNUE::Features

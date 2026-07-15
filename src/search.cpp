@@ -201,6 +201,10 @@ void Search::Worker::ensure_network_replicated() {
 
 void Search::Worker::start_searching() {
 
+    // EvalFile changes are synchronized between searches. Cache the v2
+    // dispatch once per worker/search instead of loading the global network
+    // pointer on every move, null move and evaluation.
+    useSpellV2 = Eval::NNUE::SpellV2::loaded();
     accumulatorStack.reset();
 
     // Non-main threads go directly to iterative_deepening()
@@ -663,7 +667,7 @@ void Search::Worker::do_move(
 
     auto [dirtyPiece, dirtyThreats, dirtySpell] = accumulatorStack.push();
     pos.do_move(move, st, givesCheck, dirtyPiece, dirtyThreats, &tt, &sharedHistory,
-                Eval::NNUE::SpellV2::loaded() ? &dirtySpell : nullptr);
+                useSpellV2 ? &dirtySpell : nullptr);
 
     if (ss != nullptr)
     {
@@ -680,7 +684,7 @@ void Search::Worker::do_null_move(Position& pos, StateInfo& st, Stack* const ss)
     // cooldowns advance), so with a v2 net active the accumulator stack gets
     // a piece-less entry carrying only the spell feature flips. Without one,
     // the stack is untouched exactly like stock (no board features change).
-    if (Eval::NNUE::SpellV2::loaded())
+    if (useSpellV2)
     {
         auto [dirtyPiece, dirtyThreats, dirtySpell] = accumulatorStack.push();
         (void) dirtyPiece, (void) dirtyThreats;
@@ -702,7 +706,7 @@ void Search::Worker::undo_move(Position& pos, const Move move) {
 
 void Search::Worker::undo_null_move(Position& pos) {
     pos.undo_null_move();
-    if (Eval::NNUE::SpellV2::loaded())
+    if (useSpellV2)
         accumulatorStack.pop();
 }
 
@@ -2026,7 +2030,7 @@ TimePoint Search::Worker::elapsed() const {
 Value Search::Worker::evaluate(const Position& pos) {
     // Spell-NNUE v2 (SPL2 EvalFile): the modern chassis with the SpellKAv2
     // feature set; blended exactly like the stock path.
-    if (Eval::NNUE::SpellV2::loaded())
+    if (useSpellV2)
     {
         if (!spellV2Refresh)
             spellV2Refresh = std::make_unique<Eval::NNUE::SpellV2::Caches>();

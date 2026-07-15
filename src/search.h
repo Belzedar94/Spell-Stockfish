@@ -430,6 +430,7 @@ class Worker {
     // Per-thread Finny caches for the Spell-NNUE v2 net; allocated lazily on
     // the first evaluation after a v2 net is loaded (~290 KB per thread)
     std::unique_ptr<Eval::NNUE::SpellV2::Caches> spellV2Refresh;
+    bool                                         useSpellV2 = false;
 
     // MovePickers claim slots RAII/LIFO from the bump arena — ply-keyed
     // slots would collide when a singular verification search re-enters

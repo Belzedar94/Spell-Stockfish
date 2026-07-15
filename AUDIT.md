@@ -1166,3 +1166,166 @@ rescoring), incluir suficientes ejemplos pre-captura de rey y auditar la
 distribución por los 16 buckets, manos, cooldowns y gates para descartar el
 sesgo de “90 % manos llenas”. Después corresponde entrenar net-1 con esos datos;
 SPRT STC/LTC y retirar la ruta legacy pertenecen a P3, no a este cambio.
+
+## 2026-07-15 — FullThreats spell-aware y rendimiento Spell-NNUE v2
+
+Trabajo realizado únicamente en la rama local `nnue-v2`, sin push y sin
+modificar `master` ni `../openbench-spell`. Para el gate de regresión se compiló
+un snapshot **detached** y de solo lectura de `master` `dac6f507`; no se cambió
+esa rama. Build final obligatorio, PASS, con:
+
+```text
+MSYSTEM=MINGW64 /c/msys64/usr/bin/bash -lc 'cd "<repo>/src" && make -j8 build ARCH=x86-64-bmi2 COMP=mingw'
+```
+
+### Semántica y compatibilidad
+
+- La enumeración FullThreats de v2 usa `occupied_for_sliding()`: sliders ven a
+  través de una pieza situada en cualquier gate jump vivo, propio o rival. Esa
+  pieza sigue siendo un objetivo de threat; solo deja de bloquear el rayo.
+- Los diffs incrementales usan la misma geometría. Un blocker normal emite el
+  delta exacto de todos los objetivos revelados; una pieza sobre un gate jump
+  no cambia amenazas de terceros al entrar/salir.
+- Crear o expirar un gate jump fuerza refresh de la perspectiva, también si la
+  expiración ocurre en null move. Se eligió el refresh permitido por el brief:
+  el evento es raro y así no se amplía la cota `DirtyThreatList=96`. Freeze no
+  fuerza refresh ni filtra attackers: una pieza frozen sigue amenazando, tal
+  como exige la regla de jaques.
+- El camino stock conserva la ocupación anterior. `DirtyThreats::spellAware`
+  solo se activa cuando hay una red v2 cargada, y el código spell-aware vive en
+  un helper frío para no contaminar el hot path por defecto.
+- Se hizo bump explícito del magic SPL2, `0x53504C32 -> 0x53504C33`. El loader
+  reconoce el magic viejo como v2 legacy y lo rechaza antes de cualquier
+  fallback. Mensaje comprobado:
+
+```text
+legacy 0x53504C32 network uses stock-occupancy threats; regenerate as 0x53504C33
+```
+
+Python replica exactamente la transparencia de jump y mantiene threats de
+frozen. El set de paridad se estratifica a partir de `run6a-1m.run7`, convertido
+del PSV de self-play: sus zonas vivas proceden de casts legales ya jugados, no
+de mutar gates sintéticamente. El selector prioriza registros con zonas vivas
+y falla si no alcanza ambas coberturas mínimas.
+
+Artefacto random regenerado localmente (los `.nnue` están ignorados por política
+del repo) y fijado de forma reproducible en
+`tools/spellnnue-pytorch/sample-network.json`:
+
+| Campo | Valor |
+|---|---|
+| Ruta local | `src/spell-v2-random.nnue` |
+| Generator | seed 42, round-trip bit-idéntico PASS |
+| Magic / schema hash | `0x53504C33` / `0x2256ACDF` |
+| Tamaño | 92.290.549 bytes |
+| SHA-256 | `73525333078C748A5549D5F33BF0463D092A7CC83D866077E5E71806C496AAA6` |
+
+### Profiling antes de optimizar
+
+Instrumentación opt-in mediante `setoption name SpellNNUEProfile value true`;
+con el knob apagado no se toman clocks ni se actualizan contadores. Workload
+idéntico antes/después: `bench 16 1 100000 default nodes`, red post-semántica
+seed 42, 2.107.021 nodos. Los timers son crudos y la granja compartida cambia
+su escala absoluta; los contadores y la jerarquía de costes son estables.
+
+| Contador/sección | Antes | Final |
+|---|---:|---:|
+| Evaluaciones | 943.578 | 943.578 |
+| Refreshes completos | 249.031 | 249.031 |
+| Updates incrementales | 1.723.419 | 1.723.419 |
+| FT transform/update | 7.043.717.100 ns | 4.982.301.000 ns |
+| └ refresh work | 1.710.996.400 ns | 1.081.781.400 ns |
+| └ incremental work | 4.721.969.500 ns | 3.419.384.900 ns |
+| &nbsp;&nbsp;└ diff build | 774.277.700 ns | 581.229.900 ns |
+| &nbsp;&nbsp;└ apply rows | **3.394.353.000 ns** | **2.275.056.600 ns** |
+| Filas PSQ/spell aplicadas | 16.471.029 | 11.894.812 |
+| Filas threat aplicadas | 10.505.416 | 10.505.416 |
+| Eventos DirtySpell materializados | 12.495.860 | 5.926.239 |
+| Forward de stacks | 1.956.721.200 ns | 1.318.413.500 ns |
+
+Diagnóstico: no había refresh por nodo ni Finny ausente; hay 6,92 updates
+incrementales por cada refresh. Dentro de FT dominaba la aplicación SIMD de
+filas (`apply rows`, 71,9% del tiempo incremental), especialmente los varios
+flips globales termómetro de cada cast/tick. El forward de stacks era menor.
+También se comprobó en el loader que `permute_weights()` ya se aplicaba a
+biases, HalfKA/spell y threat weights; no existía el fallback packus sospechado.
+La selección de los 16 stacks no dominaba.
+
+### Optimización aplicada (y descartes medidos)
+
+- Los snapshots old/new de manos/cooldowns sustituyen eventos GLOBAL
+  individuales por una fila delta exacta por transición legal. Solo existen
+  30 formas relevantes (cast o tick, spell y color relativo): 63.360 bytes,
+  derivadas después de `permute_weights()` con aritmética modular idéntica al
+  acumulador SIMD. Esto reduce 4,58 M filas en el workload perfilado.
+- Se dejaron de materializar eventos GLOBAL que ya no consume el acumulador.
+- El refresh Finny compara las 64 piezas con dos comparaciones AVX2, como el
+  acumulador stock, en vez de un loop escalar.
+- El diff spell-aware reutiliza los attack maps ya calculados desde la casilla
+  cambiante para los objetivos descubiertos; elimina dos magic lookups por
+  slider sin cambiar el delta.
+- El estado `loaded()` de v2 se cachea una vez por worker/search; EvalFile no
+  puede cambiar durante la búsqueda. El helper spell-aware queda fuera del
+  hot path stock.
+- Se probó primero una matriz completa de 1.440 transiciones (~2,9 MiB). Era
+  determinista pero el bench largo cayó a 228.777 nps por presión de caché;
+  se descartó y se sustituyó por las 30 filas legales anteriores.
+- El perfil encontró solo 95.486 filas threat cancelables de 10.505.416
+  (0,91%). No se añadió una compactación O(n²) al camino productivo.
+
+### Gates finales
+
+La referencia de determinismo se fijó **después** del cambio semántico, antes
+de optimizar, con esta misma red: 29.593.801 nodos, 93.833 ms, 315.387 nps.
+
+| Gate | Resultado final |
+|---|---|
+| Paridad motor ↔ Python | **PASS**: 1.000 posiciones; jump vivo=200; freeze viva=200; 0 mismatches de features; max diff **0 cp** |
+| Tests estructurales Python | **PASS** |
+| Rechazo SPL2 legacy | **PASS**, `0x53504C32` rechazado con el mensaje anterior |
+| Suite rápida | **PASS 6/6**: unit, UCI, reproducibilidad, XBoard, CECP hostil, perft d1 |
+| Bench v2, run 1 | 29.593.801 nodos; 54.010 ms; 547.931 nps |
+| Bench v2, run 2 | 29.593.801 nodos; 53.710 ms; 550.992 nps |
+| Bench v2, run 3 | 29.593.801 nodos; 57.243 ms; 516.985 nps |
+| Bench v2, mediana | **547.931 nps — PASS ≥500k** |
+| Determinismo pre/post opt | **PASS**, 29.593.801 nodos en referencia y los tres runs finales |
+| Bench por defecto | **PASS**, 12.231.192 nodos en todos los runs |
+
+Para el ±3% frente a master se alternaron bins idénticamente compilados. La
+granja cambió de carga entre la segunda pareja (se ve en el salto 377k→766k),
+por lo que se usa la mediana robusta de los cocientes pareados, no la razón de
+dos medianas tomadas bajo cargas distintas:
+
+| Pareja | `nnue-v2` nps | master nps | Delta pareado |
+|---|---:|---:|---:|
+| 1 | 363.536 | 364.729 | -0,33% |
+| 2 | 377.529 | 765.837 | -50,71% (cambio externo de carga) |
+| 3 | 771.343 | 765.406 | +0,78% |
+| **Mediana de ratios** | | | **-0,33% — PASS ±3%** |
+
+Incidencias no maquilladas: la primera invocación de paridad usó una ruta de
+engine relativa que `CreateProcess` no resolvió (`WinError 2`), sin llegar a
+ejecutar el gate; se normalizan ahora las tres rutas en el harness y la
+repetición completa pasó. Una pareja de bench expiró durante un pico de carga;
+se comprobó que no dejó ningún `stockfish.exe` huérfano y no se contó.
+
+Revalidación final desde los cuatro commits cerrados, después de un build limpio
+con el comando obligatorio: tests estructurales PASS, paridad PASS
+(1.000 posiciones, jump=200, freeze=200, 0 mismatches, 0 cp), suite PASS 6/6 y
+rechazo legacy PASS. Los tres benches v2 conservaron exactamente 29.593.801
+nodos y dieron 539.491, 549.804 y 538.617 nps; mediana **539.491 nps**. Los
+pares stock contiguos de esta última pasada fueron:
+
+| Pareja final | `nnue-v2` nps | master nps | Delta pareado |
+|---|---:|---:|---:|
+| 1 | 741.239 | 739.983 | +0,17% |
+| 2 | 726.317 | 712.565 | +1,93% |
+| 3 | 720.117 | 733.680 | -1,85% |
+| **Mediana de ratios** | | | **+0,17% — PASS ±3%** |
+
+Todos esos benches stock conservaron **12.231.192 nodos**.
+
+No hubo decisiones de semántica fuera del brief: se eligió refresh para jump,
+no diff global de terceros; freeze continúa amenazando; no se amplió la cota
+96. Los únicos extras son robustez de rutas del harness, profiling opt-in y
+el dispatch frío necesarios para medir/cumplir los gates sin penalizar stock.

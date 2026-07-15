@@ -1139,6 +1139,11 @@ void diff_spell(const SpellSnap& o, const SpellSnap& n, DirtySpell& dsp) {
         {
             const SpellType sp = SpellType(spi);
 
+            dsp.oldHand[c][spi] = o.hand[c][spi];
+            dsp.newHand[c][spi] = n.hand[c][spi];
+            dsp.oldCd[c][spi]   = o.cd[c][spi];
+            dsp.newCd[c][spi]   = n.cd[c][spi];
+
             // Zone gates: one live zone per (color, spell); a moved gate is
             // remove + add (only reachable from hand-crafted FENs)
             if (o.gate[c][spi] != n.gate[c][spi])
@@ -1150,25 +1155,10 @@ void diff_spell(const SpellSnap& o, const SpellSnap& n, DirtySpell& dsp) {
                     dsp.list.push_back(Ev(true, block, c, n.gate[c][spi]));
             }
 
-            // Hand and cooldown thermometers: level k active while counter > k
-            const int slotH = Eval::NNUE::Features::SpellKAv2::slot_hand(sp);
-            for (int k = n.hand[c][spi]; k < o.hand[c][spi]; ++k)
-                dsp.list.push_back(Ev(false, Ev::GLOBAL, c, slotH + k));
-            for (int k = o.hand[c][spi]; k < n.hand[c][spi]; ++k)
-                dsp.list.push_back(Ev(true, Ev::GLOBAL, c, slotH + k));
-
-            const int slotC = Eval::NNUE::Features::SpellKAv2::slot_cd(sp);
-            for (int k = n.cd[c][spi]; k < o.cd[c][spi]; ++k)
-                dsp.list.push_back(Ev(false, Ev::GLOBAL, c, slotC + k));
-            for (int k = o.cd[c][spi]; k < n.cd[c][spi]; ++k)
-                dsp.list.push_back(Ev(true, Ev::GLOBAL, c, slotC + k));
-
-            // Ready bit: hand > 0 and cooldown == 0
-            const bool oldReady = o.hand[c][spi] > 0 && o.cd[c][spi] == 0;
-            const bool newReady = n.hand[c][spi] > 0 && n.cd[c][spi] == 0;
-            if (oldReady != newReady)
-                dsp.list.push_back(Ev(newReady, Ev::GLOBAL, c,
-                                      Eval::NNUE::Features::SpellKAv2::slot_ready(sp)));
+            // Global thermometer/ready rows are derived directly from the
+            // snapshots above. Do not also materialize one DirtySpellEvent
+            // per flipped level: the v2 accumulator applies one composite
+            // legal-transition row instead.
         }
 
         // Frozen pieces: the bitboards are already per piece color, so the

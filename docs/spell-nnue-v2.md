@@ -1,8 +1,8 @@
 # Spell-NNUE v2 ("SSNNv2") — diseño desde first principles
 
-> Estado: DISEÑO aprobado-pendiente (2026-07-14). Rompe compatibilidad con todo
-> lo anterior deliberadamente. Sustituirá tanto la red stock de SF (ajedrez
-> puro) como el adaptador `src/spellnnue/` (run5rl, arquitectura FSF 2021).
+> Estado: P0+P1 implementados; revisión semántica/performance cerrada
+> (2026-07-15). Rompe compatibilidad con redes anteriores deliberadamente.
+> Coexiste con la red stock y el adaptador `src/spellnnue/` hasta superar SPRT.
 
 ## 0. Puntos de partida (medidos, no recordados)
 
@@ -49,19 +49,20 @@ está en el Zobrist y en `StateInfo` → el diff incremental es natural.
 4. **Lo táctico explícito, no derivable.** El FT es lineal: no puede hacer
    AND entre planos. Si "pieza congelada" importa (importa: es la mecánica
    central del juego), es un feature, no una inferencia.
-5. **No pagar por lo que el chasis ya regala.** ~~FullThreats ya ve los
-   ataques a través de gates~~ — **CORREGIDO en P0 (verificación de Codex,
-   2026-07-15)**: la enumeración de threats del chasis usa ocupación stock,
-   NO los attack maps spell-aware; la paridad 1000/1000 lo prueba. Hacer los
-   threats spell-aware (que un slider "amenace a través" de un gate vivo) es
-   un EXPERIMENTO FUTURO propio, con su SPRT — no un regalo ya cobrado.
+5. **Threats comparten la geometría real del juego.** Desde la revisión
+   semántica del 2026-07-15, FullThreats v2 enumera y actualiza sliders con
+   `occupied_for_sliding()`: cualquier pieza situada en un gate jump vivo,
+   propio o rival, sigue siendo objetivo pero no bloquea el rayo. Freeze no
+   silencia threats ni jaques; una pieza frozen sigue amenazando. El camino
+   stock conserva expresamente su ocupación original para que el bench sin
+   SPL2 sea idéntico.
 
 ## 2. Feature set `SpellKAv2` (por perspectiva)
 
 | Bloque | Inputs | Activos típ. | Bucketeo | Nota |
 |---|---|---|---|---|
 | HalfKAv2_hm | 22.528 | ≤32 | 32 kb | sin cambios |
-| FullThreats | 60.720 | variable | — | sin cambios; spell-aware vía attack maps |
+| FullThreats | 60.720 | variable | — | mismos índices; semántica spell-aware: sliders atraviesan gates jump vivos |
 | **Zonas freeze** (gate propio + rival) | 2×64×32 = 4.096 | ≤2 | **32 kb** | king-bucketeado: la denegación de casillas de fuga es un objeto de seguridad del rey |
 | **Zonas jump** (gate propio + rival) | 2×64 = 128 | ≤2 | plano | los efectos de línea ya los llevan los threats; el gate plano cubre el resto (p.ej. doble paso desbloqueado) |
 | **Frozen** (pieza congelada en casilla, propio/rival) | 2×64 = 128 | ≤9 | plano | el AND zona∩pieza, explícito (principio 4) |
@@ -114,27 +115,39 @@ stacks ≈ 0,5 MB. PSQT pasa de 8 a 16 columnas i32 (+0,7 MB).
 ## 4. Maquinaria incremental
 
 - **`DirtySpell`** (nuevo, análogo a DirtyThreat): lista de u32 empaquetados
-  `(add|remove, bloque, índice)` que `do_move` rellena en los puntos donde ya
-  muta spell state: cast (mano −1 = 1 flip termómetro; cooldown 0→3 = 3 flips
-  + ready-bit; gate add; frozen add ≤9), tick de cooldown en el do_move del
-  rival (1 flip ± ready ± gate-expiry + frozen removes ≤9), y entrada/salida
-  de piezas de una zona viva por movimiento normal (≤2 flips frozen).
+  `(add|remove, bloque, índice)` para gates/frozen y snapshots old/new de manos
+  y cooldowns. `do_move` lo rellena donde ya muta spell state: cast (mano −1,
+  cooldown 0→3, gate add, frozen add ≤9), tick rival (cooldown, posible
+  gate-expiry y frozen removes ≤9), y entrada/salida de piezas de una zona
+  viva por movimiento normal. Los flips globales termómetro/ready se derivan
+  de los snapshots y se aplican como una sola transición legal.
   **Peor caso real** (cast de freeze sobre 9 piezas con expiry simultáneo del
   rival): 1+3+1+1+9+9+2+2 = 28 flips spell — cota dura, documentada, y
-  `MaxActiveDimensions` se deriva de ella (nada de "a ojo", pecado v1 #4).
-- **requires_refresh sin cambios** (solo movimientos del propio rey). Los
-  gates de freeze king-bucketeados se refrescan con el rey vía Finny — la
-  `AccumulatorCaches::Entry` se extiende con los 4 gates + bitboard frozen +
-  contadores (manos/cooldowns) para que el diff del cache incluya spell.
-- Los threats siguen su camino actual sin tocar.
+  `DirtySpell::MaxEvents` la conserva como capacidad segura (nada de "a ojo",
+  pecado v1 #4; los globales usan snapshots y ya no ocupan la lista).
+- **Refresh:** además del movimiento del rey propio, crear o expirar un gate
+  jump fuerza refresh de la perspectiva. Es el evento raro que altera threats
+  de sliders no movidos; el refresh reconstruye toda la lista spell-aware.
+  Freeze no lo fuerza porque no cambia attack maps. La entrada Finny guarda
+  gates, frozen, manos y cooldowns y aplica su diff exacto al refrescar.
+- **Incremental:** los board diffs de FullThreats usan la misma ocupación
+  jump-transparente. Un blocker normal usa el delta exacto de objetivos al
+  otro lado; una pieza sobre gate jump no produce amenazas descubiertas.
+- **Globales:** `DirtySpell` conserva snapshots old/new de manos y cooldowns.
+  El runtime no materializa todos sus flips termómetro: aplica una fila delta
+  precalculada por transición legal (cast o tick). Son 30 filas derivadas y
+  ~64 KiB, no una matriz de estados inalcanzables.
 
 ## 5. Cuantización y formato
 
 - Tipos/escalas idénticos a stock (FT i16, spell block i16 como HalfKA;
   stacks i8/i32; mismas saturaciones). Los features spell son 0/1 como los
   demás → sin re-derivación de rangos.
-- **Version nuevo: `0x53504C32`** ("SPL2"). El hash-chain de SF ya compone
-  dimensiones → cualquier desajuste red/binario se rechaza en load. Ficheros
+- **Revisión SPL2 actual: `0x53504C33`.** El bump identifica la semántica
+  jump-transparente de FullThreats. Una red `0x53504C32` se reconoce como v2
+  legacy y se rechaza con un mensaje que exige regenerarla; nunca cae al
+  loader stock. El hash-chain de SF sigue componiendo arquitectura y
+  dimensiones. Ficheros
   `spell-v2-<sha12>.nnue`, embebido por INCBIN como stock. `src/spellnnue/`
   (adaptador run5rl) se retira el día que v2 pase SPRT — un solo camino de
   eval.
@@ -184,6 +197,6 @@ stacks ≈ 0,5 MB. PSQT pasa de 8 a 16 columnas i32 (+0,7 MB).
   feature set; por eso P2 tiene gate de auditoría propio.
 - El eje de buckets por pociones divide los datos por 16: si P2 queda corto,
   arrancar con 8 (mat 4 × potion 2) y crecer.
-- La cota de 28 flips por cast es ~10× un quiet normal: si el profiling de P0
-  muestra >2% de coste en update, degradar frozen-plane a recompute-on-access
-  (está acotado a 18 activos).
+- La cota semántica de 28 flips por cast era ~10× un quiet normal. El perfil
+  del 2026-07-15 confirmó que aplicar filas, no frozen-plane, era el coste:
+  globales se agrupan ahora por transición legal y frozen sigue incremental.

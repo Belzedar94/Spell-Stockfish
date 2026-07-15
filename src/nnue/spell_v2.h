@@ -96,6 +96,23 @@ class FeatureTransformerV2 {
     static constexpr IndexType OutputDimensions = HalfDimensions;
     static constexpr usize     BufferSize = OutputDimensions * sizeof(TransformedFeatureType);
 
+    // Every counter transition produced by a legal move is either a cast
+    // (hand h -> h-1, cooldown 0 -> 3) or a tick (cooldown c -> c-1).
+    // Per relative owner there are 5+4 freeze and 2+4 jump deltas. Keeping
+    // only these 15 rows per relative owner makes the derived table fit in
+    // cache, unlike a matrix containing every unreachable state pair.
+    static constexpr int FreezeCastDeltas = 5;
+    static constexpr int TickDeltas       = 4;
+    static constexpr int JumpCastDeltas   = 2;
+    static constexpr int GlobalDeltasPerColor =
+      FreezeCastDeltas + TickDeltas + JumpCastDeltas + TickDeltas;
+    static constexpr int GlobalDeltaCount = COLOR_NB * GlobalDeltasPerColor;
+
+    struct alignas(CacheLineSize) GlobalDelta {
+        std::array<WeightType, HalfDimensions>       weights;
+        std::array<PSQTWeightType, SpellPSQTBuckets> psqtWeights;
+    };
+
     static constexpr u32 get_hash_value() {
         // combine_hash({ThreatFeatureSet::HashValue, SpellFeatureSet::HashValue})
         // with the same rotate-xor chain as the stock FeatureTransformer
@@ -109,7 +126,16 @@ class FeatureTransformerV2 {
     }
 
     void permute_weights();
+    void build_global_deltas();
     bool read_parameters(std::istream& stream);
+
+    static IndexType global_delta_index(Color     perspective,
+                                        Color     owner,
+                                        SpellType spell,
+                                        int       oldHand,
+                                        int       oldCd,
+                                        int       newHand,
+                                        int       newCd);
 
     // Convert input features (defined in spell_v2.cpp)
     i32 transform(const Position&            pos,
@@ -128,6 +154,7 @@ class FeatureTransformerV2 {
       std::array<PSQTWeightType, SpellFeatureSet::Dimensions * SpellPSQTBuckets> psqtWeights;
     alignas(CacheLineSize)
       std::array<PSQTWeightType, ThreatInputDimensions * SpellPSQTBuckets> threatPsqtWeights;
+    std::array<GlobalDelta, GlobalDeltaCount> globalDeltas;
 };
 
 // The v2 network: FT + 16 layer stacks (per-stack architecture identical to

@@ -151,6 +151,84 @@ void FeatureTransformerV2::permute_weights() {
     permute<8>(threatWeights, FeatureTransformer::PackusEpi16Order);
 }
 
+IndexType FeatureTransformerV2::global_delta_index(
+  Color perspective, Color owner, SpellType spell, int oldHand, int oldCd, int newHand, int newCd) {
+    const int relativeBase = int(owner != perspective) * GlobalDeltasPerColor;
+    const int spellBase    = spell == SPELL_FREEZE ? 0 : FreezeCastDeltas + TickDeltas;
+    const int castCount    = spell == SPELL_FREEZE ? FreezeCastDeltas : JumpCastDeltas;
+
+    if (oldCd == 0 && newCd == SPELL_COOLDOWN && newHand + 1 == oldHand)
+    {
+        assert(oldHand >= 1 && oldHand <= castCount);
+        return relativeBase + spellBase + oldHand - 1;
+    }
+
+    assert(newHand == oldHand && oldCd >= 1 && oldCd <= SPELL_COOLDOWN && newCd == oldCd - 1);
+    const int tickKind = oldCd == 3 ? 0 : oldCd == 2 ? 1 : oldHand == 0 ? 2 : 3;
+    return relativeBase + spellBase + castCount + tickKind;
+}
+
+void FeatureTransformerV2::build_global_deltas() {
+    auto active_globals = [](Color relativeOwner, SpellType spell, int hand, int cd) {
+        ValueList<IndexType, 9> active;
+        for (int k = 0; k < hand; ++k)
+            active.push_back(SpellFeatureSet::make_global_index(
+              WHITE, relativeOwner, SpellFeatureSet::slot_hand(spell) + k));
+        for (int k = 0; k < cd; ++k)
+            active.push_back(SpellFeatureSet::make_global_index(
+              WHITE, relativeOwner, SpellFeatureSet::slot_cd(spell) + k));
+        if (hand > 0 && cd == 0)
+            active.push_back(SpellFeatureSet::make_global_index(
+              WHITE, relativeOwner, SpellFeatureSet::slot_ready(spell)));
+        return active;
+    };
+
+    auto build_delta = [&](Color relativeOwner, SpellType spell, int oldHand, int oldCd,
+                           int newHand, int newCd) {
+        const IndexType deltaIndex =
+          global_delta_index(WHITE, relativeOwner, spell, oldHand, oldCd, newHand, newCd);
+        auto&      delta       = globalDeltas[deltaIndex];
+        const auto oldFeatures = active_globals(relativeOwner, spell, oldHand, oldCd);
+        const auto newFeatures = active_globals(relativeOwner, spell, newHand, newCd);
+
+        // SIMD accumulator arithmetic wraps in 16 bits. Build the composite
+        // row with the same modular arithmetic so every quantized net stays
+        // bit-identical, even at an extreme weight range.
+        for (IndexType j = 0; j < HalfDimensions; ++j)
+        {
+            u16 sum = 0;
+            for (const IndexType index : newFeatures)
+                sum += u16(weights[index * HalfDimensions + j]);
+            for (const IndexType index : oldFeatures)
+                sum -= u16(weights[index * HalfDimensions + j]);
+            std::memcpy(&delta.weights[j], &sum, sizeof(sum));
+        }
+
+        for (IndexType bucket = 0; bucket < SpellPSQTBuckets; ++bucket)
+        {
+            u32 sum = 0;
+            for (const IndexType index : newFeatures)
+                sum += u32(psqtWeights[index * SpellPSQTBuckets + bucket]);
+            for (const IndexType index : oldFeatures)
+                sum -= u32(psqtWeights[index * SpellPSQTBuckets + bucket]);
+            std::memcpy(&delta.psqtWeights[bucket], &sum, sizeof(sum));
+        }
+    };
+
+    for (Color relativeOwner : {WHITE, BLACK})
+        for (SpellType spell : {SPELL_FREEZE, SPELL_JUMP})
+        {
+            const int maxHand = spell == SPELL_FREEZE ? FreezeCastDeltas : JumpCastDeltas;
+            for (int hand = 1; hand <= maxHand; ++hand)
+                build_delta(relativeOwner, spell, hand, 0, hand - 1, SPELL_COOLDOWN);
+
+            build_delta(relativeOwner, spell, 0, 3, 0, 2);
+            build_delta(relativeOwner, spell, 0, 2, 0, 1);
+            build_delta(relativeOwner, spell, 0, 1, 0, 0);
+            build_delta(relativeOwner, spell, 1, 1, 1, 0);
+        }
+}
+
 bool FeatureTransformerV2::read_parameters(std::istream& stream) {
     read_leb_128(stream, biases);
 
@@ -162,6 +240,7 @@ bool FeatureTransformerV2::read_parameters(std::istream& stream) {
     read_leb_128(stream, psqtWeights);
 
     permute_weights();
+    build_global_deltas();
 
     return !stream.fail();
 }
@@ -277,10 +356,10 @@ namespace {
 // Enumerate the spell-feature diff between a Finny entry's spell snapshot and
 // the current position, then refresh the snapshot. Bound per direction:
 // gates 4 + frozen 18 + globals 30 = 52 (on top of <= 32 piece diffs).
-void append_spell_diff(Color           perspective,
-                       Square          ksq,
-                       Caches::Entry&  entry,
-                       const Position& pos,
+void append_spell_diff(Color                       perspective,
+                       Square                      ksq,
+                       Caches::Entry&              entry,
+                       const Position&             pos,
                        SpellFeatureSet::IndexList& removed,
                        SpellFeatureSet::IndexList& added) {
     for (Color c : {WHITE, BLACK})
@@ -330,8 +409,8 @@ void append_spell_diff(Color           perspective,
             const bool newReady = newH > 0 && newCd == 0;
             if (oldReady != newReady)
                 (newReady ? added : removed)
-                  .push_back(SpellFeatureSet::make_global_index(
-                    perspective, c, SpellFeatureSet::slot_ready(sp)));
+                  .push_back(SpellFeatureSet::make_global_index(perspective, c,
+                                                                SpellFeatureSet::slot_ready(sp)));
 
             entry.hand[c][sp] = i8(newH);
             entry.cd[c][sp]   = i8(newCd);
@@ -348,12 +427,36 @@ void append_spell_diff(Color           perspective,
     }
 }
 
+Bitboard get_changed_pieces_spell(const std::array<Piece, SQUARE_NB>& oldPieces,
+                                  const std::array<Piece, SQUARE_NB>& newPieces) {
+#if defined(USE_AVX2)
+    static_assert(sizeof(Piece) == 1);
+    Bitboard sameBB = 0;
+
+    for (int i = 0; i < 64; i += 32)
+    {
+        const __m256i oldV = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&oldPieces[i]));
+        const __m256i newV = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&newPieces[i]));
+        const u32     equalMask = u32(_mm256_movemask_epi8(_mm256_cmpeq_epi8(oldV, newV)));
+        sameBB |= Bitboard(equalMask) << i;
+    }
+    return ~sameBB;
+#else
+    Bitboard changed = 0;
+    for (Square sq = SQ_A1; sq <= SQ_H8; ++sq)
+        changed |= Bitboard(oldPieces[sq] != newPieces[sq]) << sq;
+    return changed;
+#endif
+}
+
+template<bool Forward>
 void apply_combined_spell(Color                              perspective,
                           const FeatureTransformerV2&        featureTransformer,
                           const AccumulatorState&            from,
                           AccumulatorState&                  to,
                           const SpellFeatureSet::IndexList&  psqAdded,
                           const SpellFeatureSet::IndexList&  psqRemoved,
+                          const ValueList<IndexType, 4>&     globalDeltas,
                           const ThreatFeatureSet::IndexList& thrAdded,
                           const ThreatFeatureSet::IndexList& thrRemoved) {
     constexpr IndexType Dimensions = FeatureTransformerV2::OutputDimensions;
@@ -396,6 +499,17 @@ void apply_combined_spell(Color                              perspective,
               reinterpret_cast<const vec_t*>(&psqWeights[psqAdded[i] * Dimensions + tileOff]);
             for (IndexType k = 0; k < Tiling::NumRegs; ++k)
                 acc[k] = vec_add_16(acc[k], row[k]);
+        }
+
+        for (const IndexType index : globalDeltas)
+        {
+            const auto* row = reinterpret_cast<const vec_t*>(
+              &featureTransformer.globalDeltas[index].weights[tileOff]);
+            for (IndexType k = 0; k < Tiling::NumRegs; ++k)
+                if constexpr (Forward)
+                    acc[k] = vec_add_16(acc[k], row[k]);
+                else
+                    acc[k] = vec_sub_16(acc[k], row[k]);
         }
 
         for (int i = 0; i < thrRemoved.ssize(); ++i)
@@ -461,6 +575,17 @@ void apply_combined_spell(Color                              perspective,
                 psqt[k] = vec_add_psqt_32(psqt[k], columnPsqt[k]);
         }
 
+        for (const IndexType index : globalDeltas)
+        {
+            const auto* columnPsqt = reinterpret_cast<const psqt_vec_t*>(
+              &featureTransformer.globalDeltas[index].psqtWeights[psqtTileOff]);
+            for (usize k = 0; k < Tiling::NumPsqtRegs; ++k)
+                if constexpr (Forward)
+                    psqt[k] = vec_add_psqt_32(psqt[k], columnPsqt[k]);
+                else
+                    psqt[k] = vec_sub_psqt_32(psqt[k], columnPsqt[k]);
+        }
+
         for (int i = 0; i < thrRemoved.ssize(); ++i)
         {
             auto* columnPsqt = reinterpret_cast<const psqt_vec_t*>(
@@ -505,6 +630,20 @@ void apply_combined_spell(Color                              perspective,
             toPsqtAcc[k] += featureTransformer.psqtWeights[index * SpellPSQTBuckets + k];
     }
 
+    for (const auto index : globalDeltas)
+    {
+        for (IndexType j = 0; j < Dimensions; ++j)
+            if constexpr (Forward)
+                toAcc[j] += featureTransformer.globalDeltas[index].weights[j];
+            else
+                toAcc[j] -= featureTransformer.globalDeltas[index].weights[j];
+        for (usize k = 0; k < SpellPSQTBuckets; ++k)
+            if constexpr (Forward)
+                toPsqtAcc[k] += featureTransformer.globalDeltas[index].psqtWeights[k];
+            else
+                toPsqtAcc[k] -= featureTransformer.globalDeltas[index].psqtWeights[k];
+    }
+
     for (const auto index : thrRemoved)
     {
         const IndexType offset = Dimensions * index;
@@ -541,6 +680,7 @@ void update_accumulator_incremental_spell(Color                       perspectiv
 
     SpellFeatureSet::IndexList  psqRemoved, psqAdded;
     ThreatFeatureSet::IndexList thrRemoved, thrAdded;
+    ValueList<IndexType, 4>     globalDeltas;
 
     const auto& dirtyPiece   = Forward ? target_state.dirtyPiece : computed.dirtyPiece;
     const auto& dirtyThreats = Forward ? target_state.dirtyThreats : computed.dirtyThreats;
@@ -562,14 +702,26 @@ void update_accumulator_incremental_spell(Color                       perspectiv
     {
         ThreatFeatureSet::append_changed_indices(perspective, ksq, dirtyThreats, thrAdded,
                                                  thrRemoved, pfBase, pfStride);
-        SpellFeatureSet::append_changed_indices(perspective, ksq, dirtyPiece, dirtySpell,
-                                                psqAdded, psqRemoved);
+        SpellFeatureSet::append_changed_indices(perspective, ksq, dirtyPiece, dirtySpell, psqAdded,
+                                                psqRemoved);
     }
+
+    for (Color owner : {WHITE, BLACK})
+        for (SpellType spell : {SPELL_FREEZE, SPELL_JUMP})
+        {
+            const int oldHand = dirtySpell.oldHand[owner][spell];
+            const int oldCd   = dirtySpell.oldCd[owner][spell];
+            const int newHand = dirtySpell.newHand[owner][spell];
+            const int newCd   = dirtySpell.newCd[owner][spell];
+            if (oldHand != newHand || oldCd != newCd)
+                globalDeltas.push_back(FeatureTransformerV2::global_delta_index(
+                  perspective, owner, spell, oldHand, oldCd, newHand, newCd));
+        }
 
     if (profiling)
     {
         profileCounters.diffBuildNs.fetch_add(elapsed_ns(diffStarted), std::memory_order_relaxed);
-        profileCounters.psqRows.fetch_add(psqAdded.size() + psqRemoved.size(),
+        profileCounters.psqRows.fetch_add(psqAdded.size() + psqRemoved.size() + globalDeltas.size(),
                                           std::memory_order_relaxed);
         profileCounters.threatRows.fetch_add(thrAdded.size() + thrRemoved.size(),
                                              std::memory_order_relaxed);
@@ -587,8 +739,9 @@ void update_accumulator_incremental_spell(Color                       perspectiv
     }
 
     const auto applyStarted = profiling ? ProfileClock::now() : ProfileClock::time_point{};
-    apply_combined_spell(perspective, featureTransformer, computed, target_state, psqAdded,
-                         psqRemoved, thrAdded, thrRemoved);
+    apply_combined_spell<Forward>(perspective, featureTransformer, computed, target_state, psqAdded,
+                                  psqRemoved, globalDeltas, thrAdded, thrRemoved);
+
     if (profiling)
         profileCounters.applyRowsNs.fetch_add(elapsed_ns(applyStarted), std::memory_order_relaxed);
 
@@ -615,13 +768,11 @@ void update_accumulator_refresh_cache_spell(Color                       perspect
 
     using Tiling [[maybe_unused]] = SIMDTiling<Dimensions, Dimensions, SpellPSQTBuckets>;
 
-    const Square                ksq   = pos.square<KING>(perspective);
-    auto&                       entry = cache[ksq][perspective];
-    SpellFeatureSet::IndexList  removed, added;
+    const Square               ksq   = pos.square<KING>(perspective);
+    auto&                      entry = cache[ksq][perspective];
+    SpellFeatureSet::IndexList removed, added;
 
-    Bitboard changedBB = 0;
-    for (Square sq = SQ_A1; sq <= SQ_H8; ++sq)
-        changedBB |= Bitboard(entry.pieces[sq] != pos.piece_on(sq)) << sq;
+    const Bitboard changedBB = get_changed_pieces_spell(entry.pieces, pos.piece_array());
 
     Bitboard removedBB = changedBB & entry.pieceBB;
     Bitboard addedBB   = changedBB & pos.pieces();
@@ -673,7 +824,8 @@ void update_accumulator_refresh_cache_spell(Color                       perspect
         }
         for (int i = 0; i < added.ssize(); ++i)
         {
-            auto* column = reinterpret_cast<const vec_t*>(&weights[added[i] * Dimensions + tileOff]);
+            auto* column =
+              reinterpret_cast<const vec_t*>(&weights[added[i] * Dimensions + tileOff]);
             for (IndexType k = 0; k < Tiling::NumRegs; ++k)
                 acc[k] = vec_add_16(acc[k], column[k]);
         }
@@ -812,7 +964,7 @@ void AccumulatorStack::evaluate_spell(const Position&                      pos,
 void AccumulatorStack::evaluate_spell_side(Color                                perspective,
                                            const Position&                      pos,
                                            const SpellV2::FeatureTransformerV2& featureTransformer,
-                                           SpellV2::Caches& cache) noexcept {
+                                           SpellV2::Caches&                     cache) noexcept {
 
     const auto last_usable_accum = find_last_usable_accumulator_spell(perspective);
 
@@ -847,9 +999,8 @@ usize AccumulatorStack::find_last_usable_accumulator_spell(Color perspective) co
         if (accumulators[curr_idx].computed[perspective])
             return curr_idx;
 
-        if (SpellV2::SpellFeatureSet::requires_refresh(accumulators[curr_idx].dirtyPiece,
-                                                       accumulators[curr_idx].dirtySpell,
-                                                       perspective))
+        if (SpellV2::SpellFeatureSet::requires_refresh(
+              accumulators[curr_idx].dirtyPiece, accumulators[curr_idx].dirtySpell, perspective))
             return curr_idx;
     }
 
@@ -922,10 +1073,9 @@ i32 FeatureTransformerV2::transform(const Position&            pos,
                 uint16x8_t mul0 = vmull_u8(vqmovun_s16(acc0a), vqmovun_s16(acc1a));
                 uint16x8_t mul1 = vmull_u8(vqmovun_s16(acc0b), vqmovun_s16(acc1b));
 
-                uint8x16x2_t uzp =
-                  vuzpq_u8(vreinterpretq_u8_u16(mul0), vreinterpretq_u8_u16(mul1));
-                uint8x16_t pab    = vshrq_n_u8(uzp.val[1], 1);
-                vec_t      result = reinterpret_cast<vec_t>(pab);
+                uint8x16x2_t uzp = vuzpq_u8(vreinterpretq_u8_u16(mul0), vreinterpretq_u8_u16(mul1));
+                uint8x16_t   pab = vshrq_n_u8(uzp.val[1], 1);
+                vec_t        result = reinterpret_cast<vec_t>(pab);
     #elif defined(USE_LSX) || defined(USE_LASX)
                 vec_t pa = vec_packus_16(acc0a, acc0b);
                 vec_t pb = vec_packus_16(acc1a, acc1b);
@@ -965,8 +1115,7 @@ i32 FeatureTransformerV2::transform(const Position&            pos,
         for (IndexType j = 0; j < HalfDimensions / 2; ++j)
         {
             BiasType sum0 = accumulation[static_cast<int>(perspectives[p])][j + 0];
-            BiasType sum1 =
-              accumulation[static_cast<int>(perspectives[p])][j + HalfDimensions / 2];
+            BiasType sum1 = accumulation[static_cast<int>(perspectives[p])][j + HalfDimensions / 2];
 
             sum0 = std::clamp<BiasType>(sum0, 0, FtMaxVal);
             sum1 = std::clamp<BiasType>(sum1, 0, FtMaxVal);

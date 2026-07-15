@@ -384,9 +384,9 @@ struct DirtyThreats {
 };
 
 // Keep track of what spell state a move changes (used by the Spell-NNUE v2
-// feature set SpellKAv2, see docs/spell-nnue-v2.md §4). Events are stored in
-// absolute terms (owner color, absolute square / global slot); the feature
-// set translates them per perspective. One event = one 0/1 feature flip.
+// feature set SpellKAv2, see docs/spell-nnue-v2.md §4). Board events are
+// stored in absolute terms (owner color and square); global counters use the
+// snapshots in DirtySpell. One event = one board-feature flip.
 struct DirtySpellEvent {
     // Feature blocks of SpellKAv2 beyond the HalfKA piece planes
     enum Block : u8 {
@@ -409,15 +409,25 @@ struct DirtySpellEvent {
     u32 data;
 };
 
-// Exact worst case for a legal do_move (docs/spell-nnue-v2.md section 4):
+// Proven upper bound for all semantic flips of a legal do_move
+// (docs/spell-nnue-v2.md section 4):
 //   freeze cast: hand 1 + cooldown 3 + ready 1 + gate 1 + frozen 9 = 15
 //   rival tick/expiry: cooldowns 2 + ready 1 + gate 1 + frozen 9 = 13
 // The moved piece is already included in the before/after frozen set diff, so
-// it is not an additional term. Total = 28 feature flips.
+// it is not an additional term. Total = 28 feature flips. GLOBAL flips are
+// now represented by the snapshots below, so retaining 28 for the board-event
+// list is deliberately conservative.
 struct DirtySpell {
     static constexpr int MaxEvents = 28;
 
     ValueList<DirtySpellEvent, MaxEvents> list;
+
+    // Counter snapshots allow the v2 runtime to replace several thermometer
+    // row updates with one exact, load-time-derived legal-transition delta.
+    i8 oldHand[COLOR_NB][SPELL_NB] = {};
+    i8 newHand[COLOR_NB][SPELL_NB] = {};
+    i8 oldCd[COLOR_NB][SPELL_NB]   = {};
+    i8 newCd[COLOR_NB][SPELL_NB]   = {};
 
     // True for accumulator entries created by a null move: there is no piece
     // or threat delta to apply, only the spell-clock tick recorded above.
