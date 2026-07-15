@@ -15,8 +15,8 @@ inverso), y el riesgo "90% manos llenas" del AUDIT de P1.
 ## Parámetros (v1 propuesta)
 | Parámetro | Valor | Procedencia |
 |---|---|---|
-| Búsqueda | **fixed nodes 40000** | sscg13; ~57 ms/mov/hilo a ~700 knps |
-| count | 50M posiciones | histórico (2-3 días); ~34 h a 24 hilos |
+| Búsqueda | **fixed nodes 10000** (bootstrap nocturno; d4-5 medido) | decisión propietario 2026-07-15; calibración: 10k=d4-5, 20k=d5-6, 40k=d6-7; run8-RL regenerará con net-1 mejor y más rápido |
+| count | 20M posiciones (bootstrap) | decisión propietario; ~15 h a 24 hilos con 10k nodos |
 | Aperturas | spell_openings.epd (sin seeding sintético — ver medición) | libro legacy |
 | random_move_count / min_ply / max_ply | 8 / 1 / 20 | receta propietario (los casts entran de forma natural) |
 | random_multi_pv / diff | 4 / 100 | receta propietario |
