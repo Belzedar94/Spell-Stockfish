@@ -88,9 +88,10 @@ void UCIEngine::init_search_update_listeners() {
     engine.set_on_verify_network([](const auto& s) { print_info_string(s); });
 }
 
-void UCIEngine::loop() {
+int UCIEngine::loop() {
     set_console_utf8();
     std::string token, cmd;
+    int         exitStatus = 0;
 
     for (int i = 1; i < cli.argc; ++i)
         cmd += std::string(cli.argv[i]) + " ";
@@ -181,7 +182,7 @@ void UCIEngine::loop() {
         else if (token == "eval")
             engine.trace_eval();
         else if (token == "datagen")
-            datagen(is);
+            exitStatus = datagen(is) ? exitStatus : 1;
         else if (token == "evalspell")
             engine.trace_spell_eval();
         else if (token == "evalv2")
@@ -214,6 +215,7 @@ void UCIEngine::loop() {
                       << sync_endl;
 
     } while (token != "quit" && cli.argc <= 1);  // The command-line arguments are one-shot
+    return exitStatus;
 }
 
 Search::LimitsType UCIEngine::parse_limits(std::istream& is) {
@@ -351,7 +353,7 @@ void UCIEngine::bench(std::istream& args) {
 
 // P2-a run7 self-play. Parsing, independent worker engines, filtering,
 // sharding and the verified final merge live in datagen.cpp.
-void UCIEngine::datagen(std::istringstream& args) {
+bool UCIEngine::datagen(std::istringstream& args) {
     engine.stop();
     engine.wait_for_search_finished();
 
@@ -361,7 +363,11 @@ void UCIEngine::datagen(std::istringstream& args) {
 
     std::string error;
     if (!Datagen::run(args, binaryPath, error))
+    {
         sync_cout << "info string datagen ERROR: " << error << sync_endl;
+        return false;
+    }
+    return true;
 }
 
 void UCIEngine::benchmark(std::istream& args) {

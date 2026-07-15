@@ -49,9 +49,7 @@ int main(int argc, char* argv[]) {
 
     Tune::init(uci->engine_options());
 
-    uci->loop();
-
-    return 0;
+    return uci->loop();
 }
 
 #ifdef UNIVERSAL_BINARY

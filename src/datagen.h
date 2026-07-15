@@ -28,8 +28,8 @@ namespace Stockfish::Datagen {
 
 // Parse and execute the P2-a run7 self-play command. The binary path is used
 // only to let each independent search engine resolve its embedded/default net.
-// On failure error contains a diagnostic; incomplete shards are kept for
-// inspection unless the final output and requested sidecar were merged.
+// On failure error contains a diagnostic; incomplete shards and the durable
+// <out>.meta manifest are kept so --resume can sanitize and continue them.
 bool run(std::istream&                               args,
          const std::optional<std::filesystem::path>& binaryPath,
          std::string&                                error);
