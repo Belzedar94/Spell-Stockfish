@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Pure-Python SpellKAv2 + FullThreats feature extraction.
 
-This mirrors ``src/nnue/features/{spell_ka_v2,full_threats}.*``.  In
-particular FullThreats intentionally uses the chassis' current stock occupancy
-path; spell state is represented by SpellKAv2 and does not alter threat
-enumeration in P0/P1.
+This mirrors ``src/nnue/features/{spell_ka_v2,full_threats}.*``. FullThreats
+uses the Spell engine's slider occupancy: a live jump gate of either color is
+transparent, including when a piece physically occupies the gate. Freeze does
+not silence threats, so frozen pieces are enumerated normally.
 """
 
 from __future__ import annotations
@@ -266,7 +266,8 @@ def threat_index(perspective: int, attacker: int, source: int, target: int,
 
 
 def _sliding_targets(board: tuple[int, ...], source: int,
-                     directions: tuple[tuple[int, int], ...]):
+                     directions: tuple[tuple[int, int], ...],
+                     transparent: frozenset[int]):
     file, rank = source & 7, source >> 3
     for df, dr in directions:
         f, r = file + df, rank + dr
@@ -274,13 +275,18 @@ def _sliding_targets(board: tuple[int, ...], source: int,
             target = r * 8 + f
             if board[target]:
                 yield target
-                break
+                if target not in transparent:
+                    break
             f, r = f + df, r + dr
 
 
 def threat_indices(record: run7.Record, perspective: int) -> tuple[int, ...]:
     board = record.board
     ksq = _king_square(board, perspective)
+    gates = normalized_gates(record)
+    # Both colors' live jump gates are transparent to every slider. An
+    # occupied gate remains a threatened target but no longer stops the ray.
+    transparent = frozenset(g for g in (gates[1], gates[3]) if g >= 0)
     active = []
     for relative_color in (0, 1):
         color = perspective ^ relative_color
@@ -315,11 +321,12 @@ def threat_indices(record: run7.Record, perspective: int) -> tuple[int, ...]:
                 if piece_type == 2:
                     targets = _PSEUDO[attacker][source]
                 elif piece_type == 3:
-                    targets = _sliding_targets(board, source, _BISHOP_DIRS)
+                    targets = _sliding_targets(board, source, _BISHOP_DIRS, transparent)
                 elif piece_type == 4:
-                    targets = _sliding_targets(board, source, _ROOK_DIRS)
+                    targets = _sliding_targets(board, source, _ROOK_DIRS, transparent)
                 else:
-                    targets = _sliding_targets(board, source, _BISHOP_DIRS + _ROOK_DIRS)
+                    targets = _sliding_targets(board, source, _BISHOP_DIRS + _ROOK_DIRS,
+                                               transparent)
                 valid_types = (1, 2, 3, 4, 5) if piece_type in (2, 5) else (1, 2, 3, 4)
                 for target in targets:
                     attacked = board[target]

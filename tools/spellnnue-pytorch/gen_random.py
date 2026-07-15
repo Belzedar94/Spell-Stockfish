@@ -59,7 +59,8 @@ def main():
 
     rng = np.random.default_rng(args.seed)
     params = random_params(rng)
-    spl2.write_spl2(args.out, params, f"random SpellKAv2 net (seed {args.seed})")
+    spl2.write_spl2(args.out, params,
+                    f"random SpellKAv2 spell-aware-threat net (seed {args.seed})")
 
     size = os.path.getsize(args.out)
     print(f"wrote {args.out} ({size / 1024 / 1024:.1f} MiB), "

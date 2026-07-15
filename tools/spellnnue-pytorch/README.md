@@ -5,6 +5,12 @@ engine's 87,630 inputs, 1024 pairwise feature transformer, sixteen output
 stacks and sixteen PSQT buckets.  The engine remains the format authority;
 `spl2.py` reproduces its header/hash chain and LEB128 layout.
 
+The current semantic revision is magic `0x53504C33`: FullThreats uses the
+engine's jump-transparent slider maps while live freeze zones do not silence
+threats.  Legacy `0x53504C32` files are intentionally rejected.  The extractor
+implements the same rules and the parity gate requires zero feature and eval
+differences.
+
 The supported pipeline is:
 
 ```powershell
@@ -17,7 +23,8 @@ $psv = '..\..\..\spell-data\run6a\run6a_full.bin'
   --out .scratch\spell-v2-overfit.nnue --curve .scratch\overfit-curve.json
 & $py tools\spellnnue-pytorch\parity.py `
   --engine src\stockfish.exe --net .scratch\spell-v2-overfit.nnue `
-  --data .scratch\run6a-1m.run7 --count 1000
+  --data .scratch\run6a-1m.run7 --count 1000 `
+  --min-live-jump 200 --min-live-freeze 200
 ```
 
 `run7.py` defines a fixed 44-byte record.  It retains the full board/FEN
@@ -42,3 +49,8 @@ The loss supports a linear eval/WDL lambda schedule through
 Generated `.run7`, `.pt`, and `.nnue` files belong in `.scratch`.  The
 measured P1 gate curve is committed as `p1-overfit-curve.json`; reruns may
 write additional exploratory curves to `.scratch`.
+
+`sample-network.json` pins the reproducible random sample used by local gates.
+Generate it at the ignored local path with
+`python tools/spellnnue-pytorch/gen_random.py src/spell-v2-random.nnue --seed 42`;
+the manifest records its exact magic, hash, byte size, description and SHA-256.

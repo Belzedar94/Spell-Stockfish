@@ -3,7 +3,7 @@
 consumed by the engine (src/nnue/spell_v2.{h,cpp}, docs/spell-nnue-v2.md §5).
 
 File layout (little-endian):
-  u32 version = 0x53504C32 ("SPL2")
+  u32 version = 0x53504C33 (SPL2 semantic revision: spell-aware FullThreats)
   u32 net_hash
   u32 desc_len,  desc bytes (utf-8)
   -- feature transformer --
@@ -32,7 +32,8 @@ import numpy as np
 
 M32 = 0xFFFFFFFF
 
-VERSION = 0x53504C32
+LEGACY_VERSION = 0x53504C32
+VERSION = 0x53504C33
 
 L1 = 1024
 SPELL_DIMS = 26910    # SpellKAv2 per-perspective inputs

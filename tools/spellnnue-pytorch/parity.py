@@ -22,16 +22,47 @@ EVAL_RE = re.compile(r"spellv2 psqt (-?\d+) positional (-?\d+) total (-?\d+) buc
 PERSPECTIVE_RE = re.compile(r"perspective ([wb]) (psq|threats)(?: (.*))?$")
 
 
-def load_positions(path: str, count: int) -> list[run7.Record]:
-    positions = []
+def _live_zones(record: run7.Record) -> tuple[bool, bool]:
+    gates = features.normalized_gates(record)
+    return (any(g >= 0 for g in (gates[1], gates[3])),
+            any(g >= 0 for g in (gates[0], gates[2])))
+
+
+def load_positions(path: str, count: int, min_live_jump: int,
+                   min_live_freeze: int) -> tuple[list[run7.Record], int, int]:
+    coverage = []
+    fillers = []
+    jumps = freezes = 0
     for record in run7.iter_records(path):
-        if run7.W_KING in record.board and run7.B_KING in record.board:
-            positions.append(record)
-            if len(positions) == count:
-                break
+        if run7.W_KING not in record.board or run7.B_KING not in record.board:
+            continue
+        live_jump, live_freeze = _live_zones(record)
+        needed = ((live_jump and jumps < min_live_jump)
+                  or (live_freeze and freezes < min_live_freeze))
+        if needed:
+            coverage.append(record)
+            jumps += live_jump
+            freezes += live_freeze
+        elif len(fillers) < count:
+            fillers.append(record)
+
+        if (jumps >= min_live_jump and freezes >= min_live_freeze
+                and len(coverage) + len(fillers) >= count):
+            break
+
+    if jumps < min_live_jump or freezes < min_live_freeze:
+        raise ValueError(f"coverage unavailable: live jump={jumps}/{min_live_jump}, "
+                         f"live freeze={freezes}/{min_live_freeze}")
+    positions = (coverage + fillers)[:count]
     if len(positions) < count:
         raise ValueError(f"only {len(positions)} non-terminal records available, need {count}")
-    return positions
+
+    # Recount the exact returned set (a position with both zones counts for both).
+    jumps = sum(_live_zones(record)[0] for record in positions)
+    freezes = sum(_live_zones(record)[1] for record in positions)
+    if jumps < min_live_jump or freezes < min_live_freeze:
+        raise AssertionError(f"selection lost coverage: jump={jumps}, freeze={freezes}")
+    return positions, jumps, freezes
 
 
 def engine_results(engine: str, net: str, positions: list[run7.Record],
@@ -76,10 +107,17 @@ def engine_results(engine: str, net: str, positions: list[run7.Record],
 
 
 def verify(engine: str, net: str, data: str, count: int = 1000,
-           check_features: bool = True, timeout: int = 900) -> dict:
+           check_features: bool = True, timeout: int = 900,
+           min_live_jump: int = 200, min_live_freeze: int = 200) -> dict:
+    engine = os.path.abspath(engine)
+    net = os.path.abspath(net)
+    data = os.path.abspath(data)
     if count < 1000:
         raise ValueError("the P1 gate requires at least 1000 positions")
-    positions = load_positions(data, count)
+    if min_live_jump < 0 or min_live_freeze < 0 or max(min_live_jump, min_live_freeze) > count:
+        raise ValueError("invalid live-zone coverage requirement")
+    positions, live_jump, live_freeze = load_positions(
+        data, count, min_live_jump, min_live_freeze)
     extracted = [features.extract(record) for record in positions]
     params, description = spl2.read_spl2(net)
     actual, _ = engine_results(engine, net, positions, check_features, timeout)
@@ -115,12 +153,14 @@ def verify(engine: str, net: str, data: str, count: int = 1000,
 
     result = {
         "positions": count,
+        "live_jump": live_jump,
+        "live_freeze": live_freeze,
         "feature_mismatches": feature_mismatches,
         "max_diff_cp": max_diff,
         "max_diff_index": max_at,
         "description": description,
     }
-    if feature_mismatches or max_diff > 1:
+    if feature_mismatches or max_diff != 0:
         raise AssertionError(f"parity gate failed: {result}")
     return result
 
@@ -132,12 +172,16 @@ def main() -> None:
     parser.add_argument("--data", required=True)
     parser.add_argument("--count", type=int, default=1000)
     parser.add_argument("--timeout", type=int, default=900)
+    parser.add_argument("--min-live-jump", type=int, default=200)
+    parser.add_argument("--min-live-freeze", type=int, default=200)
     parser.add_argument("--skip-feature-check", action="store_true")
     args = parser.parse_args()
     started = time.monotonic()
     result = verify(args.engine, args.net, args.data, args.count,
-                    not args.skip_feature_check, args.timeout)
+                    not args.skip_feature_check, args.timeout,
+                    args.min_live_jump, args.min_live_freeze)
     print(f"PARITY PASS: {result['positions']} positions, "
+          f"live jump={result['live_jump']}, live freeze={result['live_freeze']}, "
           f"feature mismatches={result['feature_mismatches']}, "
           f"max diff={result['max_diff_cp']} cp ({time.monotonic() - started:.1f}s)")
 

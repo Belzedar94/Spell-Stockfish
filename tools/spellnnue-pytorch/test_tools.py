@@ -26,11 +26,39 @@ def sample() -> run7.Record:
                           (2, run7.W_BISHOP), (57, run7.B_KNIGHT)):
         board[square] = piece
     return run7.Record(tuple(board), 0, 15, -1, 0, 1, (5, 2, 5, 2),
-                       (0, 3, 2, 1), (-1, 27, 36, -1), 42, 0, 0, 1)
+                        (0, 3, 2, 1), (-1, 27, 36, -1), 42, 0, 0, 1)
+
+
+def threat_semantics_tests() -> None:
+    board = [0] * 64
+    for square, piece in ((4, run7.W_KING), (60, run7.B_KING),
+                          (0, run7.W_ROOK), (16, run7.B_PAWN),
+                          (32, run7.B_PAWN)):
+        board[square] = piece
+    base = run7.Record(tuple(board), 1, 0, -1, 0, 1, (5, 2, 5, 2),
+                       (0, 0, 0, 0), (-1, -1, -1, -1), 0, 0, 0, 0)
+    jump = run7.Record(base.board, base.stm, base.castling, base.ep, base.rule50,
+                       base.fullmove, base.hands, (0, 3, 0, 0),
+                       (-1, 16, -1, -1), base.score, base.move,
+                       base.game_ply, base.result)
+    assert len(features.threat_indices(jump, 0)) == len(features.threat_indices(base, 0)) + 1
+
+    # Freeze is visible in SpellKAv2 but never suppresses the frozen rook's
+    # threat. Black's live freeze gate on b1 covers the white rook on a1.
+    freeze = run7.Record(base.board, 0, base.castling, base.ep, base.rule50,
+                         base.fullmove, base.hands, (0, 0, 3, 0),
+                         (-1, -1, 1, -1), base.score, base.move,
+                         base.game_ply, base.result)
+    freeze_base = run7.Record(base.board, freeze.stm, base.castling, base.ep,
+                              base.rule50, base.fullmove, base.hands,
+                              (0, 0, 0, 0), (-1, -1, -1, -1), base.score,
+                              base.move, base.game_ply, base.result)
+    assert features.threat_indices(freeze, 0) == features.threat_indices(freeze_base, 0)
 
 
 def main() -> None:
     run7.self_test()
+    threat_semantics_tests()
     record = sample()
     assert run7.unpack(run7.pack(record)) == record
     item = features.extract(record)

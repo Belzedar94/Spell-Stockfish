@@ -1,0 +1,10 @@
+{
+  "artifact": "src/spell-v2-random.nnue",
+  "description": "random SpellKAv2 spell-aware-threat net (seed 42)",
+  "feature_hash": "0x2256ACDF",
+  "format_magic": "0x53504C33",
+  "generator": "python tools/spellnnue-pytorch/gen_random.py src/spell-v2-random.nnue --seed 42",
+  "seed": 42,
+  "sha256": "73525333078C748A5549D5F33BF0463D092A7CC83D866077E5E71806C496AAA6",
+  "size_bytes": 92290549
+}
