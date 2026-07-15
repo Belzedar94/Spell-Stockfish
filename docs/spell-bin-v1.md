@@ -1,10 +1,10 @@
 # spell-bin v1 — formato normativo de datos de entrenamiento (76 bytes)
 
-Estado: **NORMATIVO** para toda la serie run6+. Cualquier cambio de bytes exige
-un formato nuevo (`spell-bin-v2`, planificado con el trainer moderno), nunca una
-mutación silenciosa de v1. Validador ejecutable: `tools/psv_decode.py` (decodifica
-y verifica registros); productor: comando UCI `datagen` (`src/uci.cpp`,
-`UCIEngine::datagen`); empaquetador: `src/datagen.{h,cpp}`.
+Estado: **NORMATIVO HISTÓRICO** para la serie run6. El formato no se ha mutado:
+P2-a retiró su productor del motor y lo sustituyó por run7 v1 (44 bytes más
+cabecera), definido por `tools/spellnnue-pytorch/run7.py` y documentado en el
+README de ese directorio. `tools/psv_decode.py` sigue siendo el validador de
+datasets run6 existentes.
 
 El contrato de bytes está verificado contra el binario de tools de la referencia
 FSF spell (AUDIT.md, fase 5): un registro nuestro y uno de la referencia para la
@@ -66,7 +66,7 @@ datasets de ambos productores debe decodificar `move` según el productor. El
 trainer legacy solo consume `sfen`/`score`/`gameResult` (y `move` como filtro
 opcional), por lo que la divergencia no afecta al entrenamiento run6.
 
-## 4. Productor de referencia (`datagen`) — invariantes
+## 4. Productor histórico retirado en P2-a — invariantes
 
 `datagen out F count N nodes M [seed S] [random_plies R] [eval_limit E] [ply_limit P]`
 (defaults: nodes 40000, random_plies 8, eval_limit 3000, ply_limit 400):

@@ -1,4 +1,4 @@
-# spellnnue-pytorch (P1)
+# spellnnue-pytorch (P1/P2)
 
 Pure-Python reference/training pipeline for `SpellKAv2`.  It mirrors the
 engine's 87,630 inputs, 1024 pairwise feature transformer, sixteen output
@@ -26,6 +26,54 @@ $psv = '..\..\..\spell-data\run6a\run6a_full.bin'
   --data .scratch\run6a-1m.run7 --count 1000 `
   --min-live-jump 200 --min-live-freeze 200
 ```
+
+## P2-a: native run7 generation and audit
+
+The engine's blocking UCI `datagen` command performs independent self-play in
+each worker and writes the 44-byte records defined by `run7.py`.  This is the
+canonical run7-plan invocation (change `threads`, `seed`, and output path for
+the host):
+
+```text
+datagen book spell_openings.epd nodes 40000 count 50000000 random_multi_pv 4 random_multi_pv_diff 100 random_move_count 8 random_move_min_ply 1 random_move_max_ply 20 write_min_ply 5 eval_limit 10000 eval_diff_limit 32000 filter_captures 1 filter_checks 1 filter_promotions 0 threads 24 seed 20260715 out .scratch/run7-50m.run7 --debug-sample 100
+```
+
+`random_move_min_ply` and `random_move_max_ply` are one-origin and inclusive.
+Every playable position receives a fixed-node search.  On the selected random
+plies the game plays a uniformly chosen legal move; otherwise it uniformly
+chooses among the available top `random_multi_pv` lines no farther than
+`random_multi_pv_diff` centipawns from PV1.  The training record always stores
+the PV1 score/move except for the mandatory pre-king-capture terminal, which
+stores the selected capture and score `32000`.  `eval_diff_limit 32000`
+disables the search-versus-qsearch filter.
+
+The writer uses temporary per-thread run7 shards named `<out>.N`.  Each worker
+buffers a complete game until its real result is known, patches every record's
+side-to-move result, and appends it to its shard.  After all target counts are
+met, the engine verifies and merges shards in numeric thread-id order, writes
+one header with the exact record and source-position counts, and removes the
+temporary shards only after the requested debug sidecar has also been merged.
+Existing output, sidecar, or shard paths are refused rather than overwritten.
+
+Successful generation also creates:
+
+- `<out>.debug.txt` when `--debug-sample N` is nonzero.  Its first `N` lines
+  are `extended FEN | score | result` for the first `N` merged records.
+- `<out>.meta.json` with wall time, total/per-thread throughput, the 50M-at-24
+  projection, exact game WDL, and the exact records-per-game histogram.
+
+Audit a generated file with:
+
+```powershell
+python tools\spellnnue-pytorch\audit_run7.py .scratch\run7-50m.run7
+python tools\spellnnue-pytorch\audit_run7.py .scratch\run7-50m.run7 --strict
+```
+
+The auditor streams records, validates the declared file size, automatically
+uses `<out>.meta.json` when present, and prints the complete distribution gate.
+Plan threshold misses are warnings by default (informative for a pilot);
+`--strict` returns status 1 when any warning is present.  Structural format or
+metadata errors return status 2.
 
 `run7.py` defines a fixed 44-byte record.  It retains the full board/FEN
 state, all four spell hands/cooldowns/gates, and PSV score/move/ply/result.
