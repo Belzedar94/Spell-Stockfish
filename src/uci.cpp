@@ -37,6 +37,7 @@
 #include "engine.h"
 #include "memory.h"
 #include "movegen.h"
+#include "nnue/spell_v2.h"
 #include "position.h"
 #include "score.h"
 #include "search.h"
@@ -279,6 +280,9 @@ void UCIEngine::bench(std::istream& args) {
     u64         nodesSearched = 0;
     const auto& options       = engine.get_options();
 
+    if (Eval::NNUE::SpellV2::profile_enabled())
+        Eval::NNUE::SpellV2::reset_profile();
+
     engine.set_on_update_full([&](const auto& i) {
         nodesSearched = i.nodes;
         on_update_full(i, options["UCI_ShowWDL"]);
@@ -337,6 +341,9 @@ void UCIEngine::bench(std::istream& args) {
               << "\nTotal time (ms) : " << elapsed  //
               << "\nNodes searched  : " << nodes    //
               << "\nNodes/second    : " << 1000 * nodes / elapsed << std::endl;
+
+    if (Eval::NNUE::SpellV2::profile_enabled())
+        Eval::NNUE::SpellV2::print_profile(std::cerr);
 
     // reset callback, to not capture a dangling reference to nodesSearched
     engine.set_on_update_full([&](const auto& i) { on_update_full(i, options["UCI_ShowWDL"]); });

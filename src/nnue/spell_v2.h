@@ -51,6 +51,31 @@ namespace SpellV2 {
 
 struct Caches;
 
+// Opt-in bench profiler. Disabled by default so production searches and the
+// performance gate do not pay for clocks or counter updates. When enabled,
+// UCI `bench` resets these counters before the run and prints them afterwards.
+struct ProfileData {
+    u64 evaluations          = 0;
+    u64 refreshes            = 0;
+    u64 incrementalUpdates   = 0;
+    u64 ftTransformNs        = 0;
+    u64 refreshNs            = 0;
+    u64 incrementalNs        = 0;
+    u64 diffBuildNs          = 0;
+    u64 applyRowsNs          = 0;
+    u64 psqRows              = 0;
+    u64 threatRows           = 0;
+    u64 cancelableThreatRows = 0;
+    u64 spellEvents          = 0;
+    u64 stackForwardNs       = 0;
+};
+
+void        set_profile_enabled(bool enabled);
+bool        profile_enabled();
+void        reset_profile();
+ProfileData profile_snapshot();
+void        print_profile(std::ostream& os);
+
 // File magic revision for jump-transparent FullThreats. The architecture is
 // still Spell-NNUE v2, but legacy 0x53504C32 networks encoded another feature
 // meaning and must never be accepted silently.

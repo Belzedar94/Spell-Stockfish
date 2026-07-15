@@ -131,6 +131,11 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
 
     options.add("UCI_ShowWDL", Option(false));
 
+    options.add("SpellNNUEProfile", Option(false, [](const Option& o) {
+                    Eval::NNUE::SpellV2::set_profile_enabled(bool(o));
+                    return std::optional<std::string>(std::nullopt);
+                }));
+
     // Standard-chess tablebases don't describe Spell Chess (hands, zones,
     // cooldowns, capture-the-king), so the path is accepted for GUI
     // compatibility but never loaded — TB::MaxCardinality stays 0 and the

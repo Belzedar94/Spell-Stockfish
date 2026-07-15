@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cassert>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iostream>
@@ -56,7 +57,89 @@ std::string                failedPathStr;
 std::string                failedReasonStr;
 std::string                fileNameStr;
 
+using ProfileClock = std::chrono::steady_clock;
+
+struct ProfileCounters {
+    std::atomic<u64> evaluations{0};
+    std::atomic<u64> refreshes{0};
+    std::atomic<u64> incrementalUpdates{0};
+    std::atomic<u64> ftTransformNs{0};
+    std::atomic<u64> refreshNs{0};
+    std::atomic<u64> incrementalNs{0};
+    std::atomic<u64> diffBuildNs{0};
+    std::atomic<u64> applyRowsNs{0};
+    std::atomic<u64> psqRows{0};
+    std::atomic<u64> threatRows{0};
+    std::atomic<u64> cancelableThreatRows{0};
+    std::atomic<u64> spellEvents{0};
+    std::atomic<u64> stackForwardNs{0};
+};
+
+std::atomic<bool> profileEnabled{false};
+ProfileCounters   profileCounters;
+
+u64 elapsed_ns(ProfileClock::time_point started) {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(ProfileClock::now() - started)
+      .count();
+}
+
 }  // namespace
+
+void set_profile_enabled(bool enabled) { profileEnabled.store(enabled, std::memory_order_relaxed); }
+
+bool profile_enabled() { return profileEnabled.load(std::memory_order_relaxed); }
+
+void reset_profile() {
+    profileCounters.evaluations.store(0, std::memory_order_relaxed);
+    profileCounters.refreshes.store(0, std::memory_order_relaxed);
+    profileCounters.incrementalUpdates.store(0, std::memory_order_relaxed);
+    profileCounters.ftTransformNs.store(0, std::memory_order_relaxed);
+    profileCounters.refreshNs.store(0, std::memory_order_relaxed);
+    profileCounters.incrementalNs.store(0, std::memory_order_relaxed);
+    profileCounters.diffBuildNs.store(0, std::memory_order_relaxed);
+    profileCounters.applyRowsNs.store(0, std::memory_order_relaxed);
+    profileCounters.psqRows.store(0, std::memory_order_relaxed);
+    profileCounters.threatRows.store(0, std::memory_order_relaxed);
+    profileCounters.cancelableThreatRows.store(0, std::memory_order_relaxed);
+    profileCounters.spellEvents.store(0, std::memory_order_relaxed);
+    profileCounters.stackForwardNs.store(0, std::memory_order_relaxed);
+}
+
+ProfileData profile_snapshot() {
+    return {
+      profileCounters.evaluations.load(std::memory_order_relaxed),
+      profileCounters.refreshes.load(std::memory_order_relaxed),
+      profileCounters.incrementalUpdates.load(std::memory_order_relaxed),
+      profileCounters.ftTransformNs.load(std::memory_order_relaxed),
+      profileCounters.refreshNs.load(std::memory_order_relaxed),
+      profileCounters.incrementalNs.load(std::memory_order_relaxed),
+      profileCounters.diffBuildNs.load(std::memory_order_relaxed),
+      profileCounters.applyRowsNs.load(std::memory_order_relaxed),
+      profileCounters.psqRows.load(std::memory_order_relaxed),
+      profileCounters.threatRows.load(std::memory_order_relaxed),
+      profileCounters.cancelableThreatRows.load(std::memory_order_relaxed),
+      profileCounters.spellEvents.load(std::memory_order_relaxed),
+      profileCounters.stackForwardNs.load(std::memory_order_relaxed),
+    };
+}
+
+void print_profile(std::ostream& os) {
+    const auto p = profile_snapshot();
+    os << "\nSpell NNUE v2 profile"
+       << "\nEvaluations             : " << p.evaluations
+       << "\nFull refreshes          : " << p.refreshes
+       << "\nIncremental updates     : " << p.incrementalUpdates
+       << "\nFT transform/update (ns): " << p.ftTransformNs
+       << "\n  refresh work (ns)     : " << p.refreshNs
+       << "\n  incremental work (ns) : " << p.incrementalNs
+       << "\n    diff build (ns)      : " << p.diffBuildNs
+       << "\n    apply rows (ns)      : " << p.applyRowsNs
+       << "\n    PSQ/spell rows       : " << p.psqRows
+       << "\n    threat rows          : " << p.threatRows
+       << "\n    cancelable threat rows: " << p.cancelableThreatRows
+       << "\n    DirtySpell events    : " << p.spellEvents
+       << "\nStack forward (ns)      : " << p.stackForwardNs << '\n';
+}
 
 // ---------------------------------------------------------------------------
 // Loading
@@ -450,6 +533,9 @@ void update_accumulator_incremental_spell(Color                       perspectiv
                                           AccumulatorState&           target_state,
                                           const AccumulatorState&     computed) {
 
+    const bool profiling = profile_enabled();
+    const auto started   = profiling ? ProfileClock::now() : ProfileClock::time_point{};
+
     assert(computed.computed[perspective]);
     assert(!target_state.computed[perspective]);
 
@@ -462,6 +548,8 @@ void update_accumulator_incremental_spell(Color                       perspectiv
 
     const auto* pfBase   = &featureTransformer.threatWeights[0];
     IndexType   pfStride = FeatureTransformerV2::OutputDimensions;
+
+    const auto diffStarted = profiling ? ProfileClock::now() : ProfileClock::time_point{};
 
     if constexpr (Forward)
     {
@@ -478,10 +566,39 @@ void update_accumulator_incremental_spell(Color                       perspectiv
                                                 psqAdded, psqRemoved);
     }
 
+    if (profiling)
+    {
+        profileCounters.diffBuildNs.fetch_add(elapsed_ns(diffStarted), std::memory_order_relaxed);
+        profileCounters.psqRows.fetch_add(psqAdded.size() + psqRemoved.size(),
+                                          std::memory_order_relaxed);
+        profileCounters.threatRows.fetch_add(thrAdded.size() + thrRemoved.size(),
+                                             std::memory_order_relaxed);
+
+        u64 cancelableRows = 0;
+        for (const IndexType removed : thrRemoved)
+            for (const IndexType added : thrAdded)
+                if (removed == added)
+                {
+                    cancelableRows += 2;
+                    break;
+                }
+        profileCounters.cancelableThreatRows.fetch_add(cancelableRows, std::memory_order_relaxed);
+        profileCounters.spellEvents.fetch_add(dirtySpell.list.size(), std::memory_order_relaxed);
+    }
+
+    const auto applyStarted = profiling ? ProfileClock::now() : ProfileClock::time_point{};
     apply_combined_spell(perspective, featureTransformer, computed, target_state, psqAdded,
                          psqRemoved, thrAdded, thrRemoved);
+    if (profiling)
+        profileCounters.applyRowsNs.fetch_add(elapsed_ns(applyStarted), std::memory_order_relaxed);
 
     target_state.computed[perspective] = true;
+
+    if (profiling)
+    {
+        profileCounters.incrementalUpdates.fetch_add(1, std::memory_order_relaxed);
+        profileCounters.incrementalNs.fetch_add(elapsed_ns(started), std::memory_order_relaxed);
+    }
 }
 
 // HalfKA-extended data comes from the Finny table entry (piece AND spell
@@ -491,6 +608,9 @@ void update_accumulator_refresh_cache_spell(Color                       perspect
                                             const Position&             pos,
                                             AccumulatorState&           accumulator,
                                             Caches&                     cache) {
+    const bool profiling = profile_enabled();
+    const auto started   = profiling ? ProfileClock::now() : ProfileClock::time_point{};
+
     constexpr auto Dimensions = FeatureTransformerV2::OutputDimensions;
 
     using Tiling [[maybe_unused]] = SIMDTiling<Dimensions, Dimensions, SpellPSQTBuckets>;
@@ -664,6 +784,12 @@ void update_accumulator_refresh_cache_spell(Color                       perspect
     }
 
 #endif
+
+    if (profiling)
+    {
+        profileCounters.refreshes.fetch_add(1, std::memory_order_relaxed);
+        profileCounters.refreshNs.fetch_add(elapsed_ns(started), std::memory_order_relaxed);
+    }
 }
 
 }  // namespace
@@ -889,17 +1015,35 @@ std::pair<Value, Value> raw_evaluate(const Position& pos, AccumulatorStack& stac
 
     ensure_cache_generation(cache);
 
-    constexpr u64 alignment = CacheLineSize;
+    constexpr u64                             alignment = CacheLineSize;
     alignas(alignment) TransformedFeatureType transformedFeatures[FeatureTransformerV2::BufferSize];
 
     ASSERT_ALIGNED(transformedFeatures, alignment);
 
     NNZInfo<L1> nnzInfo;
 
-    const int  bucket = spell_bucket(pos);
-    const auto psqt   = theNet->featureTransformer.transform(pos, stack, cache,
-                                                             transformedFeatures, bucket, nnzInfo);
-    const auto positional = theNet->stacks[bucket].propagate(transformedFeatures, nnzInfo);
+    const int bucket = spell_bucket(pos);
+
+    i32 psqt;
+    i32 positional;
+    if (profile_enabled())
+    {
+        auto started = ProfileClock::now();
+        psqt = theNet->featureTransformer.transform(pos, stack, cache, transformedFeatures, bucket,
+                                                    nnzInfo);
+        profileCounters.ftTransformNs.fetch_add(elapsed_ns(started), std::memory_order_relaxed);
+
+        started    = ProfileClock::now();
+        positional = theNet->stacks[bucket].propagate(transformedFeatures, nnzInfo);
+        profileCounters.stackForwardNs.fetch_add(elapsed_ns(started), std::memory_order_relaxed);
+        profileCounters.evaluations.fetch_add(1, std::memory_order_relaxed);
+    }
+    else
+    {
+        psqt = theNet->featureTransformer.transform(pos, stack, cache, transformedFeatures, bucket,
+                                                    nnzInfo);
+        positional = theNet->stacks[bucket].propagate(transformedFeatures, nnzInfo);
+    }
 
     return {static_cast<Value>(psqt / OutputScale), static_cast<Value>(positional / OutputScale)};
 }
