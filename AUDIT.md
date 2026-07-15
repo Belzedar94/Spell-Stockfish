@@ -1586,3 +1586,85 @@ Matriz material × fase, `registros (%)`:
   el gate solicitado, pero predicen que el 50M no debería lanzarse/entrenarse
   sin revisar primero la política productiva. No se maquillaron cambiando
   libro, filtros, `write_min_ply`, adjudicación ni seeding sintético.
+
+## P2-b — resume nativo de `datagen` (2026-07-15)
+
+### Alcance y commits
+
+Implementación y validación realizadas sobre `nnue-v2`, sin tocar `master`, sin
+push, sin escribir en `../openbench-spell` (el libro se abrió solo para lectura)
+y sin terminar procesos ajenos:
+
+- `b80f9ea7` — manifiesto durable `<out>.meta`, validación contractual,
+  saneo/conteo de shards, nuevos streams/shards por sesión, merge verificado y
+  exit distinto de cero para un `datagen` one-shot fallido.
+- `3823482c` — arnés reproducible de kill/truncado/rechazo/resume y contrato de
+  uso documentado.
+
+Build obligatorio ejecutado con `MSYSTEM=MINGW64` y
+`make -j8 build ARCH=x86-64-bmi2 COMP=mingw`: **PASS**, 40,3 s, sin warnings.
+Binario: 95.275.309 bytes, SHA-256
+`804FF2EEA7790E7D9BB72658EA8F2C4385F1EE70C9350777158B2E76985D0207`.
+
+### Cuatro gates solicitados
+
+| Gate | Resultado | Números |
+|---|---|---|
+| 1. Bench por defecto + suite | **PASS** | Bench **12.231.192** nodos, 16.859 ms, 725.499 n/s, exit 0. Suite rápida **6/6**, 12,857 s de pared: unit 1 s, UCI 1 s, reproducibilidad 5 s, XBoard 1 s, CECP hostil 4 s, perft d1 1 s. |
+| 2. Kill-resume 20k | **PASS** | `count=20.000`, `nodes=10.000`, 8 hilos, libro de 36.948 líneas, seed 20260715. El arnés creó y mató únicamente su PID 5308 tras 101,718 s, con **9.661/20.000 = 48,305%** registros durables. Tras el daño deliberado quedaron 9.660 supervivientes; sesión 1 generó 10.340 en 107,641 s. Final `(count, source_count, flags)=(20000, 28677, 0)`, **880.032 = 32 + 20.000×44** bytes, round-trip FEN/score/result + repack **50/50**, marcador de resume 1/1, shards restantes 0. `audit_run7.py` exit 0 en 0,782 s. |
+| 3. Cola truncada | **PASS** | Shard `.5`: **57.276 → 57.254 bytes** (−22, exactamente medio registro). Resume logueó `truncated shard ... by 22 byte(s)`, recortó al último registro de 44 B, reparó count de cabecera 2.500 → 1.300 y el merge siguió terminando en exactamente 20.000 registros. |
+| 4. Rechazo por parámetros | **PASS** | Antes de sanear, resume con `nodes=10001` frente a `stored 10000` devolvió **exit 1** y `resume metadata mismatch for nodes: requested 10001, stored 10000`; el arnés verificó que el shard dañado conservaba sus 57.254 bytes, es decir, el rechazo no lo modificó. |
+
+El auditor normal no encontró errores estructurales ni inconsistencias de
+metadata. Como en P2-a, el piloto parcial sí imprimió dos warnings
+distributivos informativos que no cambian su exit 0: fase de pociones 2 =
+4,450% y fase 3 = 0,010%, ambas bajo el umbral productivo del 5%. No se ejecutó
+`--strict`, que no forma parte de este gate de resume.
+
+### Artefactos locales del gate
+
+| Artefacto ignorado | Bytes | SHA-256 |
+|---|---:|---|
+| `.scratch/run7-resume-gate-20k.run7` | 880.032 | `F4EF30C3FB83F9745185B027C0D5763FEE119A8651ADFBB5FF044356E859799B` |
+| `.scratch/run7-resume-gate-20k.run7.debug.txt` | 5.295 | `0A6B1A1BE063B75B132259F387AB6EC07BC0FA0836F9A67220D7B76D427A582F` |
+| `.scratch/run7-resume-gate-20k.run7.meta` | 1.760 | `950C04AC84B81DF7BF17F5144CA336664D1DBC3B5402A0091C62ADF253C7938C` |
+| `.scratch/run7-resume-gate-20k.run7.meta.json` | 1.545 | `EF81226905A952B44D37BB083347491BFB6BFF46D69387C456A4441003A65C4C` |
+
+El manifiesto guardó versión 1, record size 44, comando inicial y último comando
+normalizados, count/seed/filtros completos, ruta absoluta del libro, tamaño
+3.782.734 y hash rápido `fnv1a64:BB9A5CF93963773E`; `resume_count=1` quedó
+persistido antes de crear los shards 8–15.
+
+### Decisiones fuera de spec y limitaciones conocidas
+
+- `<out>.meta` es el manifiesto durable y parseable de resume; el
+  `<out>.meta.json` preexistente conserva su función de informe analítico final.
+- `threads` no altera el dataset contract y puede cambiar al reanudar. Count,
+  seed, debug sample, libro y todos los knobs de búsqueda, aleatorización y
+  filtrado quedan congelados. No existe `--force`.
+- Cada sesión usa ids de shard nuevos. El stream PRNG se indexa por
+  `(resume_count << 32) | thread_id`; incrementar y publicar el contador antes
+  de generar evita repetir los streams de una sesión matada otra vez.
+- Un shard sin cabecera durable observado en los smokes se restablece como
+  vacío y se loguea; no contiene registros recuperables. Una cabecera stale se
+  repara a partir del tamaño físico. Son defensas adicionales al caso de cola
+  parcial pedido.
+- Un kill puede perder los contadores de posiciones fuente y partidas que aún
+  estaban solo en memoria. Para esos shards, `source_positions` usa `records`
+  como cota inferior conservadora; el `.meta.json` reanudado omite WDL e
+  histograma globales imposibles de reconstruir, pero conserva counts binarios
+  exactos y estadísticas exactas de la última sesión.
+- FNV-1a-64 es deliberadamente un hash rápido de identidad, no criptográfico.
+  El libro se vuelve a validar por ruta equivalente, tamaño y hash antes de
+  tocar shards.
+- El debug durable se flush-ea por línea, conserva hasta N muestras y añade
+  comentarios `# datagen resume session N`; consumidores anteriores deben
+  ignorar esas líneas. Si se perdieran tantas muestras de texto que ni los
+  registros restantes por generar pudieran reponer N, resume rechaza en vez de
+  inventar FENs para shards binarios antiguos.
+- No se reanuda un output ya publicado: la presencia del run7 final se trata
+  como generación completa. El caso contractual es el conjunto de shards de
+  una ejecución interrumpida.
+- Los gates 2 y 3 comparten deliberadamente la misma corrida de 20k: primero se
+  hizo el kill al 48,305%, después el truncado de 22 B y finalmente un único
+  resume, por lo que el resultado exacto prueba ambas recuperaciones a la vez.
