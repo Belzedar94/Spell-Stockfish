@@ -54,17 +54,46 @@ disables the search-versus-qsearch filter.
 The writer uses temporary per-thread run7 shards named `<out>.N`.  Each worker
 buffers a complete game until its real result is known, patches every record's
 side-to-move result, and appends it to its shard.  After all target counts are
-met, the engine verifies and merges shards in numeric thread-id order, writes
+met, the engine verifies and merges shards in numeric shard-id order, writes
 one header with the exact record and source-position counts, and removes the
 temporary shards only after the requested debug sidecar has also been merged.
-Existing output, sidecar, or shard paths are refused rather than overwritten.
+Existing completed output paths are refused rather than overwritten.
+
+Every new run writes a durable `<out>.meta` resume manifest before self-play.
+It contains the normalized full command, base seed, target count, every
+search/randomization/filter knob, run7 version/record size, and the normalized
+book path, byte size, and fast FNV-1a-64 content hash.  To continue an
+interrupted run, repeat the command with `--resume`:
+
+```text
+datagen book spell_openings.epd nodes 10000 count 20000000 random_multi_pv 4 random_multi_pv_diff 100 random_move_count 8 random_move_min_ply 1 random_move_max_ply 20 write_min_ply 5 eval_limit 10000 eval_diff_limit 32000 filter_captures 1 filter_checks 1 filter_promotions 0 threads 24 seed 20260715 out .scratch/run7-20m.run7 --debug-sample 100 --resume
+```
+
+Resume validates the target count, seed, debug contract, book identity, and all
+dataset-affecting knobs before touching a shard.  `threads` may change.  It
+truncates a partial payload tail to the last complete 44-byte record, repairs
+stale shard header counts, counts every surviving numbered shard, and creates
+new shard ids for the remaining quota.  The manifest's resume counter is
+persisted before generation and selects a disjoint `(resume, worker)` PRNG
+stream.  There is deliberately no force override in v1.
+
+On a resumed `--debug-sample` run, surviving sample lines are retained and a
+`# datagen resume session N` marker is appended before resumed-session samples;
+comment lines do not count toward `N`.  The final merge includes every old and
+new record, verifies the exact header and file size, and only then removes all
+numbered shards.  A hard kill can lose buffered source-position/game counters;
+for such a shard, resume records `records` as a conservative source-position
+lower bound.  Resumed `.meta.json` reports exact output/session record counts
+but omits the unrecoverable all-session game histogram; the binary records
+themselves are not affected.
 
 Successful generation also creates:
 
 - `<out>.debug.txt` when `--debug-sample N` is nonzero.  Its first `N` lines
-  are `extended FEN | score | result` for the first `N` merged records.
+  that are not resume markers are `extended FEN | score | result` samples.
 - `<out>.meta.json` with wall time, total/per-thread throughput, the 50M-at-24
-  projection, exact game WDL, and the exact records-per-game histogram.
+  projection, and (for uninterrupted runs) exact game WDL and records-per-game
+  histogram.  Resumed runs instead identify survivor/session record counts.
 
 Audit a generated file with:
 
