@@ -1204,6 +1204,12 @@ void Position::do_move(Move                      m,
     assert(m.is_ok());
     assert(&newSt != st);
 
+    // The accumulator stack is shared by the stock and Spell-NNUE v2 paths.
+    // Only v2 (identified by its DirtySpell sink) consumes jump-transparent
+    // FullThreats; the default-net path deliberately keeps stock semantics.
+    if (dsp)
+        dts.spellAware = true;
+
     SpellSnap spellBefore;
     if (dsp)
         snap_spell(*this, spellBefore);
@@ -1641,12 +1647,141 @@ constexpr bool can_slider_threat(Piece pc, Piece slider) {
 }
 
 template<bool ComputeRay>
+void Position::update_piece_threats_spell(
+  Piece pc, bool putPiece, Square s, DirtyThreats* const dts, Bitboard noRaysContaining) const {
+    const Bitboard occupied          = pieces();
+    const Bitboard occupiedSliding   = occupied_for_sliding();
+    const Bitboard occupiedNoK       = occupied ^ pieces(KING);
+    const Bitboard withoutSquare     = occupiedSliding & ~square_bb(s);
+    const Bitboard rookQueens        = pieces(ROOK, QUEEN);
+    const Bitboard bishopQueens      = pieces(BISHOP, QUEEN);
+    const Bitboard rAttacks          = attacks_bb<ROOK>(s, occupiedSliding);
+    const Bitboard bAttacks          = attacks_bb<BISHOP>(s, occupiedSliding);
+    const Bitboard rCandidates       = attacks_bb<ROOK>(s, withoutSquare);
+    const Bitboard bCandidates       = attacks_bb<BISHOP>(s, withoutSquare);
+    const Bitboard discoveredTargets = (rCandidates | bCandidates) & occupiedNoK & ~square_bb(s);
+    Bitboard       sliders           = (rookQueens & rCandidates) | (bishopQueens & bCandidates);
+    Bitboard       directSliders     = (rookQueens & rAttacks) | (bishopQueens & bAttacks);
+
+    if (type_of(pc) == QUEEN)
+        directSliders &= pieces(QUEEN);
+
+    auto process_sliders = [&](bool addDirectAttacks) {
+        Bitboard candidates = sliders;
+        while (candidates)
+        {
+            const Square sliderSq = pop_lsb(candidates);
+            const Piece  slider   = piece_on(sliderSq);
+
+            if constexpr (ComputeRay)
+            {
+                const Bitboard ray = ray_pass_bb(sliderSq, s);
+
+                // A board piece on a live jump gate never blocks a ray,
+                // so adding/removing it cannot reveal third-party threats.
+                // With s present it is the first opaque blocker. With s
+                // absent, rCandidates/bCandidates already contain every
+                // transparent gate piece and the first opaque target past
+                // it. Restricting that shared map to this slider's ray is
+                // therefore the exact attack-map delta, without doing two
+                // additional magic lookups per slider.
+                if (!(jump_transparent() & s) && (ray & noRaysContaining) != noRaysContaining)
+                {
+                    const Bitboard beyondS = ray & ~between_bb(sliderSq, s);
+                    Bitboard       changed = beyondS & discoveredTargets;
+
+                    while (changed)
+                    {
+                        const Square threatenedSq = pop_lsb(changed);
+                        const Piece  threatenedPc = piece_on(threatenedSq);
+                        if (can_slider_threat(threatenedPc, slider))
+                            add_dirty_threat(dts, !putPiece, slider, threatenedPc, sliderSq,
+                                             threatenedSq);
+                    }
+                }
+            }
+
+            if (addDirectAttacks && (directSliders & sliderSq) && can_slider_threat(pc, slider))
+                add_dirty_threat(dts, putPiece, slider, pc, sliderSq, s);
+        }
+    };
+
+    if (type_of(pc) == KING)
+    {
+        if constexpr (ComputeRay)
+            process_sliders(false);
+        return;
+    }
+
+    const Bitboard knights    = pieces(KNIGHT);
+    const Bitboard whitePawns = pieces(WHITE, PAWN);
+    const Bitboard blackPawns = pieces(BLACK, PAWN);
+
+    Bitboard threatened      = attacks_bb(pc, s, occupiedSliding) & occupiedNoK;
+    Bitboard incomingThreats = PseudoAttacks[KNIGHT][s] & knights;
+
+    Bitboard pawnThreats = 0;
+    if (type_of(pc) == PAWN)
+    {
+        const Bitboard whiteAttacks = PawnPushOrAttacks[WHITE][s];
+        const Bitboard blackAttacks = PawnPushOrAttacks[BLACK][s];
+
+        threatened |= (color_of(pc) == WHITE ? whiteAttacks : blackAttacks) & pieces(PAWN);
+        pawnThreats = (whiteAttacks & blackPawns) | (blackAttacks & whitePawns);
+    }
+    else
+        pawnThreats =
+          (attacks_bb<PAWN>(s, WHITE) & blackPawns) | (attacks_bb<PAWN>(s, BLACK) & whitePawns);
+
+    if (type_of(pc) == PAWN || type_of(pc) == KNIGHT || type_of(pc) == ROOK)
+        incomingThreats |= pawnThreats;
+
+    switch (type_of(pc))
+    {
+    case PAWN :
+        threatened &= pieces(PAWN, KNIGHT, ROOK);
+        break;
+    case BISHOP :
+    case ROOK :
+        threatened &= pieces(PAWN, KNIGHT, BISHOP, ROOK);
+        break;
+    default :
+        threatened &= occupiedNoK;
+        break;
+    }
+
+    while (threatened)
+    {
+        const Square threatenedSq = pop_lsb(threatened);
+        add_dirty_threat(dts, putPiece, pc, piece_on(threatenedSq), s, threatenedSq);
+    }
+
+    if constexpr (ComputeRay)
+        process_sliders(true);
+    else
+        incomingThreats |= directSliders;
+
+    while (incomingThreats)
+    {
+        const Square srcSq = pop_lsb(incomingThreats);
+        add_dirty_threat(dts, putPiece, piece_on(srcSq), pc, srcSq, s);
+    }
+    return;
+}
+
+template<bool ComputeRay>
 void Position::update_piece_threats(Piece               pc,
                                     bool                putPiece,
                                     Square              s,
                                     DirtyThreats* const dts,
                                     // Silence spurious warning on GCC 10
                                     [[maybe_unused]] Bitboard noRaysContaining) const {
+    if (dts->spellAware)
+    {
+        update_piece_threats_spell<ComputeRay>(pc, putPiece, s, dts, noRaysContaining);
+        return;
+    }
+
     const Bitboard occupied     = pieces();
     const Bitboard rookQueens   = pieces(ROOK, QUEEN);
     const Bitboard bishopQueens = pieces(BISHOP, QUEEN);

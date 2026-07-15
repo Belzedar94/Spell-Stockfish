@@ -179,10 +179,12 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
                   const bool ok = Eval::NNUE::SpellV2::load(resolved);
                   if (ok)
                       SpellNNUE::unload();
-                  sync_cout << "info string "
-                            << (ok ? "Spell NNUE v2 loaded: "
-                                   : "ERROR: spell NNUE v2 failed to load: ")
-                            << evalPath << sync_endl;
+                  std::string message =
+                    ok ? "Spell NNUE v2 loaded: " : "ERROR: spell NNUE v2 failed to load: ";
+                  message += evalPath;
+                  if (!ok)
+                      message += " (" + Eval::NNUE::SpellV2::failed_reason() + ')';
+                  sync_cout << "info string " << message << sync_endl;
                   return std::nullopt;
               }
 

@@ -53,6 +53,7 @@ std::unique_ptr<NetworkV2> theNet;
 std::atomic<u32>           netGeneration{0};
 bool                       failedFlag = false;
 std::string                failedPathStr;
+std::string                failedReasonStr;
 std::string                fileNameStr;
 
 }  // namespace
@@ -117,15 +118,28 @@ bool looks_like_v2_net(const std::string& path) {
     std::ifstream stream(path_from_utf8(path), std::ios::binary);
     if (!stream)
         return false;
-    return read_little_endian<u32>(stream) == Version && stream.good();
+    const u32 version = read_little_endian<u32>(stream);
+    return (version == Version || version == LegacyVersion) && stream.good();
 }
 
 bool load(const std::string& path) {
     std::ifstream stream(path_from_utf8(path), std::ios::binary);
     if (!stream)
     {
+        failedFlag      = true;
+        failedPathStr   = path;
+        failedReasonStr = "file could not be opened";
+        return false;
+    }
+
+    const u32 fileVersion = read_little_endian<u32>(stream);
+    stream.seekg(0);
+    if (fileVersion == LegacyVersion)
+    {
         failedFlag    = true;
         failedPathStr = path;
+        failedReasonStr =
+          "legacy 0x53504C32 network uses stock-occupancy threats; regenerate as 0x53504C33";
         return false;
     }
 
@@ -134,13 +148,15 @@ bool load(const std::string& path) {
 
     if (!candidate->read_parameters(stream, description))
     {
-        failedFlag    = true;
-        failedPathStr = path;
+        failedFlag      = true;
+        failedPathStr   = path;
+        failedReasonStr = "invalid 0x53504C33 version, feature hash, payload, or file size";
         return false;
     }
 
-    theNet      = std::move(candidate);
-    failedFlag  = false;
+    theNet     = std::move(candidate);
+    failedFlag = false;
+    failedReasonStr.clear();
     fileNameStr = path;
     netGeneration.fetch_add(1, std::memory_order_relaxed);
     return true;
@@ -153,6 +169,7 @@ void unload() {
         netGeneration.fetch_add(1, std::memory_order_relaxed);
     }
     failedFlag = false;
+    failedReasonStr.clear();
     fileNameStr.clear();
 }
 
@@ -163,6 +180,8 @@ u32 generation() { return netGeneration.load(std::memory_order_relaxed); }
 bool load_failed() { return failedFlag && !loaded(); }
 
 const std::string& failed_path() { return failedPathStr; }
+
+const std::string& failed_reason() { return failedReasonStr; }
 
 const std::string& file_name() { return fileNameStr; }
 
@@ -505,7 +524,7 @@ void update_accumulator_refresh_cache_spell(Color                       perspect
     append_spell_diff(perspective, ksq, entry, pos, removed, added);
 
     ThreatFeatureSet::IndexList active;
-    ThreatFeatureSet::append_active_indices(perspective, pos, active);
+    ThreatFeatureSet::append_active_indices(perspective, pos, active, true);
 
     accumulator.computed[perspective] = true;
 
@@ -923,7 +942,7 @@ void dump_features(const Position& pos, std::ostream& os) {
         SpellFeatureSet::append_active_spell(perspective, ksq, pos, psq);
 
         ThreatFeatureSet::IndexList thr;
-        ThreatFeatureSet::append_active_indices(perspective, pos, thr);
+        ThreatFeatureSet::append_active_indices(perspective, pos, thr, true);
 
         std::vector<IndexType> sortedPsq(psq.begin(), psq.end());
         std::sort(sortedPsq.begin(), sortedPsq.end());

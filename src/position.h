@@ -245,6 +245,9 @@ class Position {
                               Square              s,
                               DirtyThreats* const dts,
                               Bitboard            noRaysContaining = -1ULL) const;
+    template<bool ComputeRay>
+    void update_piece_threats_spell(
+      Piece pc, bool putPiece, Square s, DirtyThreats* const dts, Bitboard noRaysContaining) const;
     void move_piece(Square from, Square to, DirtyThreats* const dts = nullptr);
     template<bool Do>
     void do_castling(Color               us,

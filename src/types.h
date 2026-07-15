@@ -376,6 +376,11 @@ using DirtyThreatList = ValueList<DirtyThreat, 96>;
 
 struct DirtyThreats {
     DirtyThreatList list;
+
+    // The stock evaluator must retain stock-occupancy FullThreats so the
+    // no-SPL2 bench stays identical. The v2 search sets this bit and its
+    // board-operation diffs use the engine's jump-transparent slider maps.
+    bool spellAware = false;
 };
 
 // Keep track of what spell state a move changes (used by the Spell-NNUE v2

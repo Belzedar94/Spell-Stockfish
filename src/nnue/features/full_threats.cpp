@@ -207,9 +207,12 @@ inline sf_always_inline IndexType FullThreats::make_index(
 
 // Get a list of indices for active features in ascending order
 
-void FullThreats::append_active_indices(Color perspective, const Position& pos, IndexList& active) {
+void FullThreats::append_active_indices(Color           perspective,
+                                        const Position& pos,
+                                        IndexList&      active,
+                                        bool            spellAware) {
     const Square   ksq      = pos.square<KING>(perspective);
-    const Bitboard occupied = pos.pieces();
+    const Bitboard occupied = spellAware ? pos.occupied_for_sliding() : pos.pieces();
     const Bitboard pawns    = pos.pieces(PAWN);
 
     const Bitboard pawnTargets        = pos.pieces(PAWN, KNIGHT, ROOK);

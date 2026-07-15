@@ -159,11 +159,18 @@ class SpellKAv2 {
                                        IndexList&        removed,
                                        IndexList&        added);
 
-    // Returns whether the change means a full accumulator refresh is
-    // required. Unchanged policy vs HalfKA: only own-king moves (spell events
-    // never move the king; null-move states never refresh).
+    // Own-king moves change HalfKA buckets. A live jump gate appearing or
+    // expiring also changes slider threats belonging to pieces untouched by
+    // the move, so the threat side must be rebuilt (including on null moves).
     static bool requires_refresh(const DirtyPiece& dp, const DirtySpell& ds, Color perspective) {
-        return !ds.isNull && dp.pc == make_piece(perspective, KING);
+        if (!ds.isNull && dp.pc == make_piece(perspective, KING))
+            return true;
+
+        for (const auto& event : ds.list)
+            if (event.block() == DirtySpellEvent::JUMP_GATE)
+                return true;
+
+        return false;
     }
 };
 

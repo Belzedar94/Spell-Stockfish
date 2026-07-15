@@ -51,8 +51,11 @@ namespace SpellV2 {
 
 struct Caches;
 
-// Version of the SPL2 evaluation file ("SPL2" in ASCII)
-constexpr u32 Version = 0x53504C32u;
+// File magic revision for jump-transparent FullThreats. The architecture is
+// still Spell-NNUE v2, but legacy 0x53504C32 networks encoded another feature
+// meaning and must never be accepted silently.
+constexpr u32 LegacyVersion = 0x53504C32u;
+constexpr u32 Version       = 0x53504C33u;
 
 using SpellFeatureSet = Features::SpellKAv2;
 
@@ -180,6 +183,8 @@ u32 generation();
 bool load_failed();
 
 const std::string& failed_path();
+
+const std::string& failed_reason();
 
 const std::string& file_name();
 
