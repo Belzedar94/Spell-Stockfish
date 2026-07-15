@@ -329,6 +329,11 @@ class Worker {
     // It searches from the root position and outputs the "bestmove".
     void start_searching();
 
+    // Root quiescence score for generator-side quiet-position filtering.
+    // Called on the worker's native thread after a normal root search has
+    // initialized rootPos and all evaluation dispatch state.
+    Value qsearch_for_datagen();
+
     bool is_mainthread() const { return threadIdx == 0; }
 
     void ensure_network_replicated();
@@ -362,7 +367,7 @@ class Worker {
 
     // Quiescence search function, which is called by the main search
     template<NodeType nodeType>
-    Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta);
+    Value qsearch(Position& pos, Stack* ss, Value alpha, Value beta, bool ignoreTt = false);
 
     int reduction(bool i, Depth d, int mn, int delta) const;
 

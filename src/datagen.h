@@ -19,35 +19,21 @@
 #ifndef DATAGEN_H_INCLUDED
 #define DATAGEN_H_INCLUDED
 
-#include <cstdint>
+#include <filesystem>
+#include <iosfwd>
+#include <optional>
+#include <string>
 
-#include "types.h"
+namespace Stockfish::Datagen {
 
-namespace Stockfish {
+// Parse and execute the P2-a run7 self-play command. The binary path is used
+// only to let each independent search engine resolve its embedded/default net.
+// On failure error contains a diagnostic; incomplete shards are kept for
+// inspection unless the final output and requested sidecar were merged.
+bool run(std::istream&                               args,
+         const std::optional<std::filesystem::path>& binaryPath,
+         std::string&                                error);
 
-class Position;
-
-namespace Datagen {
-
-// PackedSfenValue: the reference training-data record (76 bytes,
-// DATA_SIZE=512). Byte contract verified against the reference tools
-// binary — see SPELL_SPEC.md §7 and tools/psv_decode.py.
-struct PackedSfenValue {
-    u8  sfen[64];
-    i16 score;     // search value, side-to-move POV, internal units
-    u16 _pad = 0;  // natural alignment of the u32 move
-    u32 move;      // PV first move (our 32-bit encoding incl. spell payload)
-    u16 gamePly;
-    i8  gameResult;  // +1 side to move eventually wins, -1 loses, 0 draw
-    u8  padding = 0;
-};
-static_assert(sizeof(PackedSfenValue) == 76);
-
-// Packs a position into the reference 512-bit sfen layout.
-void pack_sfen(const Position& pos, u8 out[64]);
-
-}  // namespace Datagen
-
-}  // namespace Stockfish
+}  // namespace Stockfish::Datagen
 
 #endif  // #ifndef DATAGEN_H_INCLUDED

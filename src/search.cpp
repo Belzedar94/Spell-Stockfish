@@ -284,6 +284,32 @@ void Search::Worker::start_searching() {
     main_manager()->updates.onBestmove(bestmove, ponder);
 }
 
+Value Search::Worker::qsearch_for_datagen() {
+    useSpellV2 = Eval::NNUE::SpellV2::loaded();
+    accumulatorStack.reset();
+    movesArenaTop   = movesArena.get();
+    optimism[WHITE] = optimism[BLACK] = VALUE_ZERO;
+    nodes                             = 0;
+    selDepth                          = 0;
+    threads.stop                      = false;
+
+    PVMoves pv;
+    Stack   stack[MAX_PLY + 10] = {};
+    Stack*  ss                  = stack + 7;
+
+    for (int i = 7; i > 0; --i)
+    {
+        (ss - i)->continuationHistory           = &continuationHistory[0][0][NO_PIECE][0];
+        (ss - i)->continuationCorrectionHistory = &continuationCorrectionHistory[NO_PIECE][0];
+        (ss - i)->staticEval                    = VALUE_NONE;
+    }
+    for (int i = 0; i <= MAX_PLY + 2; ++i)
+        (ss + i)->ply = i;
+    ss->pv = &pv;
+
+    return qsearch<PV>(rootPos, ss, -VALUE_INFINITE, VALUE_INFINITE, true);
+}
+
 // Main iterative deepening loop. It calls search()
 // repeatedly with increasing depth until the allocated thinking time has been
 // consumed, the user stops the search, or the maximum search depth is reached.
@@ -1764,7 +1790,7 @@ moves_loop:  // When in check, search starts here
 // See https://www.chessprogramming.org/Horizon_Effect
 // and https://www.chessprogramming.org/Quiescence_Search
 template<NodeType nodeType>
-Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta) {
+Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta, bool ignoreTt) {
 
     static_assert(nodeType != Root);
     constexpr bool PvNode = nodeType == PV;
@@ -1820,6 +1846,11 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     // Step 3. Transposition table lookup
     posKey                         = pos.key();
     auto [ttHit, ttData, ttWriter] = tt.probe(posKey);
+    if (ignoreTt)
+    {
+        ttHit  = false;
+        ttData = TTData(Move::none(), VALUE_NONE, VALUE_NONE, DEPTH_NONE, BOUND_NONE, false);
+    }
     // Need further processing of the saved data
     ss->ttHit    = ttHit;
     ttData.move  = ttHit ? ttData.move : Move::none();
@@ -1869,7 +1900,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
             if (!is_decisive(bestValue))
                 bestValue = (467 * bestValue + 557 * beta) / 1024;
 
-            if (!ss->ttHit)
+            if (!ss->ttHit && !ignoreTt)
                 ttWriter.write(posKey, VALUE_NONE, false, BOUND_LOWER, DEPTH_UNSEARCHED,
                                Move::none(), unadjustedStaticEval, tt.generation());
             return bestValue;
@@ -1956,7 +1987,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         // Step 7. Make and search the move
         do_move(pos, move, st, givesCheck, ss);
 
-        value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha);
+        value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha, ignoreTt);
         undo_move(pos, move);
 
         assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);
@@ -2005,9 +2036,10 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
 
     // Save gathered info in transposition table. The static evaluation
     // is saved as it was before adjustment by correction history.
-    ttWriter.write(posKey, value_to_tt(bestValue, ss->ply), pvHit,
-                   bestValue >= beta ? BOUND_LOWER : BOUND_UPPER, DEPTH_QS, bestMove,
-                   unadjustedStaticEval, tt.generation());
+    if (!ignoreTt)
+        ttWriter.write(posKey, value_to_tt(bestValue, ss->ply), pvHit,
+                       bestValue >= beta ? BOUND_LOWER : BOUND_UPPER, DEPTH_QS, bestMove,
+                       unadjustedStaticEval, tt.generation());
 
     assert(bestValue > -VALUE_INFINITE && bestValue < VALUE_INFINITE);
 

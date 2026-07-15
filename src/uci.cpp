@@ -32,7 +32,6 @@
 #include <vector>
 
 #include "benchmark.h"
-#include <fstream>
 #include "datagen.h"
 #include "engine.h"
 #include "memory.h"
@@ -350,174 +349,19 @@ void UCIEngine::bench(std::istream& args) {
 }
 
 
-// Native training-data generation (Phase 5): self-play at fixed nodes with
-// random exploration plies, writing reference-format PackedSfenValue
-// records (76 bytes, byte contract verified against the reference tools —
-// SPELL_SPEC.md §7, decoder/validator in tools/psv_decode.py).
-//
-//   datagen out FILE count N nodes M [seed S] [random_plies R]
-//           [eval_limit E] [ply_limit P]
-//
-// count is the number of POSITIONS (records); games run until it is met.
-// For parallel generation run multiple engine processes with distinct
-// output files and seeds.
+// P2-a run7 self-play. Parsing, independent worker engines, filtering,
+// sharding and the verified final merge live in datagen.cpp.
 void UCIEngine::datagen(std::istringstream& args) {
+    engine.stop();
+    engine.wait_for_search_finished();
 
-    std::string out         = "spell_data.bin";
-    u64         count       = 10000;
-    u64         nodesLimit  = 40000;
-    u64         seed        = u64(now());
-    int         randomPlies = 8, evalLimit = 3000, plyLimit = 400;
+    std::optional<std::filesystem::path> binaryPath;
+    if (cli.argc > 0)
+        binaryPath = path_from_utf8(cli.argv[0]);
 
-    std::string token;
-    while (args >> token)
-    {
-        if (token == "out")
-            args >> out;
-        else if (token == "count")
-            args >> count;
-        else if (token == "nodes")
-            args >> nodesLimit;
-        else if (token == "seed")
-            args >> seed;
-        else if (token == "random_plies")
-            args >> randomPlies;
-        else if (token == "eval_limit")
-            args >> evalLimit;
-        else if (token == "ply_limit")
-            args >> plyLimit;
-        else
-        {
-            sync_cout << "info string datagen: unknown option " << token << sync_endl;
-            return;
-        }
-    }
-
-    std::ofstream file(out, std::ios::binary | std::ios::app);
-    if (!file)
-    {
-        sync_cout << "info string datagen: cannot open " << out << sync_endl;
-        return;
-    }
-
-    PRNG rng(seed);
-
-    // Silence the engine's search output and capture what we need
-    int         lastValue  = 0;
-    bool        lastIsMate = false, haveScore = false;
-    std::string bestmoveStr;
-
-    engine.set_on_iter([](const auto&) {});
-    engine.set_on_update_no_moves([](const auto&) {});
-    engine.set_on_verify_network([](const auto&) {});
-    engine.set_on_update_full([&](const Engine::InfoFull& i) {
-        haveScore = true;
-        if (i.score.is<Score::InternalUnits>())
-        {
-            lastValue  = i.score.get<Score::InternalUnits>().value;
-            lastIsMate = false;
-        }
-        else
-            lastIsMate = true;
-    });
-    engine.set_on_bestmove(
-      [&](std::string_view bm, std::string_view) { bestmoveStr = std::string(bm); });
-
-    u64       written = 0, games = 0;
-    TimePoint t0 = now();
-
-    while (written < count)
-    {
-        Position     pos;
-        StateListPtr states(new std::deque<StateInfo>(1));
-        pos.set(StartFEN, false, &states->back());
-
-        std::vector<Datagen::PackedSfenValue> buf;
-        int                                   result = 0;  // white POV: +1 / -1 / 0
-
-        for (int ply = 0; ply < plyLimit; ++ply)
-        {
-            if (!pos.count<KING>(WHITE) || !pos.count<KING>(BLACK))
-            {
-                result = pos.count<KING>(WHITE) ? 1 : -1;
-                break;
-            }
-
-            MoveList<LEGAL> ml(pos);
-            if (ml.size() == 0)
-            {
-                // Stalled while attacked = loss, quiet stall = draw
-                result = pos.checkers() ? (pos.side_to_move() == WHITE ? -1 : 1) : 0;
-                break;
-            }
-            if (pos.is_draw(ply))
-                break;  // result stays 0
-
-            Move m;
-            if (ply < randomPlies)
-                m = ml.begin()[rng.rand<u64>() % ml.size()];
-            else
-            {
-                // O(1) per ply: hand the engine the current FEN instead of
-                // replaying the whole move list
-                engine.set_position(pos.fen(), {});
-                Search::LimitsType limits;
-                limits.nodes = nodesLimit;
-                haveScore    = false;
-                bestmoveStr.clear();
-                engine.go(limits);
-                engine.wait_for_search_finished();
-
-                m = to_move(pos, bestmoveStr);
-                if (!m || !haveScore)
-                {
-                    result = pos.checkers() ? (pos.side_to_move() == WHITE ? -1 : 1) : 0;
-                    break;
-                }
-
-                // A decisive score ends the game for result purposes
-                if (lastIsMate || std::abs(lastValue) >= evalLimit)
-                {
-                    const bool stmWins = lastIsMate ? lastValue >= 0 : lastValue > 0;
-                    // Mate scores arrive as Score::Mate; treat sign via value
-                    result = (pos.side_to_move() == WHITE) == stmWins ? 1 : -1;
-                    break;
-                }
-
-                Datagen::PackedSfenValue psv{};
-                Datagen::pack_sfen(pos, psv.sfen);
-                psv.score   = i16(std::clamp(lastValue, -32000, 32000));
-                psv.move    = m.raw();
-                psv.gamePly = u16(pos.game_ply());
-                buf.push_back(psv);
-            }
-
-            states->emplace_back();
-            pos.do_move(m, states->back());
-        }
-
-        for (auto& p : buf)
-        {
-            const bool stmWhite = (p.gamePly % 2) == 0;
-            p.gameResult        = result == 0 ? 0 : (result > 0) == stmWhite ? 1 : -1;
-        }
-        file.write(reinterpret_cast<const char*>(buf.data()),
-                   std::streamsize(buf.size() * sizeof(Datagen::PackedSfenValue)));
-        file.flush();
-        written += buf.size();
-        ++games;
-
-        if (games % 10 == 0)
-        {
-            const double els = double(now() - t0) / 1000.0;
-            sync_cout << "info string datagen " << written << "/" << count << " positions, "
-                      << games << " games, " << u64(written / std::max(els, 1e-9)) << " pos/s"
-                      << sync_endl;
-        }
-    }
-
-    sync_cout << "info string datagen finished: " << written << " positions in " << games
-              << " games -> " << out << sync_endl;
+    std::string error;
+    if (!Datagen::run(args, binaryPath, error))
+        sync_cout << "info string datagen ERROR: " << error << sync_endl;
 }
 
 void UCIEngine::benchmark(std::istream& args) {

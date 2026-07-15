@@ -69,6 +69,8 @@ class Engine {
 
     // blocking call to wait for search to finish
     void wait_for_search_finished();
+    // Run a root qsearch on the current position (datagen quietness filter).
+    Score qsearch();
     // set a new position, moves are in UCI format
     std::optional<PositionSetError> set_position(const std::string&              fen,
                                                  const std::vector<std::string>& moves);

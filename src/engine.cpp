@@ -285,6 +285,14 @@ void Engine::set_on_verify_network(std::function<void(std::string_view)>&& f) {
 
 void Engine::wait_for_search_finished() { threads.main_thread()->wait_for_search_finished(); }
 
+Score Engine::qsearch() {
+    Value value = VALUE_ZERO;
+    threads.run_on_thread(0,
+                          [&]() { value = threads.main_thread()->worker->qsearch_for_datagen(); });
+    threads.wait_on_thread(0);
+    return Score(value, pos);
+}
+
 std::optional<PositionSetError> Engine::set_position(const std::string&              fen,
                                                      const std::vector<std::string>& moves) {
     // Drop the old state and create a new one
