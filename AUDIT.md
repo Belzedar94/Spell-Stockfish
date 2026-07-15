@@ -1329,3 +1329,21 @@ No hubo decisiones de semántica fuera del brief: se eligió refresh para jump,
 no diff global de terceros; freeze continúa amenazando; no se amplió la cota
 96. Los únicos extras son robustez de rutas del harness, profiling opt-in y
 el dispatch frío necesarios para medir/cumplir los gates sin penalizar stock.
+
+### Anexo: verificación independiente (Fable, máquina quieta, worker parado)
+
+- Bench por defecto: **12231192** ✓ (build propio -j16). Suite **6/6** ✓.
+- SHA-256 de la red regenerada == sample-network.json ✓ (73525333…).
+- Bench v2 ×3: 527.405 / 531.574 / 540.941 nps — mediana **531.574** ✓ (gate ≥500k);
+  node-count **29.593.801 exacto en los 3** ✓.
+- Paridad re-corrida por mí con el binario final: **PASS 1000 posiciones
+  (200 jump vivo / 200 freeze viva), 0 mismatches, 0 cp** ✓.
+- Auditoría del diff del arnés de paridad: sin aflojes — el comparador se
+  ENDURECIÓ (≤1cp → ==0), mínimos de cobertura viva obligatorios, asserts
+  semánticos nuevos (+1 threat con gate vivo; frozen no cambia threats). Sin
+  special-casing de bench ni cambios de métrica. Veredicto: sin reward hacking.
+- Regresión camino por defecto: 7 pares alternados master↔rama en máquina
+  quieta → mediana **−2,6%** (σ≈2pp; Codex midió +0,17% con granja activa).
+  Dentro del gate ±3%. El guard useSpellV2 es correcto (nullptr sin red v2);
+  el residuo es layout/icache del binario crecido + ruido térmico. Follow-up
+  para antes del SPRT de P3: probar reordenación/PGO-parcial del hot path.
