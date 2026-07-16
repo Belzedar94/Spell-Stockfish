@@ -92,6 +92,10 @@ extern int SpellFutilityScalePct;  // 100
 // Do not apply the spell depth penalties on PV nodes.
 extern int SpellNoPenaltyPV;  // 0 (off)
 
+// Percent scale on both spell depth-penalty tiers. 100 is the reference
+// behavior; values above 100 test the inverse of SpellNoPenaltyPV.
+extern int SpellPenaltyScalePct;  // 100
+
 // Percent scale on the initial aspiration window (100 = stock): spell evals
 // swing harder than chess evals, and re-search storms are costly.
 extern int SpellAspirationPct;  // 100

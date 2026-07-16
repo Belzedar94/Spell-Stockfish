@@ -1395,10 +1395,15 @@ moves_loop:  // When in check, search starts here
         // checks, tactical freezes), two for quiet ones. The penalty may
         // drop the move straight into quiescence (floor at 0, not 1).
         if (move.is_spell() && depth >= 3 && !(SpellNoPenaltyPV && PvNode))
-            newDepth =
-              std::max(0, newDepth
-                            - (capture || givesCheck || tacticalSpell ? SpellDepthPenaltyTactical
-                                                                      : SpellDepthPenaltyQuiet));
+        {
+            const int basePenalty = capture || givesCheck || tacticalSpell
+                                    ? SpellDepthPenaltyTactical
+                                    : SpellDepthPenaltyQuiet;
+            // All inputs are non-negative. +50 gives deterministic nearest-
+            // integer rounding with half plies rounded up (e.g. 1*50%=1).
+            const int scaledPenalty = (basePenalty * SpellPenaltyScalePct + 50) / 100;
+            newDepth                 = std::max(0, newDepth - scaledPenalty);
+        }
 
         // Decrease reduction for PvNodes (*Scaler)
         if (ss->ttPv)
