@@ -178,6 +178,8 @@ void UCIEngine::loop() {
             benchmark(is);
         else if (token == "d")
             sync_cout << engine.visualize() << sync_endl;
+        else if (token == "spellfeatures")
+            sync_cout << engine.spell_features() << sync_endl;
         else if (token == "eval")
             engine.trace_eval();
         else if (token == "datagen")

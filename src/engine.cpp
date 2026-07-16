@@ -18,6 +18,8 @@
 
 #include "engine.h"
 
+#include "spell_lab.h"
+
 #include <algorithm>
 #include <cassert>
 #include <filesystem>
@@ -438,6 +440,12 @@ std::optional<PositionSetError> Engine::flip() { return pos.flip(); }
 std::string Engine::visualize() const {
     std::stringstream ss;
     ss << pos;
+    return ss.str();
+}
+
+std::string Engine::spell_features() const {
+    std::stringstream ss;
+    SpellLab::dump_features(pos, ss);
     return ss.str();
 }
 

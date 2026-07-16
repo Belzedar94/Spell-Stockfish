@@ -341,6 +341,29 @@ inline bool Position::can_cast(Color c, SpellType sp) const {
 // A freeze zone cast by ~c restricts c's pieces (origin squares) while active
 inline Bitboard Position::frozen_squares(Color c) const { return spell_zone(~c, SPELL_FREEZE); }
 
+// Enemy sliders one jump-gate away from c's king: snipers whose line to
+// the king holds exactly one piece (any colour - the gate makes the square
+// transparent regardless of who stands on it). With a jump in hand these
+// are latent royal attackers ("quiet checks").
+inline Bitboard spell_jump_snipers(const Position& pos, Color c) {
+    if (!pos.count<KING>(c))
+        return 0;
+    Square   ksq     = pos.square<KING>(c);
+    Bitboard snipers = ((Attacks::attacks_bb<ROOK>(ksq) & pos.pieces(QUEEN, ROOK))
+                        | (Attacks::attacks_bb<BISHOP>(ksq) & pos.pieces(QUEEN, BISHOP)))
+                     & pos.pieces(~c);
+    Bitboard occupancy = pos.pieces() ^ snipers;
+    Bitboard result    = 0;
+    while (snipers)
+    {
+        Square   s = pop_lsb(snipers);
+        Bitboard b = Attacks::between_bb(ksq, s) & occupancy;
+        if (b && !more_than_one(b))
+            result |= s;
+    }
+    return result;
+}
+
 // Frozen pieces of either color: they cannot move and give no attacks
 inline Bitboard Position::frozen_pieces() const {
     return (pieces(WHITE) & frozen_squares(WHITE)) | (pieces(BLACK) & frozen_squares(BLACK));
