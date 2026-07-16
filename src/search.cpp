@@ -161,6 +161,59 @@ bool is_shuffling(Move move, Stack* const ss, const Position& pos) {
         && (ss - 2)->currentMove.from_sq() == (ss - 4)->currentMove.to_sq();
 }
 
+// Geometric defenders of sq for one color, deliberately ignoring freeze.
+// The narrow freeze predicate needs to prove that every defender exists but
+// is silenced by THIS cast, rather than treating already-frozen pieces as if
+// the square had never been defended.
+Bitboard attackers_to_ignoring_freeze(const Position& pos, Square sq, Color c) {
+    const Bitboard occ = pos.occupied_for_sliding();
+
+    return (Attacks::attacks_bb<ROOK>(sq, occ) & pos.pieces(c, ROOK, QUEEN))
+         | (Attacks::attacks_bb<BISHOP>(sq, occ) & pos.pieces(c, BISHOP, QUEEN))
+         | (Attacks::attacks_bb<PAWN>(sq, ~c) & pos.pieces(c, PAWN))
+         | (Attacks::attacks_bb<KNIGHT>(sq) & pos.pieces(c, KNIGHT))
+         | (Attacks::attacks_bb<KING>(sq) & pos.pieces(c, KING));
+}
+
+// Called on the position AFTER cast+move when the ordinary gives_check()
+// test did not fire. This is the narrow, spell-specific half of the forcing
+// class: a jump must be the transparent blocker on a real royal attack line;
+// a freeze must silence every defender of a square occupied by one of our
+// active royal attackers. Both are capture-the-king equivalents of a check.
+bool spell_enables_royal_capture(const Position& pos, Move move) {
+    assert(move.is_spell());
+
+    const Color them = pos.side_to_move();
+    const Color us   = ~them;
+    if (!pos.count<KING>(them))
+        return false;
+
+    const Square   royal    = pos.square<KING>(them);
+    const Bitboard attackers = pos.attackers_to(royal) & pos.pieces(us);
+    if (!attackers)
+        return false;
+
+    const Bitboard gate = square_bb(move.gate_sq());
+    if (move.spell_type() == SPELL_JUMP)
+    {
+        Bitboard sliders = attackers & pos.pieces(us, BISHOP, ROOK, QUEEN);
+        while (sliders)
+            if (Attacks::between_bb(pop_lsb(sliders), royal) & gate)
+                return true;
+        return false;
+    }
+
+    const Bitboard zone = FreezeZoneBB[move.gate_sq()];
+    for (Bitboard b = attackers; b;)
+    {
+        const Square   attacker  = pop_lsb(b);
+        const Bitboard defenders = attackers_to_ignoring_freeze(pos, attacker, them);
+        if (defenders && !(defenders & ~zone))
+            return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 Search::Worker::Worker(SharedState&                    sharedState,
@@ -1742,7 +1795,7 @@ moves_loop:  // When in check, search starts here
 // See https://www.chessprogramming.org/Horizon_Effect
 // and https://www.chessprogramming.org/Quiescence_Search
 template<NodeType nodeType>
-Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta) {
+Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta, int qsPly) {
 
     static_assert(nodeType != Root);
     constexpr bool PvNode = nodeType == PV;
@@ -1872,8 +1925,13 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
     // Initialize a MovePicker object for the current position, and prepare to search
     // the moves. We presently use two stages of move generator in quiescence search:
     // captures, or evasions only when in check.
+    // Pillar C, narrow reopening: only the FIRST qsearch level expands casts,
+    // with a hard 2..4 cap after the forcing predicate. Toggle-off is master.
+    const int spellQsBudget = qsPly == 0 && SpellQsearchNarrow ? SpellQsearchSpells : 0;
+
     MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &gateHistory,
-                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch());
+                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch(),
+                  true, false, spellQsBudget);
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain or a beta
     // cutoff occurs.
@@ -1887,6 +1945,21 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         givesCheck = pos.gives_check(move);
         capture    = pos.capture_stage(move);
 
+        const bool qsearchSpell = spellQsBudget && move.is_spell() && !capture;
+        if (qsearchSpell)
+        {
+            // gives_check() intentionally cannot model candidate spell state.
+            // Apply and undo once so jump transparency and the full freeze
+            // zone are judged in the exact post-move position; also require
+            // an ordinary checking hint to remain real after zone expiry.
+            pos.do_move(move, st);
+            const bool forcing = bool(pos.checkers())
+                              && (givesCheck || spell_enables_royal_capture(pos, move));
+            pos.undo_move(move);
+            if (!forcing)
+                continue;
+        }
+
         // Capturing the king ends the game: the terminal move must never
         // be pruned, whatever its ordering position or SEE
         const bool royalCapture = type_of(pos.piece_on(move.to_sq())) == KING;
@@ -1896,8 +1969,12 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         // Step 6. Pruning
         if (!is_loss(bestValue) && !royalCapture)
         {
-            // Futility pruning and moveCount pruning
-            if (!givesCheck && move.to_sq() != prevSq && !is_loss(futilityBase)
+            // Futility pruning and moveCount pruning. With the pillar-C
+            // budget active, quiet casts are exempt: their value is the
+            // follow-up they enable, not the (empty) destination this
+            // margin would price.
+            if (!givesCheck && !qsearchSpell
+                && move.to_sq() != prevSq && !is_loss(futilityBase)
                 && move.type_of() != PROMOTION)
             {
                 if (moveCount > 2)
@@ -1922,8 +1999,8 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
                 }
             }
 
-            // Skip non-captures
-            if (!capture)
+            // Skip non-captures (budgeted forcing casts stay)
+            if (!capture && !qsearchSpell)
                 continue;
 
             // Do not search moves with bad enough SEE values
@@ -1932,9 +2009,11 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta)
         }
 
         // Step 7. Make and search the move
+        if (qsearchSpell)
+            mp.consume_spell_budget();
         do_move(pos, move, st, givesCheck, ss);
 
-        value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha);
+        value = -qsearch<nodeType>(pos, ss + 1, -beta, -alpha, qsPly + 1);
         undo_move(pos, move);
 
         assert(value > -VALUE_INFINITE && value < VALUE_INFINITE);

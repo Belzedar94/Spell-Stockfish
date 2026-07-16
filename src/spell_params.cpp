@@ -58,6 +58,10 @@ int SpellNoIIR            = 0;
 int SpellContHistSkip     = 0;
 int SpellRazorGuard       = 0;
 
+// Structural pillar C: narrow forcing casts in quiescence (off by default)
+int SpellQsearchNarrow = 0;
+int SpellQsearchSpells = 2;
+
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
@@ -81,5 +85,7 @@ TUNE(SetRange(0, 500), SpellCaptureSeeMargin);
 TUNE(SetRange(0, 1), SpellNoIIR);
 TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
+TUNE(SetRange(0, 1), SpellQsearchNarrow);
+TUNE(SetRange(2, 4), SpellQsearchSpells);
 
 }  // namespace Stockfish

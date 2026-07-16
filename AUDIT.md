@@ -1065,3 +1065,17 @@ visible (reinicio como proceso propio + log), el diagnóstico correcto:
   antes de creer su resultado (ya pasó con el pipe-blocking, hoy con
   --variants y con "el log se escribe = la granja funciona"). La única señal
   de salud de la granja es el contador de partidas del DB avanzando.
+
+## 2026-07-16 — reaperturas experimentales C3/C5 (sin cola)
+
+Dos ramas pequeñas e independientes desde `master` 460ee2a0, con defaults
+bench-idénticos y build mingw x86-64-bmi2 `-j8`:
+- `qsearch-narrow`: `SpellQsearchNarrow=1` admite solo checks/captura-real de
+  rey (jump-line o freeze de todos los defensores), con cap TUNE 2..4 (default
+  2). Gates: bench off **12231192**, on **15666601**; suite **6/6**; perft
+  startpos d2 **3061102**.
+- `spell-penalty-scale`: `SpellPenaltyScalePct` (default 100), redondeo estable
+  al entero más cercano con empates hacia arriba. Gates: bench 100 **12231192**,
+  150 **6607721**, 50 **15640869**; suite **6/6**.
+
+No se encoló ningún SPRT ni se tocó la instalación viva de OpenBench.

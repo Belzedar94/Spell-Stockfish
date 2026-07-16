@@ -170,7 +170,8 @@ MovePicker::MovePicker(const Position&              p,
                        ExtMove**                    at,
                        Move*                        scratch,
                        bool                         spells,
-                       bool                         onlyTactical) :
+                       bool                         onlyTactical,
+                       int                          budget) :
     pos(p),
     mainHistory(mh),
     lowPlyHistory(lph),
@@ -183,6 +184,7 @@ MovePicker::MovePicker(const Position&              p,
     ply(pl),
     allowSpells(spells),
     onlyTacticalSpells(onlyTactical),
+    spellBudget(budget),
     arenaTop(at),
     moves(*at),
     genScratch(scratch) {
@@ -439,9 +441,13 @@ top:
                     return true;
                 if (is_useless_spell(pos, *cur))
                     return false;
-                return !onlyTacticalSpells
-                    || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
-                                         spellOurRoyal);
+                if (onlyTacticalSpells
+                    && !is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
+                                          spellOurRoyal))
+                    return false;
+                if (spellBudget == 0)
+                    return false;
+                return true;
             }))
             return *(cur - 1);
 
@@ -483,8 +489,23 @@ top:
     case EVASION :
         return select([]() { return true; });
 
-    case QCAPTURE :
-        return select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); });
+    case QCAPTURE : {
+        const Move m = select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); });
+        if (m != Move::none())
+            return m;
+        // Pillar C: at the first qsearch level, after captures, expose cast
+        // candidates to the search's narrow forcing filter. The picker cap is
+        // consumed only after that filter accepts a legal candidate.
+        if (spellBudget > 0
+            && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
+                || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
+        {
+            endGenerated = endCur;
+            stage        = SPELL_INIT;
+            goto top;
+        }
+        return Move::none();
+    }
 
     case PROBCUT :
         return select(
@@ -496,5 +517,10 @@ top:
 }
 
 void MovePicker::skip_quiet_moves() { skipQuiets = true; }
+
+void MovePicker::consume_spell_budget() {
+    assert(spellBudget > 0);
+    --spellBudget;
+}
 
 }  // namespace Stockfish

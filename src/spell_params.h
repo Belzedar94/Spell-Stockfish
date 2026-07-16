@@ -113,6 +113,17 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Structural roadmap pillar C, narrow reopening. At the FIRST qsearch level,
+// after captures, consider only casts that behave like classical qsearch
+// checks: the base move checks, a jump opens a real slider line to the enemy
+// king, or a freeze silences every defender of a royal attacker's square.
+// The toggle is the experiment; 0 preserves master exactly.
+extern int SpellQsearchNarrow;  // 0 (off)
+
+// Hard secondary guard for the narrow qsearch stage. Only legal, forcing
+// candidates spend it; the declared family budget is 2..4 casts per node.
+extern int SpellQsearchSpells;  // 2
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
