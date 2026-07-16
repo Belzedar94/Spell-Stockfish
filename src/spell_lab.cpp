@@ -72,11 +72,11 @@ void dump_features(const Position& pos, std::ostream& os) {
           int(1000.0f * SpellPolicy::gate_logit(pos, us, sp, gate));
         const bool v1 = is_tactical_spell(pos, m, ourKAtt, enemyRoyal, ourRoyal);
 
-        os << UCIEngine::move(m, pos.is_chess960()) << ',' << (sp == SPELL_FREEZE ? 'F' : 'J')
-           << ',' << int(gate) << ',' << int(royalFreeze) << ',' << int(bool(ourKAtt)) << ','
-           << int(ourKJmpAtt) << ',' << int(ekAttByUs) << ',' << int(ekJmpAttByUs) << ','
-           << silencedVal << ',' << enemyMatZone << ',' << attackedMatZone << ',' << gain << ','
-           << logit1000 << ',' << int(v1) << '\n';
+        os << UCIEngine::move(m, pos.is_chess960()) << ';' << (sp == SPELL_FREEZE ? 'F' : 'J')
+           << ';' << int(gate) << ';' << int(royalFreeze) << ';' << int(bool(ourKAtt)) << ';'
+           << int(ourKJmpAtt) << ';' << int(ekAttByUs) << ';' << int(ekJmpAttByUs) << ';'
+           << silencedVal << ';' << enemyMatZone << ';' << attackedMatZone << ';' << gain << ';'
+           << logit1000 << ';' << int(v1) << '\n';
     }
 
     os << "done\n";
