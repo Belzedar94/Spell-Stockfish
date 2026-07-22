@@ -1668,3 +1668,69 @@ persistido antes de crear los shards 8–15.
 - Los gates 2 y 3 comparten deliberadamente la misma corrida de 20k: primero se
   hizo el kill al 48,305%, después el truncado de 22 B y finalmente un único
   resume, por lo que el resultado exacto prueba ambas recuperaciones a la vez.
+
+## 2026-07-21/22 — run1c: primer entrenamiento oficial Spell-NNUE v2 + lanzamiento run8
+
+### Datos y entrenamiento
+
+- Manifest `D:\NNUE training\Spell-chess-v2\run1c\data\run1c.run7`: 20.000.000
+  registros (880.000.032 bytes) = merge+shuffle global (seed 20260721) de los
+  80 chunks del test OB #66 (run7, 10k nodos). Herramienta nueva
+  `tools/spellnnue-pytorch/merge_shuffle.py` (valida magic/record_size/count
+  por chunk, permutacion numpy, cabecera RUN7 v1).
+- 4 lambdas constantes {0.25, 0.5, 0.75, 1.0}, 2 epochs, sin val split,
+  defaults del trainer (batch 2048, lr 1e-3, scalings 340/380, seed 1),
+  serializado el ultimo epoch. 2 trainings concurrentes en la RTX 3080
+  (~2.500 muestras/s cada uno, ~8,8 GB VRAM total), ~9 h las 4 redes.
+
+### Torneo (protocolo doc atomic 07: bracket + LOS exacto)
+
+Harness: variantfishtest_new1.py + python-chess vendorizado + wrapper
+run_exact_los_match.py (gate: LOS 0.0/100.0% con Total>100 par), 3 TCs
+concurrentes 2000+20/10000+100/30000+300 ms, Threads=1 Hash=512, libro
+spell-chess.epd, solo cambia EvalFile. Expedientes con sha256 en
+`D:\NNUE training\Spell-chess-v2\tournament-run1c-20260721\`.
+
+- SF1: l075 gana 3-0 a l025 (LOS 0.0% del rival en los 3 TCs).
+- SF2: l10 por adjudicacion del propietario (TC1 gate 0.0% pro-l10).
+- Final: **l075 CAMPEONA** por adjudicacion (VSTC -13.0 en 2406 partidas sin
+  gate; STC +19.1 LOS 90.6%; LTC +37.2 LOS 92.6% — mandan los TCs largos).
+  sha256 3dbd97ba74d8f3f41a50f21ac7bd551493db5d7d7aedc0a3a98b5af196289ab5.
+- Lectura: en spell gana lambda ALTO (0.75), al reves que en atomic —
+  consistente con resultados WDL de self-play ruidoso vs evals de search 10k.
+
+### Salud y baselines
+
+- Salud vs default embebida (red de ajedrez stock): TC1 LOS 100.0%,
+  +273.53 Elo (84W/17L/1D). PASS.
+- Baseline1 vs nuestro binario + run5rl legacy: -219/-126/-147 Elo
+  (VSTC gate 0.0% / STC / LTC parcial) — gap se encoge con TC.
+- Baseline2 vs FSF classical: ABANDONADA — FSF classical se cuelga (search
+  sin bestmove) en posiciones spell. Parciales ≈ paridad.
+- Baseline3 vs FSF + run5rl: TERMINADA SIN GATE — FSF se cuelga TAMBIEN con
+  red (2ª confirmacion: bug de search, no de eval). Snapshot final persp.
+  l075: VSTC -338.04 (16), STC -190.85 (8), LTC -212.59 (22).
+  REGLA: FSF no vale como sparring automatizado; vara externa futura =
+  nuestro binario + run5rl.
+- CAUSA RAIZ del gap vs run5rl: el test #66 (run7) corrio SIN dev_network →
+  las 20M de posiciones se etiquetaron con la red de AJEDREZ stock en las
+  hojas (search spell-aware, eval spell-blind). run1c destilo tactica spell
+  pero no conocimiento estrategico de hechizos. Fix = run8.
+
+### run8 (RL iteracion 1) — test OB #82, en produccion
+
+- UN cambio: evaluador = l075 embebida (make EVALFILE). 50M posiciones
+  @10k nodos, seed 20260722, mismo comando/libro/filtros que run7,
+  200 chunks x 250k, prioridad 99.
+- Bench con red embebida **17598921** (vs 12231192 sin red) = proteccion
+  red-equivocada en OB. Verificado en el worker real: "Bench for nnue-v2 is
+  17598921" + chunk 1/200 leased.
+- Trampas del server documentadas en
+  `D:\NNUE training\Spell-chess-v2\datagen-run8-20260722\LAUNCH.md`:
+  Test.dev/base son FK a Engine; con protocolo 0 los campos v41
+  datagen_network_* deben ir vacios; el clon de un Test NO crea el mapa de
+  chunks (initialize_chunks en el shell del server congela contratos
+  producer/env y crea los DatagenChunk).
+- Worker local 24 threads (client.py -T 24 -N 1; PATH necesita
+  C:\msys64\mingw64\bin y usr\bin). Plan: run2c con lambdas {0.75, 0.9, 1.0}
+  al alcanzar ≥30M posiciones.
