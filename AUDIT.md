@@ -1760,3 +1760,25 @@ receipts en `D:\NNUE training\Spell-chess-v2\distill-lab-20260722\LAB-REPORT.md`
 - Herramientas nuevas en el expediente del lab (candidatas a tools/ del
   repo): relabel.py, relabel_expand.py (con fen_to_record), uci_probe.py,
   concat_shuffle.py.
+
+## 2026-07-24 — Ronda 2 del laboratorio: XL corona; no-transitividad; infra
+
+- Bracket 3-TC vs distillx (400/300/200): l09 (λ0.9) +14/-13/-12 DESCARTADA;
+  e3 (3 épocas) -30/-16/+28 mixta (3ª época solo paga en LTC); **XL
+  (2M quiet + 5,8M hijas tácticas) +57.9/+31.4/+86.9 con LOS 100/94/100 —
+  NUEVA CAMPEONA** (sha 2a0d9fda..., bench embebida 13812268).
+- XL vs run5rl (vara): -69.5/-2.3/-12.2 — PARIDAD en STC/LTC, mismo perfil
+  que distillx pese al +87 head-to-head → **no-transitividad fuerte entre
+  familias de eval; protocolo nuevo: medir siempre contra el rival
+  objetivo; escalera local = LOS exacto 3-TC vs campeón previo, y vs
+  run5rl mientras se pierda**.
+- Pivote run9: test 83 (virgen) borrado; **test 87 = run9-XL** (50M, hojas
+  XL 2A0D9FDA, seed 20260726, prio 99).
+- Cola OB purgada: 26 SPRTs de la era FSF-chassis borrados (resultados no
+  transferibles al chasis moderno). Quedan: capture-see-120 (#85, prio 7)
+  y SPSA-3 (#86, prio 2) tras los datagen.
+- Infra: nginx client_body_timeout/send_timeout 900s en el VPS (60s por
+  defecto cortaba subidas de 180MB con upstream congestionado) + client
+  con 6 reintentos x 45s (a091c64 de openbench-spell). Verificado.
+- Playbook transferible para otros proyectos (atomic):
+  `docs/transfer/spell-experiment-playbook.md` (org).
