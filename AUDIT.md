@@ -1734,3 +1734,29 @@ spell-chess.epd, solo cambia EvalFile. Expedientes con sha256 en
 - Worker local 24 threads (client.py -T 24 -N 1; PATH necesita
   C:\msys64\mingw64\bin y usr\bin). Plan: run2c con lambdas {0.75, 0.9, 1.0}
   al alcanzar ≥30M posiciones.
+
+## 2026-07-23 — Laboratorio de destilación: nueva campeona distillx + run9
+
+Sprint nocturno de iteración empírica (orden del propietario: buscar
+breakthroughs con GPU ociosa y ~6 threads). Resumen (detalle completo con
+receipts en `D:\NNUE training\Spell-chess-v2\distill-lab-20260722\LAB-REPORT.md`):
+
+- Destilación plana de run5rl (2M posiciones quiet re-etiquetadas por UCI a
+  depth 1-2): fidelidad 0.996 en holdout pero PARIDAD en juego vs l075.
+  Hallazgo: la campeona ya igualaba a run5rl en posiciones quiet — el gap
+  de ~200 Elo vive en posiciones tácticas (excluidas por los filtros del
+  datagen).
+- Fix: expansión táctica — por cada posición, etiquetar también la hija
+  tras el bestmove (depth 2). +1M de hijas → **distillx: +50.74 ±34 vs
+  l075 (LOS 99.9%, 400 partidas VSTC)** y, en batería 3-TC vs run5rl:
+  -71 VSTC / +3.5 STC (300) / +20.9 LTC (200) — **vara alcanzada a TCs
+  largos** (24h antes: -219/-126/-147). NPS descartado como causa del
+  residual VSTC (empate 94.6k/97.2k, árbol idéntico).
+- run8early (6,5M etiquetas l075): +20 vs l075 → el camino RL valida.
+- combo9M (mezcla run8early+distillx λ0.75): DESCARTADA (-72 STC, -70 LTC)
+  — la parte destilada exige λ alto.
+- Pivote: test 82 cerrado (29 chunks cosechados); **test 83 = run9** con
+  distillx embebida (B8C4A02C, bench 14600064), 50M, seed 20260724.
+- Herramientas nuevas en el expediente del lab (candidatas a tools/ del
+  repo): relabel.py, relabel_expand.py (con fen_to_record), uci_probe.py,
+  concat_shuffle.py.
