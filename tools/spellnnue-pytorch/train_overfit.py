@@ -11,6 +11,12 @@ import sys
 import time
 from collections import deque
 
+HERE = os.path.dirname(os.path.abspath(__file__))
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+
+import spl2
+
 import torch
 import torch.nn.functional as F
 
@@ -64,12 +70,64 @@ def iter_batches(path: str, count: int, batch_size: int):
                     yield model.SparseBatch.from_features(extracted, stms, scores, results)
 
 
+def load_init_net(net, path: str) -> None:
+    """Initialize the float model from a quantized SPL2 file (RL continuation).
+
+    Dequantizes with the exact inverse of ``model.quantized_params``. The
+    export coalesces the train-only freeze-gate factorization into the 4096
+    freeze-zone rows, so the import loads those effective rows verbatim and
+    zeroes the factor tensors: the forward function is identical, only the
+    (train-time) parameter sharing is lost. Quantization round-trip costs a
+    small precision loss; prefer ``--checkpoint`` floats when available.
+    """
+    params, desc = spl2.read_spl2(path)
+    with torch.no_grad():
+        net.ft_bias.copy_(torch.from_numpy(
+            params["ft_bias"].astype("float32") / model.FT_SCALE))
+        net.ft_weight.copy_(torch.from_numpy(
+            params["ft_weight"].astype("float32") / model.FT_SCALE))
+        net.threat_weight.copy_(torch.from_numpy(
+            params["threat_weight"].astype("float32") / model.FT_SCALE))
+        net.psqt_weight.copy_(torch.from_numpy(
+            params["psqt_weight"].astype("float32") / model.PSQT_SCALE))
+        net.threat_psqt_weight.copy_(torch.from_numpy(
+            params["threat_psqt_weight"].astype("float32") / model.PSQT_SCALE))
+        net.freeze_factor_weight.zero_()
+        net.freeze_factor_psqt_weight.zero_()
+        for b, s in enumerate(params["stacks"]):
+            net.fc0_bias[b].copy_(torch.from_numpy(
+                s["fc0_bias"].astype("float32")
+                / (model.FC0_WEIGHT_SCALE * model.HIDDEN_ONE)))
+            net.fc0_weight[b].copy_(torch.from_numpy(
+                s["fc0_weight"].astype("float32") / model.FC0_WEIGHT_SCALE))
+            net.fc1_bias[b].copy_(torch.from_numpy(
+                s["fc1_bias"].astype("float32")
+                / (model.FC1_WEIGHT_SCALE * model.HIDDEN_ONE)))
+            net.fc1_weight[b].copy_(torch.from_numpy(
+                s["fc1_weight"].astype("float32") / model.FC1_WEIGHT_SCALE))
+            net.fc2_bias[b].copy_(torch.from_numpy(
+                s["fc2_bias"].astype("float32")
+                / (model.FC2_WEIGHT_SCALE * model.HIDDEN_ONE)))
+            net.fc2_weight[b].copy_(torch.from_numpy(
+                s["fc2_weight"].astype("float32") / model.FC2_WEIGHT_SCALE))
+    print(f"init-net: {path} ({desc!r})", flush=True)
+
+
 def train(args) -> dict:
     device = torch.device(args.device)
     if device.type == "cuda" and not torch.cuda.is_available():
         raise RuntimeError("CUDA requested but unavailable")
     torch.set_float32_matmul_precision("high")
-    net = model.SpellNNUE(seed=args.seed).to(device)
+    net = model.SpellNNUE(seed=args.seed)
+    if args.init_net:
+        load_init_net(net, args.init_net)
+    elif args.init_checkpoint:
+        payload = torch.load(args.init_checkpoint, map_location="cpu",
+                             weights_only=False)
+        state = payload["model"] if "model" in payload else payload
+        net.load_state_dict(state)
+        print(f"init-checkpoint: {args.init_checkpoint}", flush=True)
+    net = net.to(device)
 
     sparse_parameters = [net.ft_weight, net.threat_weight,
                          net.freeze_factor_weight, net.psqt_weight,
@@ -164,7 +222,10 @@ def train(args) -> dict:
           f"loss {initial_loss:.8f} -> {final_loss:.8f} "
           f"({final_loss / initial_loss:.3f}x), positions={seen:,}")
     if not converged:
-        raise RuntimeError("overfit convergence gate failed")
+        if args.init_net or args.init_checkpoint:
+            print("continuation run: convergence gate is informational only")
+        else:
+            raise RuntimeError("overfit convergence gate failed")
     return summary
 
 
@@ -174,6 +235,12 @@ def main() -> None:
     parser.add_argument("--out", required=True, help="trained SPL2 .nnue")
     parser.add_argument("--curve", required=True, help="JSON loss curve")
     parser.add_argument("--checkpoint", help="optional (large) PyTorch checkpoint")
+    parser.add_argument("--init-net",
+                        help="SPL2 .nnue to initialize from (RL continuation; "
+                             "dequantized, freeze factors zeroed)")
+    parser.add_argument("--init-checkpoint",
+                        help="float .pt checkpoint to initialize from "
+                             "(lossless; preferred over --init-net)")
     parser.add_argument("--records", type=int, default=1_000_000)
     parser.add_argument("--epochs", type=int, default=2)
     parser.add_argument("--batch-size", type=int, default=2048)
