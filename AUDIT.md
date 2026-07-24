@@ -1782,3 +1782,31 @@ receipts en `D:\NNUE training\Spell-chess-v2\distill-lab-20260722\LAB-REPORT.md`
   con 6 reintentos x 45s (a091c64 de openbench-spell). Verificado.
 - Playbook transferible para otros proyectos (atomic):
   `docs/transfer/spell-experiment-playbook.md` (org).
+
+## 2026-07-24 — HARD corona y BATE A run5rl: primera victoria de la familia v2
+
+- Minería HARD (programa del oráculo, Exp1): 394k posiciones únicas
+  extraídas de ~15.9k partidas reales de los match.log → eval dual XL/run5rl
+  a d2 → top-150k por |delta| + 50k aleatorias etiquetadas por run5rl a d4 →
+  fine-tune de CONTINUACIÓN desde XL (200k × 2 épocas, λ1.0, ~4 min GPU).
+- Semifinales vs XL (LOS exacto): HARD gates VSTC +82.15 (100.0%) y STC
+  +105.50 (100.0%); control REPLAY (200k del propio dataset de XL) plano —
+  el conocimiento viene de las posiciones minadas, no del entrenamiento extra.
+- Final HARD vs REPLAY: gates VSTC +55.88 y STC +99.11 (ambos 100.0%);
+  adjudicación del propietario. **NUEVA CAMPEONA: spell-v2-XL-HARD.nnue**
+  (sha256 9e584eaf...1481, bench embebida/setoption 16186059 — verificadas
+  idénticas).
+- **Legacy: HARD vs run5rl — GATE STC +44.33 (100.0%, 654) y GATE LTC
+  +61.96 (100.0%, 340); VSTC paridad -1.9 (4176 partidas).** Primera red
+  v2 que BATE a la referencia con gate exacto. El déficit bullet pasó de
+  -70 (XL) a paridad. HARD es TOP 1 absoluto por orden del propietario.
+- Regeneración OB con la campeona: Network 9E584EAF subida; Engine bench
+  16186059; tests 85/86 repuntados in situ (0 partidas); **test 87 cerrado
+  (5 chunks XL archivados se conservan) → test 88 = run9-HARD** (50M,
+  seed 20260729, prio 99, 200 chunks). PC2 saltó solo al 88 (chunk 0).
+- Worker 24T relanzado (entrypoint correcto: client.py, NO worker.py que
+  carece de __main__; PATH con C:\msys64\{mingw64,usr}\bin; TBs atomic
+  via --atomic-syzygy + --atomic-syzygy-manifest remote-inventory.json).
+- Lección de método: el ciclo minar-desacuerdos→etiquetar→afinar es la
+  palanca principal de Elo a corto plazo; escala con partidas jugadas y
+  no espera a run9/run2c.
