@@ -1810,3 +1810,22 @@ receipts en `D:\NNUE training\Spell-chess-v2\distill-lab-20260722\LAB-REPORT.md`
 - Lección de método: el ciclo minar-desacuerdos→etiquetar→afinar es la
   palanca principal de Elo a corto plazo; escala con partidas jugadas y
   no espera a run9/run2c.
+
+## 2026-07-25 — HARD2 corona: la palanca minera itera (r5) y OB rota limpio
+
+- r5 = minería sobre las partidas de las PROPIAS baterías del título
+  (5.848 juegos → 283k posiciones únicas, solo 0,5% de solape con la
+  historia r4) → 130k etiquetadas d4 → fine-tune 3 min GPU.
+- HARD2 vs XL-HARD: **GATES VSTC +27.77 y STC +38.67 (LOS 100,0%)**;
+  LTC +33.71 al 99,9% con 1034 partidas — adjudicación del propietario.
+  Campeona: spell-v2-HARD2.nnue (666be56a, bench 16284926).
+- Regeneración OB v2: tests 85/86 con la red nueva EN AMBOS LADOS y
+  nombres descriptivos (lección del 24-jul aplicada); test 88 → 89
+  (datagen-run9-hard2-50m, seed 20260803); chunks previos conservados.
+- Señal de agotamiento de la mina: los deltas top de r6 caen 30x
+  (rank-1000: 31.776 → 1.044) aunque la loss inicial sigue 4x —
+  HARD3 (r6, 55k magras) en batería; si no gatea claro, pivote a
+  run9-early (750k search-labels ya empaquetados).
+- Regla operativa nueva: bench por setoption == bench por embed
+  (verificado 2x en la familia) → los benches de candidatas se computan
+  sin rebuild, y el embed solo se hace al crear el test.
