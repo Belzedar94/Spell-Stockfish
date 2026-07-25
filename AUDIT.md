@@ -1829,3 +1829,22 @@ receipts en `D:\NNUE training\Spell-chess-v2\distill-lab-20260722\LAB-REPORT.md`
 - Regla operativa nueva: bench por setoption == bench por embed
   (verificado 2x en la familia) → los benches de candidatas se computan
   sin rebuild, y el embed solo se hace al crear el test.
+
+## 2026-07-25 (noche) — HARD2 defiende 3 veces; fronteras de la palanca mapeadas
+
+- HARD3 (r6, 55k minadas magras): REFUTADA -18/-64/-22. La mina rinde
+  ~2 vueltas por generación de partidas; el predictor es el DELTA de
+  desacuerdos (cayó 30x), no la loss inicial (4x, engañosa).
+- r9e-l10 (750k datagen crudo como continuación): APLASTADA — VSTC gate
+  0,0% con -224. OLVIDO CATASTRÓFICO: la distribución quiet del datagen
+  borra el conocimiento táctico minado. r9e-l075 ni se prueba.
+- MIX1 (385k minadas + 750k datagen, lr 1e-4): REFUTADA -51 VSTC gate
+  0,0%. El ancla amortigua, no cura. El datagen crudo NO es vía de
+  continuación; queda para run2c-desde-cero (señal del propietario) y
+  como semilla de expansión.
+- r7 diagnosticada por muestra (protocolo nuevo: rankear 30k ANTES de
+  etiquetar): mismo régimen de deltas que la fallida r6 → mina CERRADA
+  hasta partidas de una campeona futura. 10 min de diagnóstico ahorraron
+  ~6h de ronda condenada.
+- Estado: HARD2 campeona (3 defensas); OB al día (test 89 datagen-run9-
+  hard2-50m con PC2); 24T apagado por orden (CPU del agente atomic).
