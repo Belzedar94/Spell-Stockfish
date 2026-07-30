@@ -26,3 +26,4 @@ tests/js/cjs/
 tests/js/esm/
 build/
 *.pyd
+tests/cpp/*.exe
