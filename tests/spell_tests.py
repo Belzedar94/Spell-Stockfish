@@ -89,6 +89,20 @@ def fen_after(fen=None, moves=()):
     return e.fen()
 
 
+def qs_futility(fen, move):
+    """The qsearch futility margin of `move` (SB3 debug command `qsfut`)."""
+    e = Engine.get()
+    e.position(fen)
+    e.send(f"qsfut {move}")
+    e.send("isready")
+    for line in e.read_until("readyok"):
+        if line.startswith("qsfut "):
+            t = line.split()
+            assert t[2] == "raw" and t[4] == "gain" and t[6] == "defended", line
+            return {"raw": int(t[3]), "gain": int(t[5]), "defended": int(t[7])}
+    raise RuntimeError(f"no qsfut answer for {move}")
+
+
 class SpellRules(unittest.TestCase):
 
     def test_startpos_fen_roundtrip(self):
@@ -246,6 +260,48 @@ class SpellRules(unittest.TestCase):
         moves = moves_at(fen, ["f@e5,d7d5"])
         self.assertNotIn("e5d6", moves)      # the EP capture
         self.assertEqual([m for m in moves if m.startswith("e5")], [])
+
+    # ---------------- SB3: spell-aware qsearch futility ----------------
+    # Both pairs share one board and one capture (Rd1xNd5, raw margin =
+    # KnightValue), so the only thing that moves the margin is the spell
+    # state. A margin built from the raw captured-piece value answers the
+    # same number four times and fails the two spell cases below.
+
+    QS_OPEN = "3r3k/8/8/3n4/8/8/8/3R3K"     # d8 rook eyes d5 down the file
+    QS_BLOCKED = "3r3k/3N4/8/3n4/8/8/8/3R3K"  # a white knight on d7 blocks it
+
+    def test_qs_futility_frozen_defender_is_no_defender(self):
+        # The only defender of d5 (rook d8) sits inside a white freeze zone,
+        # so it gives no attacks: Rxd5 really is free and must keep the full
+        # piece value, i.e. futility must NOT prune it.
+        frozen = qs_futility(
+            f"{self.QS_OPEN}[] {{F@d8:3,J@-:0,f@-:0,j@-:0}} w - - 0 1", "d1d5")
+        active = qs_futility(
+            f"{self.QS_OPEN}[] {{F@-:0,J@-:0,f@-:0,j@-:0}} w - - 0 1", "d1d5")
+
+        self.assertEqual(frozen["defended"], 0)
+        self.assertEqual(frozen["gain"], frozen["raw"])
+        # Same board without the freeze: the rook does defend and the margin
+        # drops. If it did not, the signal is the raw piece value again.
+        self.assertEqual(active["defended"], 1)
+        self.assertLess(active["gain"], active["raw"])
+
+    def test_qs_futility_jump_gate_reveals_defender(self):
+        # The rook's ray is blocked by a piece on d7, but an active jump gate
+        # on d7 is transparent for sliders: the recapture exists and futility
+        # must prune the capture instead of trusting the raw piece value.
+        gated = qs_futility(
+            f"{self.QS_BLOCKED}[] {{F@-:0,J@d7:3,f@-:0,j@-:0}} w - - 0 1", "d1d5")
+        plain = qs_futility(
+            f"{self.QS_BLOCKED}[] {{F@-:0,J@-:0,f@-:0,j@-:0}} w - - 0 1", "d1d5")
+
+        self.assertEqual(gated["defended"], 1)
+        self.assertLess(gated["gain"], gated["raw"])
+        # Same board without the gate: nothing recaptures, full value.
+        self.assertEqual(plain["defended"], 0)
+        self.assertEqual(plain["gain"], plain["raw"])
+        # The discriminating pair: identical material, different margins.
+        self.assertNotEqual(gated["gain"], plain["gain"])
 
     def test_perft_suite_depth1(self):
         # Every suite position must reproduce its recorded d1 count (the full
