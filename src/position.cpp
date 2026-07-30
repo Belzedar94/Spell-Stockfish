@@ -2084,6 +2084,14 @@ bool Position::see_ge(Move m, int threshold) const {
     Bitboard stmAttackers, bb;
     int      res = 1;
 
+    // Spell chess: the X-ray attackers uncovered inside the loop must follow
+    // exactly the same rules as the attackers_to() call above. Sliders see
+    // through jump-transparent gates (the mask goes on the *current* occupancy,
+    // which the loop keeps mutating), and a piece standing in an enemy freeze
+    // zone cannot move, so it can never join the exchange.
+    const Bitboard transparent = jump_transparent();
+    const Bitboard unfrozen    = ~frozen_pieces();
+
     while (true)
     {
         stm = ~stm;
@@ -2113,7 +2121,8 @@ bool Position::see_ge(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<BISHOP>(to, occupied) & pieces(BISHOP, QUEEN);
+            attackers |=
+              attacks_bb<BISHOP>(to, occupied & ~transparent) & pieces(BISHOP, QUEEN) & unfrozen;
         }
 
         else if ((bb = stmAttackers & pieces(KNIGHT)))
@@ -2129,7 +2138,8 @@ bool Position::see_ge(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<BISHOP>(to, occupied) & pieces(BISHOP, QUEEN);
+            attackers |=
+              attacks_bb<BISHOP>(to, occupied & ~transparent) & pieces(BISHOP, QUEEN) & unfrozen;
         }
 
         else if ((bb = stmAttackers & pieces(ROOK)))
@@ -2138,7 +2148,8 @@ bool Position::see_ge(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<ROOK>(to, occupied) & pieces(ROOK, QUEEN);
+            attackers |=
+              attacks_bb<ROOK>(to, occupied & ~transparent) & pieces(ROOK, QUEEN) & unfrozen;
         }
 
         else if ((bb = stmAttackers & pieces(QUEEN)))
@@ -2148,8 +2159,9 @@ bool Position::see_ge(Move m, int threshold) const {
             assert(swap >= res);
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= (attacks_bb<BISHOP>(to, occupied) & pieces(BISHOP, QUEEN))
-                       | (attacks_bb<ROOK>(to, occupied) & pieces(ROOK, QUEEN));
+            attackers |= ((attacks_bb<BISHOP>(to, occupied & ~transparent) & pieces(BISHOP, QUEEN))
+                          | (attacks_bb<ROOK>(to, occupied & ~transparent) & pieces(ROOK, QUEEN)))
+                       & unfrozen;
         }
 
         else  // KING
