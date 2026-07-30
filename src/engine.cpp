@@ -36,6 +36,7 @@
 #include "nnue/nnue_common.h"
 #include "nnue/nnue_accumulator.h"
 #include "nnue/spell_v2.h"
+#include "notation.h"
 #include "numa.h"
 #include "spellnnue/spell_nnue.h"
 #include "perft.h"
@@ -515,6 +516,35 @@ void Engine::dump_spell_v2_features() const {
     std::stringstream ss;
     Eval::NNUE::SpellV2::dump_features(p, ss);
     sync_cout << ss.str() << "featuresv2 done" << sync_endl;
+}
+
+// Debug-only helper behind the non-UCI `see <move>` command: prints the exact
+// threshold boundary of Position::see_ge, i.e. max{t : see_ge(m, t)}. The
+// predicate is monotone in the threshold, so a binary search pins it down.
+// Used by tests/spell_tests.py to lock the spell semantics of the exchange.
+void Engine::trace_see(const std::string& moveStr) const {
+    StateListPtr trace_states(new std::deque<StateInfo>(1));
+    Position     p;
+    p.set(pos.fen(), options["UCI_Chess960"], &trace_states->back());
+
+    const Move m = Notation::to_move(p, moveStr);
+    if (m == Move::none())
+    {
+        sync_cout << "see " << moveStr << " illegal" << sync_endl;
+        return;
+    }
+
+    int lo = -32000, hi = 32000;  // see_ge(lo) always holds, see_ge(hi) never
+    while (lo < hi)
+    {
+        const int mid = lo + (hi - lo + 1) / 2;
+        if (p.see_ge(m, mid))
+            lo = mid;
+        else
+            hi = mid - 1;
+    }
+
+    sync_cout << "see " << Notation::move(m, p.is_chess960()) << " " << lo << sync_endl;
 }
 
 const OptionsMap& Engine::get_options() const { return options; }

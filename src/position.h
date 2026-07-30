@@ -232,6 +232,12 @@ class Position {
     void swap_piece(Square s, Piece pc, DirtyThreats* const dts = nullptr);
 
    private:
+    // The exchange loop behind see_ge(). Cast == true instantiates the
+    // spell-aware variant used for gated moves; Cast == false keeps the
+    // plain-chess path free of any spell bookkeeping.
+    template<bool Cast>
+    bool see_ge_impl(Move m, int threshold) const;
+
     // Initialization helpers (used while setting up a position)
     void set_castling_right(Color c, Square rfrom);
     Key  compute_material_key() const;

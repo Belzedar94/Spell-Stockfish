@@ -76,6 +76,16 @@ class Engine:
                 if mv:
                     moves.append(mv)
 
+    def see(self, move):
+        # `see <move>` prints "see <move> <value>", the exact threshold
+        # boundary of Position::see_ge (max{t : see_ge(m, t)})
+        self.send(f"see {move}")
+        for line in self.read_until("see "):
+            if line.startswith("see "):
+                tail = line.split()[-1]
+                return None if tail == "illegal" else int(tail)
+        raise RuntimeError("no see output")
+
 
 def moves_at(fen=None, moves=()):
     e = Engine.get()
@@ -87,6 +97,12 @@ def fen_after(fen=None, moves=()):
     e = Engine.get()
     e.position(fen, moves)
     return e.fen()
+
+
+def see_at(fen, move):
+    e = Engine.get()
+    e.position(fen)
+    return e.see(move)
 
 
 class SpellRules(unittest.TestCase):
@@ -270,6 +286,98 @@ class SpellRules(unittest.TestCase):
         ]
         for fen in samples:
             self.assertEqual(fen_after(fen), fen)
+
+
+PAWN, ROOK, QUEEN = 208, 1276, 2538
+HOLDINGS = "[JJFFFFFjjfffff] {F@-:0,J@-:0,f@-:0,j@-:0}"
+
+
+def board(pieces, stm="w"):
+    return f"{pieces}{HOLDINGS} {stm} - - 0 1"
+
+
+class SpellSEE(unittest.TestCase):
+    """Static exchange evaluation of gated moves (SPELL_SPEC.md 2.1 / 3).
+
+    A cast must never be worth a made-up number. These cases pin the three
+    things Position::see_ge is allowed to know about a spell: the base move
+    is priced by the ordinary exchange, a fresh freeze zone silences the
+    OPPONENT's pieces for their single reply, and a fresh jump gate stops
+    blocking sliding rays.
+
+    Note on the failure mode they guard: a cast keeps its base move's type
+    (the spell lives in bits 16+, type_of() reads bits 14-15), so a gated
+    NORMAL move never took the `return VALUE_ZERO >= threshold` bailout --
+    it went through the exchange with the spell simply ignored. These cases
+    fail both if the payload stops being modelled and if casts are ever
+    short-circuited to a flat zero.
+    """
+
+    # --- the base move keeps its ordinary price -------------------------
+
+    def test_cast_prices_its_base_capture(self):
+        # A hanging pawn is worth a pawn, gated or not; the spell payload
+        # is irrelevant here and must not change the number either way
+        fen = board("4k3/8/8/3p4/4P3/8/8/4K3")
+        self.assertEqual(see_at(fen, "e4d5"), PAWN)
+        self.assertEqual(see_at(fen, "f@a8,e4d5"), PAWN)
+
+    def test_gate_may_not_be_the_destination(self):
+        # Sanity guard for the cases below: `j@<to>` is not a legal cast
+        fen = board("4k3/8/8/3p4/4P3/8/8/4K3")
+        self.assertIsNone(see_at(fen, "j@d5,e4d5"))
+
+    # --- freeze: the opponent's defenders go silent ----------------------
+
+    def test_freeze_silences_the_defender_of_the_capture_square(self):
+        # exd5 is defended by the c6 pawn -> an even trade. Freezing c6 with
+        # the very same ply removes the recapture: the pawn is free.
+        fen = board("4k3/8/2p5/3p4/4P3/8/8/4K3")
+        self.assertEqual(see_at(fen, "e4d5"), 0)
+        self.assertEqual(see_at(fen, "f@c6,e4d5"), PAWN)
+        # a zone that covers nothing relevant changes nothing
+        self.assertEqual(see_at(fen, "f@a8,e4d5"), 0)
+
+    def test_freeze_protects_a_quiet_move(self):
+        # Rd5 hangs the rook to the c6 pawn; freezing c6 makes it safe for
+        # the one reply the zone lives through
+        fen = board("4k3/8/2p5/8/8/8/8/3RK3")
+        self.assertEqual(see_at(fen, "d1d5"), -ROOK)
+        self.assertEqual(see_at(fen, "f@c6,d1d5"), 0)
+        self.assertEqual(see_at(fen, "f@a1,d1d5"), -ROOK)
+
+    def test_freeze_only_lasts_the_single_reply(self):
+        # Two defenders (c6, e6) and a white rook behind the pawn.
+        # f@d6 covers BOTH (3x3 c5-e7): no recapture at all -> a free pawn.
+        # f@c6 covers only one: black replies exd5, the zone dies with that
+        # reply, and the thawed c6 pawn is back in time to answer Rxd5 --
+        # so the exchange is worth nothing, exactly like the bare capture.
+        fen = board("4k3/8/2p1p3/3p4/4P3/8/8/3RK3")
+        self.assertEqual(see_at(fen, "e4d5"), 0)
+        self.assertEqual(see_at(fen, "f@d6,e4d5"), PAWN)
+        self.assertEqual(see_at(fen, "f@c6,e4d5"), 0)
+        self.assertEqual(see_at(fen, "f@e6,e4d5"), 0)
+
+    # --- jump: the gate square stops blocking rays -----------------------
+
+    def test_jump_gate_opens_a_line_into_the_exchange(self):
+        # The d1 rook is walled off by its own d3 pawn, so exd5 is an even
+        # trade. Casting j@d3 in the same ply makes d3 transparent and the
+        # rook joins the exchange, winning the pawn.
+        fen = board("4k3/8/2p5/3p4/4P3/3P4/8/3RK3")
+        self.assertEqual(see_at(fen, "e4d5"), 0)
+        self.assertEqual(see_at(fen, "j@d3,e4d5"), PAWN)
+        # transparency somewhere with no line onto d5 changes nothing
+        self.assertEqual(see_at(fen, "j@c6,e4d5"), 0)
+
+    def test_jump_transparency_works_for_the_defender_too(self):
+        # Mirror image: black's rook is walled off by its own d6 pawn, so
+        # Qxd5 looks free -- until white's own jump opens the file for the
+        # enemy rook and the queen falls. Transparency is symmetric, and a
+        # cast is allowed to make a capture look WORSE.
+        fen = board("3rk3/8/3p4/3p4/8/8/8/4K2Q")
+        self.assertEqual(see_at(fen, "h1d5"), PAWN)
+        self.assertEqual(see_at(fen, "j@d6,h1d5"), PAWN - QUEEN)
 
 
 if __name__ == "__main__":

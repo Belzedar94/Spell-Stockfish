@@ -102,6 +102,7 @@ class Engine {
     void trace_spell_eval() const;
     void trace_spell_v2_eval() const;
     void dump_spell_v2_features() const;
+    void trace_see(const std::string& moveStr) const;
 
     const OptionsMap& get_options() const;
     OptionsMap&       get_options();

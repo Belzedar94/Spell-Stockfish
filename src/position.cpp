@@ -2057,13 +2057,45 @@ void Position::undo_null_move() {
 // Tests if the SEE (Static Exchange Evaluation)
 // value of the move is greater or equal to the given threshold. We'll use an
 // algorithm similar to alpha-beta pruning with a null window.
+//
+// Spell chess: a gated move ("f@g,base" / "j@g,base") carries its spell in
+// bits 16+ while type_of() reads bits 14-15, so a cast on a NORMAL base
+// already reached the exchange loop below and had its base capture priced
+// correctly — only a cast on a CASTLING base takes the flat-zero bailout,
+// which is exact because castling never captures. What the exchange silently
+// ignored was the payload: the spell is cast in this very ply and is live
+// while the opponent answers. see_ge_impl<true> folds it in.
 bool Position::see_ge(Move m, int threshold) const {
 
     assert(m.is_ok());
 
-    // Only deal with normal moves, assume others pass a simple SEE
+    // Only deal with normal moves, assume others pass a simple SEE.
+    // A CASTLING base move never captures (gated or not), so zero is exact.
     if (m.type_of() != NORMAL)
         return VALUE_ZERO >= threshold;
+
+    return m.is_spell() ? see_ge_impl<true>(m, threshold) : see_ge_impl<false>(m, threshold);
+}
+
+// The exchange itself. With Cast == true the spell carried by 'm' is folded
+// into the exchange (see SPELL_SPEC.md 2.1 and 3):
+//
+//  * FREEZE: the enemy pieces standing in the new 3x3 zone give no attacks.
+//    The zone is alive for this ply and the opponent's single reply, and dies
+//    at the end of that reply — so the silenced defenders are unavailable for
+//    the recapture and available again for every later capture ('thawed').
+//    Own pieces are never affected: a freeze only restricts the opponent.
+//  * JUMP: the gate square stops blocking sliding rays, for BOTH colors, so
+//    the initial attacker set of 'to' grows accordingly.
+//
+// Deliberately NOT modelled (no honest static value for them): the price of
+// spending a charge from the hand, the tempo the cast invests, the reply cast
+// the opponent may answer with, and the expiry of an enemy zone that is
+// already live (that one also moves plain moves, so it does not belong here).
+// The jump transparency is likewise not propagated into the x-ray discoveries
+// of the loop below, which keep the plain occupancy they have always used.
+template<bool Cast>
+bool Position::see_ge_impl(Move m, int threshold) const {
 
     Square from = m.from_sq(), to = m.to_sq();
 
@@ -2078,9 +2110,44 @@ bool Position::see_ge(Move m, int threshold) const {
         return true;
 
     assert(color_of(piece_on(from)) == sideToMove);
+
+    // Payload of the cast carried by this very move. Both stay empty unless
+    // Cast, so every spell expression below folds away on the plain path.
+    Bitboard castTransparent = 0;  // new jump gate, transparent for both colors
+    Bitboard castFrozen      = 0;  // enemy pieces silenced by the new zone
+    if constexpr (Cast)
+    {
+        if (m.spell_type() == SPELL_JUMP)
+            castTransparent = square_bb(m.gate_sq());
+        else
+            castFrozen = FreezeZoneBB[m.gate_sq()] & pieces(~sideToMove);
+    }
+
     Bitboard occupied  = pieces() ^ from ^ to;  // xoring to is important for pinned piece logic
     Color    stm       = sideToMove;
     Bitboard attackers = attackers_to(to, occupied);
+
+    [[maybe_unused]] Bitboard thawed = 0;
+
+    if constexpr (Cast)
+    {
+        // Sliders of either color that reach 'to' only through the freshly
+        // opened gate. Clearing a blocker can never remove an attack, so this
+        // is a plain union on top of the spell-aware attackers_to() set.
+        if (castTransparent)
+        {
+            const Bitboard occSliding = occupied & ~jump_transparent() & ~castTransparent;
+
+            attackers |= ((attacks_bb<ROOK>(to, occSliding) & pieces(ROOK, QUEEN))
+                          | (attacks_bb<BISHOP>(to, occSliding) & pieces(BISHOP, QUEEN)))
+                       & ~frozen_pieces();
+        }
+
+        // Hold the freshly frozen defenders back for the opponent's reply
+        thawed = attackers & castFrozen;
+        attackers ^= thawed;
+    }
+
     Bitboard stmAttackers, bb;
     int      res = 1;
 
@@ -2156,6 +2223,15 @@ bool Position::see_ge(Move m, int threshold) const {
               // If we "capture" with the king but the opponent still has attackers,
               // reverse the result.
             return (attackers & ~pieces(stm)) ? res ^ 1 : res;
+
+        // A freeze zone lives for the casting ply and the opponent's single
+        // reply only. That reply has just been played, so the pieces it kept
+        // out of the exchange are free again from here on.
+        if constexpr (Cast)
+        {
+            attackers |= thawed;
+            thawed = 0;
+        }
     }
 
     return bool(res);
