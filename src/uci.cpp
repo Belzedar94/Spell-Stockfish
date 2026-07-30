@@ -40,6 +40,7 @@
 #include "position.h"
 #include "score.h"
 #include "search.h"
+#include "spell_params.h"
 #include "types.h"
 #include "ucioption.h"
 
@@ -194,6 +195,29 @@ int UCIEngine::loop() {
             std::string moveStr;
             is >> moveStr;
             engine.trace_see(moveStr);
+        }
+        // Exact integers for the SB3 harness: the qsearch futility margin of a
+        // capture, next to the raw piece value it replaces.
+        else if (token == "qsfut")
+        {
+            std::string  moveStr;
+            StateListPtr qsStates(new std::deque<StateInfo>(1));
+            Position     qsPos;
+
+            is >> moveStr;
+            qsPos.set(engine.fen(), false, &qsStates->back());
+            Move qsMove = to_move(qsPos, moveStr);
+
+            if (!qsMove.is_ok())
+                sync_cout << "qsfut " << moveStr << " illegal" << sync_endl;
+            else
+                sync_cout << "qsfut " << moveStr << " raw "
+                          << int(PieceValue[qsPos.piece_on(qsMove.to_sq())]) << " gain "
+                          << int(spell_qs_futility_gain(qsPos, qsMove)) << " defended "
+                          << int(qsPos.attackers_to_exist(qsMove.to_sq(),
+                                                          qsPos.pieces() ^ qsMove.from_sq(),
+                                                          ~qsPos.side_to_move()))
+                          << sync_endl;
         }
         else if (token == "compiler")
             sync_cout << compiler_info() << sync_endl;
