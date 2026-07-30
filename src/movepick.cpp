@@ -231,6 +231,7 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
     Color us = pos.side_to_move();
 
     [[maybe_unused]] Bitboard threatByLesser[KING + 1];
+    [[maybe_unused]] Bitboard lesserMen[KING + 1];
     if constexpr (Type == QUIETS)
     {
         threatByLesser[PAWN]   = 0;
@@ -239,6 +240,15 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
           pos.attacks_by<KNIGHT>(~us) | pos.attacks_by<BISHOP>(~us) | threatByLesser[KNIGHT];
         threatByLesser[QUEEN] = pos.attacks_by<ROOK>(~us) | threatByLesser[ROOK];
         threatByLesser[KING]  = 0;
+
+        // Spell chess: the enemy men standing behind each of those threat sets.
+        // A freeze cast silences the ones its zone covers, so a gated quiet has
+        // to be re-scored against the attackers that survive its own zone.
+        lesserMen[PAWN]   = 0;
+        lesserMen[KNIGHT] = lesserMen[BISHOP] = pos.pieces(~us, PAWN);
+        lesserMen[ROOK]                       = pos.pieces(~us, PAWN, KNIGHT, BISHOP);
+        lesserMen[QUEEN]                      = pos.pieces(~us, PAWN, KNIGHT, BISHOP, ROOK);
+        lesserMen[KING]                       = 0;
     }
 
 
@@ -276,6 +286,21 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
             // penalty for moving to a square threatened by a lesser piece
             // or bonus for escaping an attack by a lesser piece.
             int v = 20 * (bool(threatByLesser[pt] & from) - bool(threatByLesser[pt] & to));
+
+            // Spell chess: a frozen piece cannot move, so it threatens nothing
+            // while the zone lasts. The engine's zone lifetime means the only
+            // freeze a quiet can ever see here is the one it casts itself: it
+            // silences its 3x3 for exactly the reply this term is pricing, so
+            // ask the question again against the attackers that survive it.
+            if (v && m.is_spell() && m.spell_type() == SPELL_FREEZE)
+            {
+                const Bitboard alive = lesserMen[pt] & ~spell_zone_bb(SPELL_FREEZE, m.gate_sq());
+
+                v = 20
+                  * (int((threatByLesser[pt] & from) && (pos.attackers_to(from) & alive))
+                     - int((threatByLesser[pt] & to) && (pos.attackers_to(to) & alive)));
+            }
+
             m.value += PieceValue[pt] * v;
 
             // NOTE (refuted idea, AUDIT.md): adding the gate impact score to
