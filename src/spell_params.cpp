@@ -58,6 +58,10 @@ int SpellNoIIR            = 0;
 int SpellContHistSkip     = 0;
 int SpellRazorGuard       = 0;
 
+// SB3 default: a really-defended target is priced at the exchange, not at the
+// raw piece. 0 reproduces the stock margin exactly.
+int SpellQsDefendedPct = 100;
+
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
@@ -81,5 +85,6 @@ TUNE(SetRange(0, 500), SpellCaptureSeeMargin);
 TUNE(SetRange(0, 1), SpellNoIIR);
 TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
+TUNE(SetRange(0, 100), SpellQsDefendedPct);
 
 }  // namespace Stockfish

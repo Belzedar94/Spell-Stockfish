@@ -1956,10 +1956,11 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
                 if (moveCount > 2)
                     continue;
 
-                Value futilityValue = futilityBase + PieceValue[pos.piece_on(move.to_sq())];
+                Value futilityValue = futilityBase + spell_qs_futility_gain(pos, move);
 
-                // If static eval + value of piece we are going to capture is
-                // much lower than alpha, we can prune this move.
+                // If static eval + the material this capture can actually KEEP
+                // under the spell rules (frozen defenders do not defend, jump
+                // gates do) is much lower than alpha, we can prune this move.
                 if (futilityValue <= alpha)
                 {
                     bestValue = std::max(bestValue, futilityValue);
