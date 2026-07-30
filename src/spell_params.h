@@ -19,6 +19,11 @@
 #ifndef SPELL_PARAMS_H_INCLUDED
 #define SPELL_PARAMS_H_INCLUDED
 
+#include <algorithm>
+
+#include "position.h"
+#include "types.h"
+
 namespace Stockfish {
 
 // Search-policy constants for spell selectivity. These do NOT affect the
@@ -112,6 +117,62 @@ extern int SpellContHistSkip;  // 0 (off)
 // qsearch that cannot see spells, so positions with a saving cast get
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
+
+// ---------------------------------------------------------------------------
+// SB3: spell-aware qsearch futility.
+
+// Percentage of the recapture deduction applied to the qsearch futility
+// margin when the landing square is REALLY defended under the spell rules.
+// 100 = the exchange is assumed to come straight back; 0 restores the stock
+// raw-piece-value margin exactly (bench-identical escape hatch).
+extern int SpellQsDefendedPct;  // 100
+
+// Optimistic material gain of a qsearch capture, spell-aware.
+//
+// The stock margin is the raw value of the piece standing on the target
+// square, which silently assumes nothing can take it back. In spell chess
+// that assumption fails in BOTH directions: a defender sitting inside an
+// enemy freeze zone gives no attacks at all (the capture really is free, and
+// a piece-value margin has no way to notice), and a slider behind an active
+// jump gate defends a square it could never reach on a normal board (the
+// capture really is answered, and a piece-value margin does not see the
+// defender either). Position::attackers_to_exist is the primitive that
+// already encodes both rules, so it — not PieceValue — is the honest signal
+// for "can this material be kept".
+//
+// Occupancy is the post-move one: the mover's origin square is vacated (so a
+// defender uncovered behind it counts) while the target stays occupied by the
+// piece that lands there. En passant keeps the stock behaviour: the target is
+// empty, so the gain is 0 on both branches.
+//
+// The answer is read in the position's CURRENT spell state, which is the
+// state a plain capture lands in. qsearch also generates gated captures, and
+// there the cast changes the board the recapture would happen on: a jump cast
+// only ADDS transparency, so the query can only miss a defender and stay on
+// the safe side, but a freeze cast REMOVES defenders this query still sees —
+// a false positive that would prune the very tactic the cast sets up. Freeze
+// casts therefore keep the stock raw margin.
+//
+// Cost: at most five masked attack lookups with early exit, on the two moves
+// per node that reach the futility test, and it can save the see_ge() call
+// that follows.
+inline Value spell_qs_futility_gain(const Position& pos, Move m) {
+
+    const Square to  = m.to_sq();
+    const int    cap = PieceValue[pos.piece_on(to)];
+
+    // The cast silences defenders that the pre-cast query still counts.
+    if (m.is_spell() && m.spell_type() == SPELL_FREEZE)
+        return Value(cap);
+
+    // Nothing can recapture under the spell rules: the raw value is real.
+    if (!pos.attackers_to_exist(to, pos.pieces() ^ m.from_sq(), ~pos.side_to_move()))
+        return Value(cap);
+
+    // Really defended: price in the answer instead of the full piece.
+    return Value(
+      std::max(cap - SpellQsDefendedPct * int(PieceValue[pos.moved_piece(m)]) / 100, 0));
+}
 
 }  // namespace Stockfish
 
