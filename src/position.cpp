@@ -2085,15 +2085,18 @@ bool Position::see_ge(Move m, int threshold) const {
 //    at the end of that reply — so the silenced defenders are unavailable for
 //    the recapture and available again for every later capture ('thawed').
 //    Own pieces are never affected: a freeze only restricts the opponent.
-//  * JUMP: the gate square stops blocking sliding rays, for BOTH colors, so
-//    the initial attacker set of 'to' grows accordingly.
+//  * JUMP: the gate square stops blocking sliding rays, for BOTH colors, for
+//    the whole exchange — the initial attacker set of 'to' grows accordingly,
+//    and so does every x-ray the loop discovers while it peels attackers off.
 //
 // Deliberately NOT modelled (no honest static value for them): the price of
 // spending a charge from the hand, the tempo the cast invests, the reply cast
 // the opponent may answer with, and the expiry of an enemy zone that is
 // already live (that one also moves plain moves, so it does not belong here).
-// The jump transparency is likewise not propagated into the x-ray discoveries
-// of the loop below, which keep the plain occupancy they have always used.
+// The gates that were ALREADY live and the pieces frozen by an ALREADY live
+// zone are likewise still ignored by the loop's x-rays: that is a different
+// defect (the loop disagreeing with attackers_to about the current position)
+// and it belongs to a different patch.
 template<bool Cast>
 bool Position::see_ge_impl(Move m, int threshold) const {
 
@@ -2151,6 +2154,26 @@ bool Position::see_ge_impl(Move m, int threshold) const {
     Bitboard stmAttackers, bb;
     int      res = 1;
 
+    // The x-ray discoveries below slide through 'occupied & ~castTransparent',
+    // so the gate this very move opens keeps its transparency for the WHOLE
+    // exchange and not only for the initial attacker set: peeling off the first
+    // slider behind the gate has to uncover the second one.
+    //
+    // Only the ray lookups get the mask. 'occupied' itself keeps the gate
+    // square, because the piece standing on it is still a piece: it may be the
+    // attacker that recaptures (`attackers &= occupied`) and it may be the
+    // pinner the filter below looks for. And the mask is an AND-NOT, not an
+    // XOR, so a gate that is also 'from' — a legal cast, the piece on the gate
+    // may move — stays cleared instead of flipping back on.
+    //
+    // The freeze chronology of 'thawed' is untouched: a move carries one spell,
+    // so castTransparent and castFrozen are never both set and no thawing ever
+    // races a discovery. Even if they were, a discovery made during the first
+    // iteration is the opponent's own reply, and an enemy attacker added there
+    // is first usable in iteration 3 — exactly when 'thawed' puts it back.
+    //
+    // With Cast == false castTransparent is provably zero, ~0 is the identity
+    // mask, and the plain-chess path keeps its exact instruction stream.
     while (true)
     {
         stm = ~stm;
@@ -2180,7 +2203,8 @@ bool Position::see_ge_impl(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<BISHOP>(to, occupied) & pieces(BISHOP, QUEEN);
+            attackers |=
+              attacks_bb<BISHOP>(to, occupied & ~castTransparent) & pieces(BISHOP, QUEEN);
         }
 
         else if ((bb = stmAttackers & pieces(KNIGHT)))
@@ -2196,7 +2220,8 @@ bool Position::see_ge_impl(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<BISHOP>(to, occupied) & pieces(BISHOP, QUEEN);
+            attackers |=
+              attacks_bb<BISHOP>(to, occupied & ~castTransparent) & pieces(BISHOP, QUEEN);
         }
 
         else if ((bb = stmAttackers & pieces(ROOK)))
@@ -2205,7 +2230,7 @@ bool Position::see_ge_impl(Move m, int threshold) const {
                 break;
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= attacks_bb<ROOK>(to, occupied) & pieces(ROOK, QUEEN);
+            attackers |= attacks_bb<ROOK>(to, occupied & ~castTransparent) & pieces(ROOK, QUEEN);
         }
 
         else if ((bb = stmAttackers & pieces(QUEEN)))
@@ -2215,8 +2240,9 @@ bool Position::see_ge_impl(Move m, int threshold) const {
             assert(swap >= res);
             occupied ^= least_significant_square_bb(bb);
 
-            attackers |= (attacks_bb<BISHOP>(to, occupied) & pieces(BISHOP, QUEEN))
-                       | (attacks_bb<ROOK>(to, occupied) & pieces(ROOK, QUEEN));
+            attackers |=
+              (attacks_bb<BISHOP>(to, occupied & ~castTransparent) & pieces(BISHOP, QUEEN))
+              | (attacks_bb<ROOK>(to, occupied & ~castTransparent) & pieces(ROOK, QUEEN));
         }
 
         else  // KING

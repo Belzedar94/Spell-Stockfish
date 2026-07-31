@@ -379,6 +379,42 @@ class SpellSEE(unittest.TestCase):
         self.assertEqual(see_at(fen, "h1d5"), PAWN)
         self.assertEqual(see_at(fen, "j@d6,h1d5"), PAWN - QUEEN)
 
+    # --- jump: the transparency survives the whole exchange ---------------
+    #
+    # The cases above only need the gate while the INITIAL attacker set is
+    # built. These need it later: the first slider behind the gate is found
+    # straight away, and the second one only appears once the first has been
+    # peeled off by the exchange itself. A model that drops the transparency
+    # after the initial set never sees it, because the gate goes on blocking
+    # the very ray the loop is re-scanning.
+
+    def test_jump_gate_uncovers_the_second_slider_behind_it(self):
+        # d-file: d3 is a white pawn (the gate), d2 and d1 are white rooks.
+        # d5 is a black pawn defended by the c6 pawn and the a5 rook.
+        #
+        # exd5, cxd5, Rd2xd5, Raxd5, Rd1xd5: white ends a pawn up, and only
+        # the d1 rook makes it so. The d2 rook is found while the initial
+        # attacker set is built; the d1 rook only appears once the d2 rook
+        # has left the file, and the re-scan that should find it is still
+        # walled off by d3 unless the gate stays transparent. Without that,
+        # the exchange stops early and a won pawn is priced at zero.
+        fen = board("7k/8/2p5/r2p4/4P3/3P4/3R4/3R3K")
+        self.assertEqual(see_at(fen, "e4d5"), 0)  # rooks walled off by d3
+        self.assertEqual(see_at(fen, "j@c6,e4d5"), 0)  # a gate off the ray
+        self.assertEqual(see_at(fen, "j@d3,e4d5"), PAWN)
+
+    def test_second_slider_behind_the_gate_can_belong_to_the_opponent(self):
+        # Same geometry pointed the other way: the gate d6 is a black pawn
+        # and BOTH rooks behind it are black. exd5 is a free pawn while d6
+        # blocks; casting j@d6 hands black the d7 rook (initial set) and,
+        # once that rook has recaptured and been taken, the d8 rook as well.
+        # Counting only the first one makes the cast look like a free pawn;
+        # counting both makes it the even trade it really is. Propagating
+        # the transparency is not a bonus for the caster, it is the truth.
+        fen = board("3r3k/3r4/3p4/3p4/4P3/8/8/3R3K")
+        self.assertEqual(see_at(fen, "e4d5"), PAWN)  # d7 rook walled off
+        self.assertEqual(see_at(fen, "j@d6,e4d5"), 0)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
