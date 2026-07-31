@@ -86,6 +86,11 @@ class Engine:
                 return None if tail == "illegal" else int(tail)
         raise RuntimeError("no see output")
 
+    def setoption(self, name, value):
+        self.send(f"setoption name {name} value {value}")
+        self.send("isready")
+        self.read_until("readyok")
+
 
 def moves_at(fen=None, moves=()):
     e = Engine.get()
@@ -296,6 +301,16 @@ def board(pieces, stm="w"):
     return f"{pieces}{HOLDINGS} {stm} - - 0 1"
 
 
+def hand_board(pieces, jumps=2, freezes=5, stm="w"):
+    """Same board, same spell state, a different WHITE hand.
+
+    The holdings field is 'jumps then freezes, White then Black'
+    (Position::fen), so this only rewrites the uppercase half.
+    """
+    held = "J" * jumps + "F" * freezes + "jj" + "fffff"
+    return f"{pieces}[{held}] {{F@-:0,J@-:0,f@-:0,j@-:0}} {stm} - - 0 1"
+
+
 class SpellSEE(unittest.TestCase):
     """Static exchange evaluation of gated moves (SPELL_SPEC.md 2.1 / 3).
 
@@ -378,6 +393,76 @@ class SpellSEE(unittest.TestCase):
         fen = board("3rk3/8/3p4/3p4/8/8/8/4K2Q")
         self.assertEqual(see_at(fen, "h1d5"), PAWN)
         self.assertEqual(see_at(fen, "j@d6,h1d5"), PAWN - QUEEN)
+
+
+class SpellCastCharge(unittest.TestCase):
+    """The SEE of a cast pays for the charge it burns (SpellCastSeeCharge).
+
+    SpellSEE above prices what a spell BUYS. These cases price what it
+    COSTS: a hand of 5 freezes and 2 jumps that never refills, so the same
+    cast on the same board is not the same trade when it is the last one.
+
+    Every board here is one white pawn take on d5 that a cast turns into a
+    free pawn, so the exchange value is fixed at PAWN and the ONLY thing
+    that can move the number is the hand. The knob is set to 100 because
+    every entry of the table then divides exactly:
+
+           hand:     5     4     3     2      1
+         freeze:    20    25    33    50    100
+           jump:     -     -     -   125    250
+    """
+
+    CHARGE = 100
+
+    # exd5 is defended by c6 only; freezing c6 (or opening the d-file with a
+    # jump on d3, for the rook on d1) wins the pawn outright. Both casts buy
+    # the very same pawn on the very same board.
+    BOTH = "4k3/8/2p5/3p4/4P3/3P4/8/3RK3"
+    FREEZE_CAST = "f@c6,e4d5"
+    JUMP_CAST = "j@d3,e4d5"
+
+    def setUp(self):
+        Engine.get().setoption("SpellCastSeeCharge", self.CHARGE)
+
+    def tearDown(self):
+        Engine.get().setoption("SpellCastSeeCharge", 0)
+
+    def test_freeze_gets_dearer_as_the_hand_empties(self):
+        # Same board, same cast, same pawn won -- five different prices,
+        # because the fifth freeze and the last freeze are not the same
+        # resource. A flat charge answers the same number to all five.
+        ladder = [see_at(hand_board(self.BOTH, freezes=n), self.FREEZE_CAST)
+                  for n in (5, 4, 3, 2, 1)]
+        self.assertEqual(ladder, [PAWN - c for c in (20, 25, 33, 50, 100)])
+
+    def test_jump_gets_dearer_as_the_hand_empties(self):
+        ladder = [see_at(hand_board(self.BOTH, jumps=n), self.JUMP_CAST)
+                  for n in (2, 1)]
+        self.assertEqual(ladder, [PAWN - c for c in (125, 250)])
+
+    def test_a_jump_charge_costs_more_than_a_freeze_charge(self):
+        # Both casts win the same pawn on the same board with the same
+        # number of charges in hand (2), so the gap is purely the 5-vs-2
+        # stock sizes: 2.5x. Equal-priced charges fail here.
+        fen = hand_board(self.BOTH, jumps=2, freezes=2)
+        self.assertEqual(see_at(fen, self.FREEZE_CAST), PAWN - 50)
+        self.assertEqual(see_at(fen, self.JUMP_CAST), PAWN - 125)
+
+    def test_the_charge_never_touches_a_plain_move(self):
+        # Down to one of each, the ordinary capture is still an even trade
+        fen = hand_board(self.BOTH, jumps=1, freezes=1)
+        self.assertEqual(see_at(fen, "e4d5"), 0)
+
+    def test_knob_at_zero_is_the_base(self):
+        # The neutrality guard behind the SPRT: at 0 the hand is invisible
+        # again and every cast is back to its SpellSEE value
+        Engine.get().setoption("SpellCastSeeCharge", 0)
+        for n in (5, 1):
+            self.assertEqual(see_at(hand_board(self.BOTH, freezes=n),
+                                    self.FREEZE_CAST), PAWN)
+        for n in (2, 1):
+            self.assertEqual(see_at(hand_board(self.BOTH, jumps=n),
+                                    self.JUMP_CAST), PAWN)
 
 
 if __name__ == "__main__":

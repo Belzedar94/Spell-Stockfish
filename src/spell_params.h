@@ -100,6 +100,13 @@ extern int SpellAspirationPct;  // 100
 // positive values prune fewer spell captures.
 extern int SpellCaptureSeeMargin;  // 0
 
+// Price of the single charge a cast burns, subtracted from the SEE of every
+// gated move. Quoted in freeze charges: the knob IS what the last freeze
+// costs, and the rest of the table is derived from the game's own stock
+// sizes (SpellInitialHand = 5 freezes, 2 jumps) — see Position::see_ge().
+// 0 = off, and off is bench-identical to a build without the term.
+extern int SpellCastSeeCharge;  // 0
+
 // Disable internal iterative reductions: at huge branching, a missing TT
 // move is common and IIR compounds the ordering weakness.
 extern int SpellNoIIR;  // 0 (off)

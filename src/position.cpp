@@ -36,6 +36,7 @@
 #include "misc.h"
 #include "movegen.h"
 #include "nnue/features/spell_ka_v2.h"
+#include "spell_params.h"
 #include "syzygy/tbprobe.h"
 #include "tt.h"
 #include "notation.h"
@@ -2064,17 +2065,73 @@ void Position::undo_null_move() {
 // correctly — only a cast on a CASTLING base takes the flat-zero bailout,
 // which is exact because castling never captures. What the exchange silently
 // ignored was the payload: the spell is cast in this very ply and is live
-// while the opponent answers. see_ge_impl<true> folds it in.
+// while the opponent answers. see_ge_impl<true> folds it in, and
+// cast_see_charge() prices the charge the cast burns to get it.
 bool Position::see_ge(Move m, int threshold) const {
 
     assert(m.is_ok());
 
+    // The exchange below prices what the spell BUYS. What it BURNS — one
+    // charge out of a hand that never refills — is priced here, by raising
+    // the bar the move has to clear. For this null-window predicate the two
+    // are the same statement:
+    //
+    //     SEE(m) - charge >= threshold   <=>   SEE(m) >= threshold + charge
+    if (m.is_spell())
+        threshold += cast_see_charge(m);
+
     // Only deal with normal moves, assume others pass a simple SEE.
-    // A CASTLING base move never captures (gated or not), so zero is exact.
+    // A CASTLING base move never captures (gated or not), so zero is exact —
+    // but a gated one has still paid for its charge just above.
     if (m.type_of() != NORMAL)
         return VALUE_ZERO >= threshold;
 
     return m.is_spell() ? see_ge_impl<true>(m, threshold) : see_ge_impl<false>(m, threshold);
+}
+
+// Price of the one charge a gated move spends, in exchange units.
+//
+// Each side gets 5 freezes and 2 jumps for the entire game (SpellInitialHand)
+// and nothing ever gives a charge back, so a cast is a withdrawal from a
+// finite account. One principle sets the price:
+//
+//     the marginal unit of a stock of n is worth about 1/n of that stock
+//
+// applied in units of freeze charges, which makes the two stocks comparable:
+//
+//     charge = SpellCastSeeCharge * H[FREEZE] / (H[spell] * hand)
+//
+//   * 1 / hand is the scarcity term. The fifth freeze is nearly free; the
+//     last one costs the whole knob. Spending the last charge to win a pawn
+//     and spending the first are not the same trade, and until now the
+//     exchange could not tell them apart.
+//   * H[FREEZE] / H[spell] is the exchange rate between the two hands, read
+//     off the game's own stock sizes rather than invented: 5 freezes against
+//     2 jumps makes a jump charge a 2.5x rarer commodity at every fill level.
+//
+// So SpellCastSeeCharge reads as "what the LAST freeze costs", and:
+//
+//        hand:     5     4     3     2      1
+//      freeze:   C/5   C/4   C/3   C/2      C
+//        jump:     -     -     -  5C/4   5C/2
+//
+// At 0 the term vanishes for every move and the search is the base's, node
+// for node — which is what makes an SPRT on this knob a test of the price
+// and not of the plumbing.
+int Position::cast_see_charge(Move m) const {
+
+    assert(m.is_spell());
+
+    if (!SpellCastSeeCharge)
+        return 0;
+
+    const SpellType sp = m.spell_type();
+
+    // A legal cast always holds the charge it is about to spend; a stale TT
+    // move need not, and 'hand' is a divisor.
+    const int hand = std::max(1, spells_in_hand(sideToMove, sp));
+
+    return SpellCastSeeCharge * SpellInitialHand[SPELL_FREEZE] / (SpellInitialHand[sp] * hand);
 }
 
 // The exchange itself. With Cast == true the spell carried by 'm' is folded
@@ -2088,12 +2145,16 @@ bool Position::see_ge(Move m, int threshold) const {
 //  * JUMP: the gate square stops blocking sliding rays, for BOTH colors, so
 //    the initial attacker set of 'to' grows accordingly.
 //
-// Deliberately NOT modelled (no honest static value for them): the price of
-// spending a charge from the hand, the tempo the cast invests, the reply cast
-// the opponent may answer with, and the expiry of an enemy zone that is
-// already live (that one also moves plain moves, so it does not belong here).
-// The jump transparency is likewise not propagated into the x-ray discoveries
-// of the loop below, which keep the plain occupancy they have always used.
+// The price of the charge itself is NOT part of the exchange: it does not
+// depend on the exchange, so see_ge() charges it once on the threshold before
+// entering here (cast_see_charge).
+//
+// Deliberately NOT modelled (no honest static value for them): the tempo the
+// cast invests, the reply cast the opponent may answer with, and the expiry
+// of an enemy zone that is already live (that one also moves plain moves, so
+// it does not belong here). The jump transparency is likewise not propagated
+// into the x-ray discoveries of the loop below, which keep the plain
+// occupancy they have always used.
 template<bool Cast>
 bool Position::see_ge_impl(Move m, int threshold) const {
 

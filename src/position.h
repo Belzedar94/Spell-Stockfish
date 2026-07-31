@@ -238,6 +238,9 @@ class Position {
     template<bool Cast>
     bool see_ge_impl(Move m, int threshold) const;
 
+    // What the charge burned by a gated move is worth, for see_ge()
+    int cast_see_charge(Move m) const;
+
     // Initialization helpers (used while setting up a position)
     void set_castling_right(Color c, Square rfrom);
     Key  compute_material_key() const;
