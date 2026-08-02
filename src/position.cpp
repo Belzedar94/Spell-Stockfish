@@ -859,8 +859,9 @@ bool Position::legal(Move m) const {
         if (!can_cast(us, sp))
             return false;
 
-        // Only NORMAL and CASTLING base moves may carry a spell
-        if (m.type_of() != NORMAL && m.type_of() != CASTLING)
+        // NORMAL, CASTLING, and en-passant base moves may carry a spell.
+        if (m.type_of() != NORMAL && m.type_of() != CASTLING
+            && m.type_of() != EN_PASSANT)
             return false;
 
         if (sp == SPELL_FREEZE)
@@ -889,14 +890,16 @@ bool Position::legal(Move m) const {
         const Square   capsq = to - pawn_push(us);
         const Bitboard occ   = (pieces() ^ from ^ capsq) | to;
 
-        const Bitboard occSliding = occ & ~jump_transparent();
+        const Bitboard occSliding = occ & ~(jump_transparent() | castTransparent);
+
+        const Bitboard inactive = frozen_pieces() | (pieces(~us) & castFrozen);
 
         return !(((attacks_bb<ROOK>(ksq, occSliding) & pieces(~us, ROOK, QUEEN))
                   | (attacks_bb<BISHOP>(ksq, occSliding) & pieces(~us, BISHOP, QUEEN))
                   | (attacks_bb<PAWN>(ksq, us) & pieces(~us, PAWN))
                   | (attacks_bb<KNIGHT>(ksq) & pieces(~us, KNIGHT))
                   | (attacks_bb<KING>(ksq) & pieces(~us, KING)))
-                 & ~frozen_pieces() & ~square_bb(capsq));
+                 & ~inactive & ~square_bb(capsq));
     }
 
     // The king may not move into an attacked square. This is the one
