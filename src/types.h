@@ -519,8 +519,9 @@ enum MoveType : u16 {
 // NOTE: en passant bit is set only when a pawn can be captured
 //
 // A gated move is "cast spell at gate, then play the base move" in a single ply.
-// The base move (low 16 bits) is always of type NORMAL or CASTLING; promotions
-// and en passant captures can never carry a spell (see SPELL_SPEC.md).
+// The base move (low 16 bits) is normally a NORMAL or CASTLING move. Spell
+// Chess also permits a potion-gated en-passant capture; promotions remain
+// represented separately and do not carry a spell in this move format.
 //
 // Special cases are Move::none() and Move::null(). We can sneak these in because
 // in any normal move the destination square and origin square are always different,
@@ -540,7 +541,7 @@ class Move {
         return Move(T + ((pt - KNIGHT) << 12) + (from << 6) + to);
     }
 
-    // Attach a spell cast to a base move (base must be NORMAL or CASTLING)
+    // Attach a spell cast to a base move.
     static constexpr Move make_spell(Move base, SpellType spell, Square gate) {
         return Move(base.data | ((u32(spell) + 1) << SpellShift) | (u32(gate) << GateShift));
     }

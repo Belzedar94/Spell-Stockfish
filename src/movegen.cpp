@@ -299,7 +299,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                     const Move     base = *it;
                     const MoveType mt   = base.type_of();
 
-                    if (mt != NORMAL && mt != CASTLING)
+                    if (mt != NORMAL && mt != CASTLING && mt != EN_PASSANT)
                         continue;
                     if (blocked & base.from_sq())
                         continue;
@@ -323,7 +323,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                     const Move     base = *it;
                     const MoveType mt   = base.type_of();
 
-                    if (mt != NORMAL && mt != CASTLING)
+                    if (mt != NORMAL && mt != CASTLING && mt != EN_PASSANT)
                         continue;
                     if (base.to_sq() == gate)
                         continue;

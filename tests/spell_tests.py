@@ -217,6 +217,19 @@ class SpellRules(unittest.TestCase):
         moves = moves_at(fen)
         self.assertIn("j@d6,d7d5", moves)
 
+    def test_potion_gated_en_passant(self):
+        # The confirmed chess.com position: both potion types may accompany
+        # the en-passant capture.  Jump has no movement benefit here, but the
+        # move remains legal and the resulting jump zone is committed.
+        seq = ["a2a3", "c7c6", "f@e7,e2e4", "g7g6",
+               "f2f4", "e7e5", "f4e5", "d7d5"]
+        moves = moves_at(moves=seq)
+        self.assertIn("f@e7,e5d6", moves)
+        self.assertIn("j@c6,e5d6", moves)
+
+        after = fen_after(moves=seq + ["f@e7,e5d6"])
+        self.assertIn("pp3p1p/2pP2p1", after)
+
     def test_king_captures_defended_king(self):
         # A king may capture the ENEMY KING even onto a defended square: the
         # royal capture ends the game, nothing gets to recapture (found in

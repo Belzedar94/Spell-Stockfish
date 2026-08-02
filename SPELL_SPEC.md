@@ -145,8 +145,10 @@ A legal move is either:
 - a **normal move** (standard chess rules, restricted by active freeze origins; sliders see
   jump-transparency of any active zone), or
 - a **gated move** `spell@gate,basemove`:
-  - Base move must be of type NORMAL or CASTLING. **Promotions and en-passant captures cannot be
-    combined with a spell cast.** (Jump-enabled extra moves: NORMAL only, no castling.)
+  - Base move may be NORMAL, CASTLING, or EN_PASSANT. Promotions remain separate and cannot be
+    combined with a spell cast. A gated en-passant capture still removes the pawn behind the
+    destination square; Jump+en-passant is legal but provides no movement benefit from the jump.
+    (Jump-enabled extra moves: NORMAL only, no castling or en-passant.)
   - FREEZE gates: any board square (occupied allowed, `potionDropOnOccupied = true`). Filters on the
     casting ply: base `from != gate`, base `from` outside the new block zone, base `from` not
     already frozen (enemy zone), castling `to` not frozen.
