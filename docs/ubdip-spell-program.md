@@ -230,10 +230,27 @@ heuristics". Su lista de atomic, traducida a spell, sobre la base
   (`SpellSee0Tempo`≈25) a capturas de SEE≈0 cuando el rival AÚN tiene cast
   (su recaptura puede venir con hechizo). Solo orden; poda en una segunda
   parametrización. EN CURSO.
-- **SB5 `statscore`** (item 5): `809*PieceValue[captured]/128` → delta del
-  SEE-de-casts de SB2. Pendiente.
-- **SB4 `capture-order`** (item 2): el orden de capturas respeta defensores
-  congelados. Pendiente.
+- **SB5 `statscore`** (item 5): la captura SEE-perdedora (SEE de casts de
+  SB2) deja de inyectar statScore positivo; `SpellStatScoreLosing` TUNE
+  [-2048, 2048]. Fire-rate 15%; pin de neutralidad exacto. **T155**.
+- **SB4 `frozen-grab`** (item 2): el diseño original ("defensa enemiga
+  congelada en nuestro turno") resultó ESTRUCTURALMENTE MUERTO — la zona
+  vive el ply del cast + UNA respuesta (`SPELL_ZONE_LIFETIME=2`; los "3
+  turnos" son el cooldown), así que el bando sin turno nunca está
+  congelado: 37,5M capturas medidas, 0 disparos. Es la lección de SB6
+  (31-jul) golpeando por segunda vez: **la única congelación visible al
+  puntuar una jugada es la que la propia jugada lanza**. Forma viva
+  committeada: bonus `SpellFrozenGrab` a la captura freeze-gated cuya
+  propia zona cubre a TODOS los defensores del destino (memoizado por
+  destino, 63×; fire-rate 4,3%; cross-check con see_ge de SB2 en 5 casos).
+  **T157**.
+- **SB7 `see0-tempo`**: matiz del agente — el cooldown ticka en el do_move
+  rival, el predicado honesto es `can_cast_on_reply` (cooldown ≤ 1).
+  Fire-rate 3,4%; neutralidad exacta a 0. **T156**.
+- **SB8 `frozen-history`**: **T154, EN CUARENTENA VERIFICATIVA** — la
+  invariante de SB4 sugiere buckets casi-siempre-0 en las lecturas
+  pre-move, pero su bench se movió (reproducido ×3); histograma de buckets
+  en curso para resolver la contradicción antes de gastar flota.
 - **T153 `capture-see-120b`** (recuperado por el inventario): el AUDIT.md
   registra `capture-see-120` como PASS STC contra la base vieja (10.308
   partidas, LLR +2,98, ~+10) con su LTC en cola cuando la era murió. SB2
