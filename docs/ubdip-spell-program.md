@@ -195,6 +195,49 @@ y el listón del programa es: Spell-SF (base EP-cast + red campeona propia)
 debe batir a FSF+run5rl — si el generalista con red gana, el especializado
 no se está justificando.
 
+## El listón, medido (3-ago): FSF+run5rl nos saca 74-164 Elo
+
+Cruce Spell-SF (base `15820b97` + red campeona propia) contra FSF+run5rl,
+relay de FEN, árbitro `spell/nnue-potions`+EP compilado **`all=yes`**
+(obligatorio: el gating puede pasar de 4.096 jugadas y el buffer estándar
+corrompe el heap — 11.046 medidas por rainrat; nuestros dos primeros
+intentos de panel murieron por eso con 59/200 y 39/200 abortos). Con
+árbitro estable: **cero incidentes**.
+
+| TC | Partidas | W-L-D | Score | Elo | LOS |
+|---|---|---|---|---|---|
+| 2+0.02 | 200 (final) | 50-138-12 | 28,0% | **-164** | 0,0% |
+| 10+0.1 | 114 (parcial) | 32-78-4 | 29,8% | **-149** | 0,0% |
+| 30+0.3 | 43 (parcial) | 17-26-0 | 39,5% | **-74** | 8,5% |
+
+(Parciales: adjudicado por el propietario al quedar la dirección clara.)
+Contra FSF **clásico** el mismo día: +123/+193 con LOS 100%. La lectura: la
+brecha es la RED del generalista + su búsqueda tuneada para spell, no la
+eval clásica; y se estrecha con el tiempo (patrón NNUE profunda). El
+especializado aún no se justifica — de ahí la ronda 3.
+
+## Ronda 3 (3-ago): la caza de los +100 — ordering e history
+
+Tesis de ubdip para esta clase de juego (vault, 23-sep-25): en variantes de
+branching enorme lo que paga es "better move ordering and history
+heuristics". Su lista de atomic, traducida a spell, sobre la base
+`15820b97`:
+
+- **SB8 `frozen-history`** (item 3, el anillo→congelación): captureHistory
+  gana dimensión = min(defensores congelados del destino, 3), 4 cubos, 4x
+  memoria. EN CURSO.
+- **SB7 `see0-tempo`** (item 4, la idea profunda): malus de orden TUNE
+  (`SpellSee0Tempo`≈25) a capturas de SEE≈0 cuando el rival AÚN tiene cast
+  (su recaptura puede venir con hechizo). Solo orden; poda en una segunda
+  parametrización. EN CURSO.
+- **SB5 `statscore`** (item 5): `809*PieceValue[captured]/128` → delta del
+  SEE-de-casts de SB2. Pendiente.
+- **SB4 `capture-order`** (item 2): el orden de capturas respeta defensores
+  congelados. Pendiente.
+- Cantera adicional: los verdictos de los experimentos FSF del propietario
+  (elo_logs, serie hito6/qpotion) — port de ganadores, veto de perdedores.
+  Inventario en curso.
+
 ## Estado anterior (31-jul, madrugada) — contra la base vieja
 
 | Test | Rama | Bench | Qué mide |
