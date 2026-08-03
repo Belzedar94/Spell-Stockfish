@@ -1429,6 +1429,13 @@ moves_loop:  // When in check, search starts here
         else if ((givesCheck || tacticalSpell) && depth > 6 && std::abs(ss->staticEval) > 100)
             extension = 1;
 
+        // Is this capture losing by the spell-aware exchange? The statScore
+        // below is computed after the move is made, when the pre-move position
+        // is gone, so the verdict has to be taken here, while the move is
+        // still pending. Non-NORMAL bases (en passant, queen promotions) take
+        // see_ge()'s flat-zero bailout and are therefore never losing.
+        const bool captureSeeLosing = capture && !pos.see_ge(move, VALUE_ZERO);
+
         u64 nodeCount = rootNode ? u64(nodes) : 0;
 
         // Step 16. Make the move
@@ -1484,8 +1491,13 @@ moves_loop:  // When in check, search starts here
         else if (move == ttData.move)
             r -= 2016;
 
+        // The captured-piece term pays by the size of the prize; a capture the
+        // exchange calls losing did not keep the prize, so it gets the flat
+        // SpellStatScoreLosing instead (spell chess makes this common: a cast
+        // that looks like a free grab is routinely refuted by the recapture).
         if (capture)
-            ss->statScore = 809 * int(PieceValue[pos.captured_piece()]) / 128
+            ss->statScore = (captureSeeLosing ? SpellStatScoreLosing
+                                              : 809 * int(PieceValue[pos.captured_piece()]) / 128)
                           + captureHistory[movedPiece][move.to_sq()][type_of(pos.captured_piece())];
         else
             ss->statScore = 2 * mainHistory[us][move.raw() & 0xFFFF]

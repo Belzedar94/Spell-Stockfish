@@ -113,6 +113,15 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Replacement for the captured-piece term of the child's statScore when the
+// capture just made is LOSING by the spell-aware exchange. The stock term,
+// 809 * PieceValue[captured] / 128, pays by the size of the prize and never
+// asks whether the prize was kept: a queen grab that hangs the queen back
+// injects ~16000 (about a 1.7 ply reduction discount) into the child. 0 = no
+// credit at all; the range reaches roughly +-1.5 pawn-terms, i.e. +-0.22 ply
+// of reduction, so SPSA can also turn a losing capture into a penalty.
+extern int SpellStatScoreLosing;  // 0
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
