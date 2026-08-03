@@ -177,6 +177,24 @@ rebasa encima antes de mergear. El árbitro FSF local (build 11-jul) es
 anterior a la regla: recompilar desde el PR #96 antes de cualquier panel
 con EP-casts en juego.
 
+## Torneo de redes FSF (3-ago): run5rl campeona
+
+Formato semifinal→final del propietario, mismo motor a ambos lados
+(`FSF_Spell_test_baseline`, solo cambia `EvalFile`), Hash=512, TCs de toda
+la vida (2+0.02 / 10+0.1 / 30+0.3), `variantfishtest_spell.py`.
+
+| Cruce | vstc | stc | ltc | Veredicto |
+|---|---|---|---|---|
+| 4rl vs 5rl (semi) | -53,8 (508p, LOS 0,0%) | -44,9 (140p, 5,5%) | 0,0 (66p) | **5rl** (adjudicado; dato histórico del propietario: ltc también 5rl) |
+| 5rl vs 4b (final) | +40,3 (780p, LOS 100%) | +17,9 (252p, 79,8%) | +78,1 (86p, 98,5%) | **5rl** (adjudicado) |
+
+Nota: invierte el orden de los torneos de rainrat a 300ms/mov (allí 4rl
+arriba). A nuestros TCs, run5rl manda con claridad en vstc y ltc. **La
+referencia FSF para paneles cruzados es `spell-chess_run5rl_e10_l07.nnue`**,
+y el listón del programa es: Spell-SF (base EP-cast + red campeona propia)
+debe batir a FSF+run5rl — si el generalista con red gana, el especializado
+no se está justificando.
+
 ## Estado anterior (31-jul, madrugada) — contra la base vieja
 
 | Test | Rama | Bench | Qué mide |
