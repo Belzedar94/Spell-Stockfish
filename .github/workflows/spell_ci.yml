@@ -120,5 +120,5 @@ jobs:
 
       - name: Threaded bench under TSan
         run: |
-          ./stockfish bench 64 4 6 default depth
+          ./stockfish bench 64 4 5 default depth
           ./stockfish bench 64 8 4 default depth
