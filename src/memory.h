@@ -73,6 +73,15 @@ void* aligned_large_pages_alloc_with_hint(usize size, bool hugePageHint);
 void* aligned_large_pages_alloc(usize size);
 void  aligned_large_pages_free(void* mem);
 
+// A big buffer that is sized for a worst case nobody ever reaches: reserve the
+// address space up front and pay for it only where it is really written.
+// new[]/malloc cannot do this on Windows — an untouched page of a committed
+// allocation still costs system commit — so the reservation is explicit there.
+// Elsewhere the allocator already faults pages in on touch and commit is a nop.
+void* lazy_reserve(usize size);
+bool  lazy_commit(void* base, usize offset, usize size);
+void  lazy_release(void* base);
+
 bool has_large_pages();
 
 // Frees memory which was placed there with placement new.

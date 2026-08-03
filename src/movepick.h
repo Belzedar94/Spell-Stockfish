@@ -27,6 +27,39 @@ namespace Stockfish {
 
 class Position;
 
+// The per-thread bump arena the MovePickers claim their move buffers from.
+// It is sized for a nesting nobody ever reaches (one MAX_MOVES slot per live
+// picker, at every ply), so the far end of it is never written: the arena
+// reserves its address space once and commits only up to the high-water mark
+// of the bump pointer. Slots are claimed and released strictly LIFO.
+class MoveArena {
+   public:
+    MoveArena()                            = default;
+    MoveArena(const MoveArena&)            = delete;
+    MoveArena& operator=(const MoveArena&) = delete;
+    ~MoveArena();
+
+    void reserve(usize slots);
+    void reset() { top = base; }
+
+    ExtMove* claim() {
+        ExtMove* slot = top;
+        top += MAX_MOVES;
+        if (top > committed)
+            commit_through(top);
+        return slot;
+    }
+    void release() { top -= MAX_MOVES; }
+
+   private:
+    void commit_through(ExtMove* want);
+
+    ExtMove* base      = nullptr;
+    ExtMove* top       = nullptr;
+    ExtMove* committed = nullptr;  // end of the memory actually paid for
+    ExtMove* end       = nullptr;  // end of the reservation
+};
+
 // The MovePicker class is used to pick one pseudo-legal move at a time from the
 // current position. The most important method is next_move(), which emits one
 // new pseudo-legal move on every call, until there are no moves left, when
@@ -56,12 +89,12 @@ class MovePicker {
                const PieceToHistory**,
                const SharedHistories*,
                int,
-               ExtMove**,
+               MoveArena*,
                Move*,
                bool allowSpells        = true,
                bool onlyTacticalSpells = false);
-    MovePicker(const Position&, Move, int, const CapturePieceToHistory*, ExtMove**, Move*);
-    ~MovePicker() { *arenaTop -= MAX_MOVES; }
+    MovePicker(const Position&, Move, int, const CapturePieceToHistory*, MoveArena*, Move*);
+    ~MovePicker() { arena->release(); }
     Move next_move();
     void skip_quiet_moves();
 
@@ -95,8 +128,8 @@ class MovePicker {
     bool      mergedSpells        = false;
     Bitboard  spellRoyalAttackers = 0;
     Square    spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
-    ExtMove** arenaTop;
-    ExtMove*  moves;
+    MoveArena* arena;
+    ExtMove*   moves;
     Move*     genScratch;
 };
 

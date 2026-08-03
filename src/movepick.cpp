@@ -20,16 +20,78 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdlib>
+#include <iostream>
 #include <limits>
 #include <utility>
 
 #include "bitboard.h"
+#include "memory.h"
 #include "misc.h"
 #include "position.h"
 #include "spell_order.h"
 #include "spell_params.h"
 
 namespace Stockfish {
+
+// The whole reservation is 4 slots per ply, i.e. 256 MB of MAX_MOVES buffers
+// for a nesting the search never approaches. Committing it up front made every
+// engine process charge a quarter of a gigabyte it never wrote to the system
+// commit limit; here the commit follows the bump pointer instead, one chunk at
+// a time and never given back, so it settles at the deepest nesting a search
+// actually reaches and costs one syscall per new high-water mark.
+namespace {
+constexpr usize ArenaCommitChunk = 4 * usize(MAX_MOVES);  // 1 MB of ExtMoves
+}
+
+MoveArena::~MoveArena() { lazy_release(base); }
+
+void MoveArena::reserve(usize slots) {
+
+    const usize slotSize = usize(MAX_MOVES) * sizeof(ExtMove);
+
+    base = static_cast<ExtMove*>(lazy_reserve(slots * slotSize));
+    if (!base)
+    {
+        std::cerr << "Failed to reserve " << ((slots * slotSize) >> 20)
+                  << " MB of address space for the move arena." << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    top = committed = base;
+    end             = base + slots * usize(MAX_MOVES);
+
+    commit_through(base + ArenaCommitChunk);
+}
+
+void MoveArena::commit_through(ExtMove* want) {
+
+    // Running off the end means a MovePicker nesting deeper than the arena was
+    // sized for. That used to be a silent write past the buffer; say it out
+    // loud instead.
+    if (want > end)
+    {
+        std::cerr << "Move arena exhausted: MovePicker nesting exceeds the reservation."
+                  << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    ExtMove* target = committed;
+    while (target < want)
+        target += ArenaCommitChunk;
+    if (target > end)
+        target = end;
+
+    if (!lazy_commit(base, usize(committed - base) * sizeof(ExtMove),
+                     usize(target - committed) * sizeof(ExtMove)))
+    {
+        std::cerr << "Failed to commit the move arena. The system is out of memory."
+                  << std::endl;
+        exit(EXIT_FAILURE);
+    }
+
+    committed = target;
+}
 
 namespace {
 
@@ -167,7 +229,7 @@ MovePicker::MovePicker(const Position&              p,
                        const PieceToHistory**       ch,
                        const SharedHistories*       sh,
                        int                          pl,
-                       ExtMove**                    at,
+                       MoveArena*                   ar,
                        Move*                        scratch,
                        bool                         spells,
                        bool                         onlyTactical) :
@@ -183,11 +245,9 @@ MovePicker::MovePicker(const Position&              p,
     ply(pl),
     allowSpells(spells),
     onlyTacticalSpells(onlyTactical),
-    arenaTop(at),
-    moves(*at),
+    arena(ar),
+    moves(ar->claim()),
     genScratch(scratch) {
-
-    *arenaTop += MAX_MOVES;
 
     // Spell chess: no evasion staging — self-check is legal, so "in check"
     // nodes are ordered and pruned exactly like normal ones (reference policy).
@@ -203,17 +263,15 @@ MovePicker::MovePicker(const Position&              p,
                        Move                         ttm,
                        int                          th,
                        const CapturePieceToHistory* cph,
-                       ExtMove**                    at,
+                       MoveArena*                   ar,
                        Move*                        scratch) :
     pos(p),
     captureHistory(cph),
     ttMove(ttm),
     threshold(th),
-    arenaTop(at),
-    moves(*at),
+    arena(ar),
+    moves(ar->claim()),
     genScratch(scratch) {
-
-    *arenaTop += MAX_MOVES;
 
     stage =
       PROBCUT_TT

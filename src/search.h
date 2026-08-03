@@ -34,6 +34,7 @@
 #include "history.h"
 #include "misc.h"
 #include "movegen.h"
+#include "movepick.h"
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
 #include "nnue/spell_v2.h"
@@ -422,11 +423,10 @@ class Worker {
     // would force the compiler to page-probe ~256KB per search frame, which
     // costs ~40% NPS. Each ply gets two ExtMove slots (main/qsearch picker
     // and the ProbCut picker) and the whole thread shares one generation
-    // scratch, consumed within each next_move() call. Pages are only
-    // committed when touched, so the large reservation is virtual.
-    std::unique_ptr<ExtMove[]> movesArena;
-    ExtMove*                   movesArenaTop = nullptr;
-    std::unique_ptr<Move[]>    genScratch;
+    // scratch, consumed within each next_move() call. The arena reserves the
+    // whole worst case but commits only what the nesting really reaches.
+    MoveArena               movesArena;
+    std::unique_ptr<Move[]> genScratch;
 
     // Per-thread accumulator refresh cache for the spell NNUE (Finny-style:
     // keyed by perspective and own king square)
@@ -440,8 +440,8 @@ class Worker {
     // MovePickers claim slots RAII/LIFO from the bump arena — ply-keyed
     // slots would collide when a singular verification search re-enters
     // search() at the same ply with the outer picker still alive
-    ExtMove** arena_top() { return &movesArenaTop; }
-    Move*     gen_scratch() { return genScratch.get(); }
+    MoveArena* move_arena() { return &movesArena; }
+    Move*      gen_scratch() { return genScratch.get(); }
 
     friend class Stockfish::ThreadPool;
     friend class SearchManager;

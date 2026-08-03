@@ -182,12 +182,10 @@ Search::Worker::Worker(SharedState&                    sharedState,
     tt(sharedState.tt),
     network(sharedState.network),
     refreshTable(network[token]) {
-    // Raw new[]: ExtMove/Move are trivially constructible, so the arena
-    // pages stay untouched (hence uncommitted) until a ply first uses them
     // Sized for the worst nesting: one picker per ply plus singular
-    // re-entries and the ProbCut picker (all LIFO); pages commit on touch
-    movesArena.reset(new ExtMove[usize(4) * (MAX_PLY + 10) * MAX_MOVES]);
-    movesArenaTop = movesArena.get();
+    // re-entries and the ProbCut picker (all LIFO). Only the address space is
+    // taken here; the arena commits pages as the bump pointer reaches them
+    movesArena.reserve(usize(4) * (MAX_PLY + 10));
     genScratch.reset(new Move[MAX_MOVES]);
     spellRefreshCache.clear();
     clear();
@@ -287,7 +285,7 @@ void Search::Worker::start_searching() {
 Value Search::Worker::qsearch_for_datagen() {
     useSpellV2 = Eval::NNUE::SpellV2::loaded();
     accumulatorStack.reset();
-    movesArenaTop   = movesArena.get();
+    movesArena.reset();
     optimism[WHITE] = optimism[BLACK] = VALUE_ZERO;
     nodes                             = 0;
     selDepth                          = 0;
@@ -1132,7 +1130,7 @@ Value Search::Worker::search(
     {
         assert(probCutBeta < VALUE_INFINITE && probCutBeta > beta);
 
-        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory, arena_top(),
+        MovePicker mp(pos, ttData.move, probCutBeta - ss->staticEval, &captureHistory, move_arena(),
                       gen_scratch());
         Depth      probCutDepth = depth - 4 - improving;
 
@@ -1212,7 +1210,7 @@ moves_loop:  // When in check, search starts here
       allowSpells && !PvNode && !ourRoyalAttackers && depth < SpellQuietMinDepth;
 
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &gateHistory,
-                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch(),
+                  &captureHistory, contHist, &sharedHistory, ss->ply, move_arena(), gen_scratch(),
                   allowSpells, onlyTacticalSpells);
 
     value = bestValue;
@@ -1926,7 +1924,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     // the moves. We presently use two stages of move generator in quiescence search:
     // captures, or evasions only when in check.
     MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &gateHistory,
-                  &captureHistory, contHist, &sharedHistory, ss->ply, arena_top(), gen_scratch());
+                  &captureHistory, contHist, &sharedHistory, ss->ply, move_arena(), gen_scratch());
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain or a beta
     // cutoff occurs.

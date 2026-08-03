@@ -251,4 +251,41 @@ void aligned_large_pages_free(void* mem) {
 }
 
 #endif
+
+
+// lazy_reserve() takes address space; lazy_commit() takes the memory. On
+// Windows they are two distinct steps and only the second one is charged to
+// the system commit limit, so a mostly-unused buffer costs what it uses.
+// Everywhere else the ordinary allocator already behaves that way (pages fault
+// in on first touch), so reserving is a plain allocation and committing a nop.
+
+void* lazy_reserve(usize size) {
+#if defined(_WIN32)
+    return VirtualAlloc(nullptr, size, MEM_RESERVE, PAGE_READWRITE);
+#else
+    return std_aligned_alloc(4096, size);
+#endif
+}
+
+bool lazy_commit([[maybe_unused]] void* base, [[maybe_unused]] usize offset, usize size) {
+    if (!size)
+        return true;
+#if defined(_WIN32)
+    return VirtualAlloc(static_cast<char*>(base) + offset, size, MEM_COMMIT, PAGE_READWRITE)
+        != nullptr;
+#else
+    return true;
+#endif
+}
+
+void lazy_release(void* base) {
+    if (!base)
+        return;
+#if defined(_WIN32)
+    VirtualFree(base, 0, MEM_RELEASE);
+#else
+    std_aligned_free(base);
+#endif
+}
+
 }  // namespace Stockfish
