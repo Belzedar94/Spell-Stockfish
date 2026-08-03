@@ -162,7 +162,7 @@ class SpellRules(unittest.TestCase):
         self.assertNotIn("f@a1,a2a3", moves)  # a2 is orthogonal to a1
         self.assertNotIn("f@b1,b2b3", moves)  # b2 is orthogonal to b1
 
-    def test_no_spell_with_promotion_or_ep(self):
+    def test_no_spell_with_promotion(self):
         # Promotions can never carry a spell (reference rule)
         fen = "8/P6k/8/8/8/8/7K/8[JJFFFFFjjfffff] w - - 0 1"
         moves = moves_at(fen)
@@ -262,6 +262,22 @@ class SpellRules(unittest.TestCase):
         moves = moves_at(fen, ["f@e5,d7d5"])
         self.assertNotIn("e5d6", moves)      # the EP capture
         self.assertEqual([m for m in moves if m.startswith("e5")], [])
+        # ... and no gated version of it either: a frozen origin blocks the
+        # base move before the payload is even considered
+        self.assertEqual([m for m in moves if m.endswith("e5d6")], [])
+
+    def test_potion_gated_en_passant(self):
+        # The confirmed chess.com position: both potion types may accompany
+        # the en-passant capture.  Jump has no movement benefit here, but the
+        # move remains legal and the resulting jump zone is committed.
+        seq = ["a2a3", "c7c6", "f@e7,e2e4", "g7g6",
+               "f2f4", "e7e5", "f4e5", "d7d5"]
+        moves = moves_at(moves=seq)
+        self.assertIn("f@e7,e5d6", moves)
+        self.assertIn("j@c6,e5d6", moves)
+
+        after = fen_after(moves=seq + ["f@e7,e5d6"])
+        self.assertIn("pp3p1p/2pP2p1", after)
 
     def test_perft_suite_depth1(self):
         # Every suite position must reproduce its recorded d1 count (the full

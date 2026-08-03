@@ -859,8 +859,10 @@ bool Position::legal(Move m) const {
         if (!can_cast(us, sp))
             return false;
 
-        // Only NORMAL and CASTLING base moves may carry a spell
-        if (m.type_of() != NORMAL && m.type_of() != CASTLING)
+        // NORMAL, CASTLING, and en-passant base moves may carry a spell.
+        // Dropping a potion on the same ply as an en-passant capture is legal
+        // in the reference; only promotions stay excluded.
+        if (m.type_of() != NORMAL && m.type_of() != CASTLING && m.type_of() != EN_PASSANT)
             return false;
 
         if (sp == SPELL_FREEZE)
@@ -889,14 +891,19 @@ bool Position::legal(Move m) const {
         const Square   capsq = to - pawn_push(us);
         const Bitboard occ   = (pieces() ^ from ^ capsq) | to;
 
-        const Bitboard occSliding = occ & ~jump_transparent();
+        // A cast carried by the capture itself lands on this very ply, so its
+        // zones are already live while the test runs: the fresh jump gate is
+        // transparent, and enemies caught by the fresh freeze cannot answer.
+        const Bitboard occSliding = occ & ~(jump_transparent() | castTransparent);
+
+        const Bitboard inactive = frozen_pieces() | (pieces(~us) & castFrozen);
 
         return !(((attacks_bb<ROOK>(ksq, occSliding) & pieces(~us, ROOK, QUEEN))
                   | (attacks_bb<BISHOP>(ksq, occSliding) & pieces(~us, BISHOP, QUEEN))
                   | (attacks_bb<PAWN>(ksq, us) & pieces(~us, PAWN))
                   | (attacks_bb<KNIGHT>(ksq) & pieces(~us, KNIGHT))
                   | (attacks_bb<KING>(ksq) & pieces(~us, KING)))
-                 & ~frozen_pieces() & ~square_bb(capsq));
+                 & ~inactive & ~square_bb(capsq));
     }
 
     // The king may not move into an attacked square. This is the one
@@ -2061,16 +2068,19 @@ void Position::undo_null_move() {
 // Spell chess: a gated move ("f@g,base" / "j@g,base") carries its spell in
 // bits 16+ while type_of() reads bits 14-15, so a cast on a NORMAL base
 // already reached the exchange loop below and had its base capture priced
-// correctly — only a cast on a CASTLING base takes the flat-zero bailout,
-// which is exact because castling never captures. What the exchange silently
+// correctly — a cast on a CASTLING or en-passant base takes the flat-zero
+// bailout instead, which is what a bare en passant has always been priced at
+// and is exact for castling, since it never captures. What the exchange silently
 // ignored was the payload: the spell is cast in this very ply and is live
 // while the opponent answers. see_ge_impl<true> folds it in.
 bool Position::see_ge(Move m, int threshold) const {
 
     assert(m.is_ok());
 
-    // Only deal with normal moves, assume others pass a simple SEE.
-    // A CASTLING base move never captures (gated or not), so zero is exact.
+    // Only deal with normal moves, assume others pass a simple SEE. A CASTLING
+    // base move never captures (gated or not), so zero is exact; an en-passant
+    // one keeps the flat zero it has always had, gated or not, so the exchange
+    // loop below never has to look for a captured piece away from to_sq().
     if (m.type_of() != NORMAL)
         return VALUE_ZERO >= threshold;
 

@@ -135,9 +135,10 @@ This makes `parse(fen(pos))` idempotent and rejects impossible zone/cooldown com
 - **En passant king-safety** (the one non-king move with a legality filter, inherited from the
   reference): an ep capture is illegal if, with both pawns removed and the capturer placed on the
   ep square, the own king is attacked — attackers evaluated spell-aware (jump transparency can
-  create such a "pin through the transparent square"; frozen attackers do not count). The ep square
-  itself is recorded in FEN/state whenever an enemy pawn pseudo-attacks it and it is physically
-  empty, independent of this capture-time filter.
+  create such a "pin through the transparent square"; frozen attackers do not count). A spell
+  carried by the ep capture itself is already live for this test: its gate is transparent and the
+  enemies it freezes are not attackers. The ep square itself is recorded in FEN/state whenever an
+  enemy pawn pseudo-attacks it and it is physically empty, independent of this capture-time filter.
 
 ## 4. Move universe (perft-relevant)
 
@@ -145,8 +146,9 @@ A legal move is either:
 - a **normal move** (standard chess rules, restricted by active freeze origins; sliders see
   jump-transparency of any active zone), or
 - a **gated move** `spell@gate,basemove`:
-  - Base move must be of type NORMAL or CASTLING. **Promotions and en-passant captures cannot be
-    combined with a spell cast.** (Jump-enabled extra moves: NORMAL only, no castling.)
+  - Base move must be of type NORMAL, CASTLING or EN_PASSANT. **Promotions cannot be combined with
+    a spell cast**; en-passant captures can (confirmed on chess.com). (Jump-enabled extra moves:
+    NORMAL only, no castling.)
   - FREEZE gates: any board square (occupied allowed, `potionDropOnOccupied = true`). Filters on the
     casting ply: base `from != gate`, base `from` outside the new block zone, base `from` not
     already frozen (enemy zone), castling `to` not frozen.
