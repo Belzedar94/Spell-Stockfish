@@ -95,14 +95,50 @@ laboratorio lo convirtió en programa con recibos:
   extensión de jaque de 2018: +117% de árbol, DESCARTADA. El guard de
   NMP en banda de mate ya es correcto (ablación = no-op exacto). Los
   combos: sub-aditivos, peores que sus piezas — no combinar.
-- **Lanzados**: T159 `MV-R17-mcpbase-20` (solo-opción, prio 204);
-  MV-R15 (jaques quietos en qsearch + TT de qsearch a dos niveles, el
-  caveat del lab) y MV-R16 (movecount-skip en jaques quietos) en
-  implementación con el **gate de crash-smoke** nuevo (80 partidas vs
-  base, atribución por lado — nacido del incidente spell de hoy).
+- **Lanzados**: T159 `MV-R17-mcpbase-20` (solo-opción, prio 204→203 al
+  entrar la ronda 3 spell por delante); MV-R15 y MV-R16 implementados
+  con el **gate de crash-smoke** nuevo (80 partidas vs base, atribución
+  por lado — nacido del incidente spell de hoy) y **descartados por el
+  gate de mates** (post-mortem abajo).
 - Artefactos permanentes: `C:\mate-lab\matebench.py` + suite de 84; las
   ablaciones viven como spins UCI en el binario del lab (verificado
   nodo-a-nodo idéntico a la base con todo a 0).
+
+### Post-mortem R15/R16 (3-ago noche): los recibos del lab no reproducen
+
+Intento 1 del mandato de persistencia — archivado con causa raíz, no
+por pereza. Tres hallazgos del implementador (agente, verificado):
+
+1. **El lab medía contra la base equivocada.** `C:\mate-lab` estaba en
+   `c9edd7de` (MV-R4, ensanche de futility) — un commit de laboratorio
+   con **+81% de árbol** y 2 mates MENOS que la base de flota real
+   `f6c39698` (spsa90). Todos los deltas "−20%/−27% de árbol, +2/+3
+   mates" eran relativos a esa referencia inflada: recortar 27% de ahí
+   sigue cayendo un 14% por encima de la base que juega la flota.
+2. **La ablación a8 nunca buscó un jaque quieto.** Su filtro corría
+   antes del `if (!capture) continue;` del paso 6 de qsearch, así que
+   solo midió el cambio de etapa del MovePicker (orden de capturas).
+   Réplica literal sobre base de flota: 76/84, +6% de árbol — neutra.
+3. **Las implementaciones honestas sobre `f6c39698` pierden.** R15
+   (jaques quietos de verdad en el 1er ply de qsearch + TT a dos
+   niveles, commit `78edb262`): 74/84 y **+75% de árbol**. R16
+   (movecount-skip en jaques quietos, `1fdb1d03`): 74-73/84 y +14%.
+   Base: 75-76/84. Ambas crash-smoke limpias (0/0 en 80).
+
+**Decisión: sin SPRT para R15/R16** — pierden la métrica para la que
+nacieron. Ramas conservadas en `C:\mvr-lab-r15`/`-r16`/`-probe` (nada
+pusheado). El recibo de T159 sale del mismo lab contaminado, pero su
+SPRT es árbitro limpio: que decida solo.
+
+Lecciones: (a) todo lab pina la base de FLOTA (`f6c39698`), no el HEAD
+que convenga; (b) el hueco real sigue ahí — MV-SF-2018 83/84 vs
+nuestros 75-76/84, medido con binario MV-SF independiente — pero no se
+cierra AÑADIENDO jaques sin ordenar, que es coste sin beneficio; el
+intento 2 debe atacar el ORDEN (history de jaques, jaques primero en
+la etapa) y re-derivar las ablaciones sobre la base de flota antes de
+tocar código. (c) `make atomic-unit-tests` lleva roto en la base desde
+spsa90 (11 expectativas rancias en `tests/atomic_see.cpp`) — tarea
+aparte ya señalizada.
 - Idea de Wolfram aparcada con cariño: modo-solve del motor (comprometerse
   con una blanca fuerte y romperla; NNUE de solving separada) — tras la
   ola SPRT.
