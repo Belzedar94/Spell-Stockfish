@@ -3,7 +3,7 @@ name: Spell CI
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
 
 jobs:
