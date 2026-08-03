@@ -157,6 +157,7 @@ class Position {
     Bitboard attackers_to(Square s) const;
     Bitboard attackers_to(Square s, Bitboard occupied) const;
     bool     attackers_to_exist(Square s, Bitboard occupied, Color c) const;
+    Bitboard frozen_attackers_to(Square s, Color c) const;
     void     update_slider_blockers(Color c) const;
     template<PieceType Pt>
     Bitboard attacks_by(Color c) const;
@@ -379,6 +380,40 @@ inline Square Position::castling_rook_square(CastlingRights cr) const {
 }
 
 inline Bitboard Position::attackers_to(Square s) const { return attackers_to(s, pieces()); }
+
+// Pieces of color c that would attack s but are frozen. This is deliberately the
+// complement of what attackers_to() reports: that one masks frozen pieces away
+// because they give no attacks, and here they are the whole point. The early
+// exit costs one AND when no freeze zone is live, which is the common case.
+inline Bitboard Position::frozen_attackers_to(Square s, Color c) const {
+
+    const Bitboard frozen = pieces(c) & frozen_squares(c);
+
+    if (!frozen)
+        return 0;
+
+    const Bitboard occSliding = occupied_for_sliding();
+
+    return ((Attacks::attacks_bb<ROOK>(s, occSliding) & pieces(c, ROOK, QUEEN))
+            | (Attacks::attacks_bb<BISHOP>(s, occSliding) & pieces(c, BISHOP, QUEEN))
+            | (Attacks::attacks_bb<PAWN>(s, ~c) & pieces(c, PAWN))
+            | (Attacks::attacks_bb<KNIGHT>(s) & pieces(c, KNIGHT))
+            | (Attacks::attacks_bb<KING>(s) & pieces(c, KING)))
+         & frozen;
+}
+
+// Spell-state index of a capture on `to` against `defender`: how many of the
+// defenders that could answer the capture are currently on ice, capped at
+// FREEZE_BUCKET_NB - 1. Bucket 0 is a live defense and behaves like the
+// history table always did; the upper buckets are captures whose price the
+// recapture is in no position to collect. This is the spell counterpart of
+// encoding the explosion ring in atomic's capture history.
+inline int capture_freeze_bucket(const Position& pos, Square to, Color defender) {
+
+    const int n = popcount(pos.frozen_attackers_to(to, defender));
+
+    return n < FREEZE_BUCKET_NB - 1 ? n : FREEZE_BUCKET_NB - 1;
+}
 
 template<PieceType Pt>
 inline Bitboard Position::attacks_by(Color c) const {

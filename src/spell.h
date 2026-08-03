@@ -49,6 +49,11 @@ inline constexpr auto FreezeBlockBB = []() constexpr {
     return zones;
 }();
 
+// Number of spell-state buckets the capture history is split into, indexed by
+// how many of the defenders of the captured square are frozen (see
+// capture_freeze_bucket() in position.h).
+constexpr int FREEZE_BUCKET_NB = 4;
+
 // Zone occupied by an active spell whose gate is s (SQ_NONE -> empty)
 inline Bitboard spell_zone_bb(SpellType spell, Square s) {
     if (s == SQ_NONE)
