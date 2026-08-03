@@ -42,6 +42,34 @@ Stockfish with it.
 
 See also the Stockfish [documentation][wiki-usage-link] for further usage help.
 
+## Development
+
+Development happens on `main`. It is the default branch, and it is always the
+baseline that our [OpenBench instance][openbench-link] tests every patch
+against.
+
+A patch travels this path:
+
+1. Branch off `main`, named `SB<n>-<slug>`. One idea per branch, and branches
+   are independent rather than stacked on each other.
+2. STC test on OpenBench: 8+0.08s, SPRT bounds [0.00, 3.00].
+3. If it passes, LTC test: 40+0.4s, SPRT bounds [0.00, 2.50].
+4. If that passes too, open a pull request against `main`.
+5. CI has to be green before the merge. Once merged, `main` is the new
+   baseline that every later patch is measured against.
+
+Rules fixes are the one exception to the Elo gate. When a change makes the
+engine match the reference behaviour (chess.com's Spell Chess), a match against
+a base that does not implement the rule at all is not a meaningful measurement,
+so those changes land on correctness evidence instead: perft counts and parity
+runs against the reference.
+
+The neural network is not stored in the repository. Tests get the current
+champion net assigned to them, and builds embed a specific net with
+`make EVALFILE=<net>`.
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the practical details.
+
 ## Files
 
 This distribution of Stockfish consists of the following files:
@@ -135,6 +163,7 @@ project][lc0-data-link], which is made available under the [Open Database Licens
 [fishtest-link]:      https://tests.stockfishchess.org/tests
 [guideline-link]:     https://github.com/official-stockfish/fishtest/wiki/Creating-my-first-test
 [license-link]:       https://github.com/official-stockfish/Stockfish/blob/master/Copying.txt
+[openbench-link]:     https://belzedar.duckdns.org
 [programming-link]:   https://www.chessprogramming.org/Main_Page
 [programmingsf-link]: https://www.chessprogramming.org/Stockfish
 [readme-link]:        https://github.com/official-stockfish/Stockfish/blob/master/README.md
