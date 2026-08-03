@@ -241,6 +241,13 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         threatByLesser[KING]  = 0;
     }
 
+    // Defender set of a capture destination, memoized for the length of this
+    // list. attackers_to() is far too expensive to call once per capture, and a
+    // gated capture list is (base capture) x (candidate gate): the same
+    // destination comes back once per gate, so one attack computation per
+    // distinct victim pays for the whole fan of casts that hit it.
+    [[maybe_unused]] Bitboard defendersDone = 0;
+    [[maybe_unused]] Bitboard defendersOf[SQUARE_NB];
 
     ExtMove* it = cur;
     for (const Move* mit = begin; mit != end; ++mit)
@@ -255,8 +262,29 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         const Piece     capturedPiece = pos.piece_on(to);
 
         if constexpr (Type == CAPTURES)
+        {
             m.value = (*captureHistory)[pc][to][type_of(capturedPiece)]
                     + 7 * int(PieceValue[capturedPiece]);
+
+            // Free grab: the freeze this capture carries silences every defender
+            // of the destination, so the recapture cannot be played. The MVV term
+            // above prices the square as defended; it is not.
+            //
+            // A square defended by nobody in the first place is already ordered
+            // correctly and deliberately gets nothing here — the bonus is for the
+            // discriminator "defended, but only on paper", not for free material.
+            if (m.is_spell() && m.spell_type() == SPELL_FREEZE)
+            {
+                if (!(defendersDone & to))
+                {
+                    defendersDone |= to;
+                    defendersOf[to] = pos.attackers_to(to) & pos.pieces(~us);
+                }
+                const Bitboard defenders = defendersOf[to];
+                if (defenders && !(defenders & ~spell_zone_bb(SPELL_FREEZE, m.gate_sq())))
+                    m.value += SpellFrozenGrab;
+            }
+        }
 
         else if constexpr (Type == QUIETS)
         {

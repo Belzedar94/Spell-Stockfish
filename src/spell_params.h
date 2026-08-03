@@ -55,6 +55,12 @@ extern int SpellLmrMoveCountCap;  // 24
 extern int SpellGateHistOrderWeight;  // 2
 extern int SpellGateHistStatWeight;   // 2
 
+// Capture-ordering bonus for a freeze-gated capture whose new zone covers
+// every defender of the destination: the recapture cannot be played while
+// the zone lasts, so it is a free grab that the chess-tuned MVV term, which
+// knows nothing about zones, prices as an ordinary defended capture.
+extern int SpellFrozenGrab;  // 60
+
 // Relevance gate for the SPELL stage: a cast is worth at most about a
 // tempo plus bounded tactics, so nodes whose static eval sits further
 // than this below alpha skip the gated-quiet expansion entirely

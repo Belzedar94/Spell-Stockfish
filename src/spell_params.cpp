@@ -42,6 +42,8 @@ int SpellLmrMoveCountCap = 46;
 int SpellGateHistOrderWeight = 0;
 int SpellGateHistStatWeight  = 0;
 
+int SpellFrozenGrab = 60;
+
 int SpellStageMargin = 365;
 
 int SpellQuietMinDepth = 0;
@@ -69,6 +71,7 @@ TUNE(SetRange(0, 3072), SpellTacticalLmrBonus);
 TUNE(SetRange(4, 96), SpellLmrMoveCountCap);
 TUNE(SetRange(0, 8), SpellGateHistOrderWeight);
 TUNE(SetRange(0, 8), SpellGateHistStatWeight);
+TUNE(SetRange(0, 600), SpellFrozenGrab);
 TUNE(SetRange(0, 2000), SpellStageMargin);
 TUNE(SetRange(0, 8), SpellQuietMinDepth);
 TUNE(SetRange(0, 1), SpellMergedOrdering);
