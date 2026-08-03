@@ -1261,6 +1261,11 @@ moves_loop:  // When in check, search starts here
         // Capturing the king ends the game: the terminal move is never pruned
         const bool royalCapture = capture && type_of(pos.piece_on(move.to_sq())) == KING;
 
+        // Spell state of this capture: the defenders its own cast silences.
+        // Computed once here and reused after do_move, though the key would
+        // give the same answer on either board.
+        const int capFreeze = capture ? capture_cast_bucket(pos, move, ~us) : 0;
+
         // Calculate new depth for this move
         newDepth = depth - 1;
 
@@ -1289,7 +1294,8 @@ moves_loop:  // When in check, search starts here
             if (capture || givesCheck || tacticalSpell)
             {
                 Piece capturedPiece = pos.piece_on(move.to_sq());
-                int   captHist = captureHistory[movedPiece][move.to_sq()][type_of(capturedPiece)];
+                int   captHist =
+                  captureHistory[movedPiece][move.to_sq()][type_of(capturedPiece)][capFreeze];
 
                 // Futility pruning for captures
                 if (!givesCheck && !tacticalSpell && lmrDepth < 7)
@@ -1485,8 +1491,9 @@ moves_loop:  // When in check, search starts here
             r -= 2016;
 
         if (capture)
-            ss->statScore = 809 * int(PieceValue[pos.captured_piece()]) / 128
-                          + captureHistory[movedPiece][move.to_sq()][type_of(pos.captured_piece())];
+            ss->statScore =
+              809 * int(PieceValue[pos.captured_piece()]) / 128
+              + captureHistory[movedPiece][move.to_sq()][type_of(pos.captured_piece())][capFreeze];
         else
             ss->statScore = 2 * mainHistory[us][move.raw() & 0xFFFF]
                           + SpellGateHistStatWeight * gateHistory[us][gate_slot(move)]
@@ -1745,7 +1752,13 @@ moves_loop:  // When in check, search starts here
     {
         Piece capturedPiece = pos.captured_piece();
         assert(capturedPiece != NO_PIECE);
-        captureHistory[pos.piece_on(prevSq)][prevSq][type_of(capturedPiece)] << 901;
+        // The capture being rewarded is the opponent's, so we are the side its
+        // cast silenced. Keying off the move itself puts the bonus in the slot
+        // the parent scored and trained, which a board-derived key could not do
+        // from here: prevSq is only reachable on the far side of the move.
+        captureHistory[pos.piece_on(prevSq)][prevSq][type_of(capturedPiece)]
+                      [capture_cast_bucket(pos, (ss - 1)->currentMove, us)]
+          << 901;
     }
 
     if (PvNode)
@@ -2145,6 +2158,9 @@ void update_all_stats(const Position& pos,
     CapturePieceToHistory& captureHistory = workerThread.captureHistory;
     Piece                  movedPiece     = pos.moved_piece(bestMove);
     PieceType              capturedPiece;
+    // Every move updated below is one of ours, so the side a cast of ours would
+    // silence is the opponent.
+    const Color them = ~pos.side_to_move();
 
     int bonus =
       std::min(134 * depth - 79, 1572) + 382 * (bestMove == ttMove) + (ss - 1)->statScore / 30;
@@ -2171,7 +2187,9 @@ void update_all_stats(const Position& pos,
     {
         // Increase stats for the best move in case it was a capture move
         capturedPiece = type_of(pos.piece_on(bestMove.to_sq()));
-        captureHistory[movedPiece][bestMove.to_sq()][capturedPiece] << bonus * 1366 / 1024;
+        captureHistory[movedPiece][bestMove.to_sq()][capturedPiece]
+                      [capture_cast_bucket(pos, bestMove, them)]
+          << bonus * 1366 / 1024;
     }
 
     // Extra penalty for a quiet early move that was not a TT move in
@@ -2184,7 +2202,9 @@ void update_all_stats(const Position& pos,
     {
         movedPiece    = pos.moved_piece(move);
         capturedPiece = type_of(pos.piece_on(move.to_sq()));
-        captureHistory[movedPiece][move.to_sq()][capturedPiece] << -malus * 1518 / 1024;
+        captureHistory[movedPiece][move.to_sq()][capturedPiece]
+                      [capture_cast_bucket(pos, move, them)]
+          << -malus * 1518 / 1024;
     }
 }
 

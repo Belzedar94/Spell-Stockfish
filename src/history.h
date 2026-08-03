@@ -139,7 +139,13 @@ using GateHistory = Stats<i16, 13365, COLOR_NB, SQUARE_NB + 1>;
 using LowPlyHistory = Stats<i16, 7183, LOW_PLY_HISTORY_SIZE, UINT_16_HISTORY_SIZE>;
 
 // CapturePieceToHistory is addressed by a move's [piece][to][captured piece type]
-using CapturePieceToHistory = Stats<i16, 10692, PIECE_NB, SQUARE_NB, PIECE_TYPE_NB>;
+// [freeze bucket]. The last index is how many of the defenders of the captured
+// square the capture's own freeze silences: a capture that arrives with its
+// recapture on ice is a different move from the same capture played bare, and
+// the two used to share one slot. The table is 4x larger (64 KiB) with the four
+// buckets of an entry sharing a cache line.
+using CapturePieceToHistory =
+  Stats<i16, 10692, PIECE_NB, SQUARE_NB, PIECE_TYPE_NB, FREEZE_BUCKET_NB>;
 
 // PieceToHistory is like ButterflyHistory but is addressed by a move's [piece][to]
 using PieceToHistory = AtomicStats<i16, 30000, PIECE_NB, SQUARE_NB>;

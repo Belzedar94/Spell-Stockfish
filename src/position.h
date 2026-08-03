@@ -157,6 +157,7 @@ class Position {
     Bitboard attackers_to(Square s) const;
     Bitboard attackers_to(Square s, Bitboard occupied) const;
     bool     attackers_to_exist(Square s, Bitboard occupied, Color c) const;
+    Bitboard raw_attackers_to(Square s, Color c, Bitboard occupied) const;
     void     update_slider_blockers(Color c) const;
     template<PieceType Pt>
     Bitboard attacks_by(Color c) const;
@@ -379,6 +380,52 @@ inline Square Position::castling_rook_square(CastlingRights cr) const {
 }
 
 inline Bitboard Position::attackers_to(Square s) const { return attackers_to(s, pieces()); }
+
+// Attackers of s belonging to c, frozen ones included. attackers_to() ends in
+// `& ~frozen_pieces()` because a frozen piece gives no attacks; here the
+// silenced defenders are exactly what we are counting, so the mask is left out.
+inline Bitboard Position::raw_attackers_to(Square s, Color c, Bitboard occupied) const {
+
+    const Bitboard occSliding = occupied & ~jump_transparent();
+
+    return (Attacks::attacks_bb<ROOK>(s, occSliding) & pieces(c, ROOK, QUEEN))
+         | (Attacks::attacks_bb<BISHOP>(s, occSliding) & pieces(c, BISHOP, QUEEN))
+         | (Attacks::attacks_bb<PAWN>(s, ~c) & pieces(c, PAWN))
+         | (Attacks::attacks_bb<KNIGHT>(s) & pieces(c, KNIGHT))
+         | (Attacks::attacks_bb<KING>(s) & pieces(c, KING));
+}
+
+// Spell-state index of a capture: how many of the defenders that could answer
+// it are silenced by the freeze the capture itself casts, capped at
+// FREEZE_BUCKET_NB - 1. Bucket 0 is every bare capture and behaves like the
+// history table always did; the upper buckets are the captures that arrive
+// with their recapture on ice. It is the same set see_ge() holds back for the
+// opponent's reply, so ordering and exchange price agree on what a cast buys.
+//
+// An already active freeze can never appear here and that is not an
+// approximation: a zone restricts the opponent for their single reply and is
+// cleared on it, so the side that would recapture is never frozen at the
+// moment its capture is being judged. Only the cast carried by the move
+// itself can silence a defender.
+//
+// The key is deliberately a function of the move: with the mover's origin
+// cleared from the occupancy, the attacker set is the same bitboard before the
+// move and after it (a piece standing on `to` never blocks a ray aimed at
+// `to`), so every read and every update index the same slot regardless of
+// which side of do_move the call sits on.
+inline int capture_cast_bucket(const Position& pos, Move m, Color defender) {
+
+    if (!m.is_spell() || m.spell_type() != SPELL_FREEZE)
+        return 0;
+
+    const Bitboard silenced =
+      pos.raw_attackers_to(m.to_sq(), defender, pos.pieces() & ~square_bb(m.from_sq()))
+      & FreezeZoneBB[m.gate_sq()];
+
+    const int n = popcount(silenced);
+
+    return n < FREEZE_BUCKET_NB - 1 ? n : FREEZE_BUCKET_NB - 1;
+}
 
 template<PieceType Pt>
 inline Bitboard Position::attacks_by(Color c) const {
