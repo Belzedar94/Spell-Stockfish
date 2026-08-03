@@ -139,6 +139,72 @@ la etapa) y re-derivar las ablaciones sobre la base de flota antes de
 tocar código. (c) `make atomic-unit-tests` lleva roto en la base desde
 spsa90 (11 expectativas rancias en `tests/atomic_see.cpp`) — tarea
 aparte ya señalizada.
+
+### Intento 2, fase de medición (3-ago noche): la matriz re-derivada
+
+Lab `C:\mvr-lab-abl` (rama `mate2/abl-matrix`), binario de ablaciones
+reconstruido sobre `f6c39698` con gate superado (todo a 0 = bench
+213680 y nodo-a-nodo idéntico a base). Veredictos:
+
+- **Suelo de ruido de la suite: ±2 mates.** `a2` (guard NMP en banda de
+  mate) es no-op EXACTO — árbol bit-idéntico — y puntúa 77/77 contra
+  base 76/75. Ninguna celda de la matriz bate a la base con esa regla.
+  Los conteos de mates de R15/R16 (74 vs 75-76) también caen dentro del
+  ruido: su rechazo se sostiene en el COSTE de árbol en bench
+  (+75%/+14%), que sí es determinista.
+- **Segundo bug de medición del intento 1** (independiente de la base
+  equivocada): la sonda de coste de 4 posiciones INVIERTE EL SIGNO —
+  reportó a8R a −43% donde bench dice +25,1%. Todos los "−20%/−27%/
+  +117%" del intento 1 colgaban de esa sonda. Regla nueva: **el coste
+  se mide en `bench`, jamás en la sonda estrecha.**
+- **En bench, TODAS las ablaciones cuestan árbol; ninguna ahorra.** Y
+  las "ganancias" del intento 1 eran auto-reparación: recuperaban
+  P10/P76/P81, mates que la base de flota YA resuelve (deshacían el
+  ensanche de futility de MV-R4, no encontraban nada).
+- **R16/a7 reimplementaba algo que ya existe**: la base retiene jaques
+  quietos bajo movecount-pruning (`movepick.cpp:305-320` compacta los
+  `gives_check` cuando `skipQuiets`); lo único que cambiaba era su
+  ORDEN, a +41,6% de bench por cero mates.
+- **Curva AtomicMcpBase (recibo para T159)**: 7→12→20→28→40 = +0/+5/
+  +26,5/+13,1/+30% de bench; en mates es un TRUEQUE (compra largos
+  24-30 plies, vende cortos) con ceguera real: a mcp 20/28 el motor
+  llega a d25-27 sin anunciar mates-en-6 que la base anuncia a d12-18
+  (P10, P25; réplicas idénticas). Leer el SPRT de T159 con esto en la
+  mano.
+- **La brecha 75→83, localizada**: exclusivamente mates largos (≤14
+  plies 35/35 ambos; ≥20 plies nosotros 29/36, MV-SF 35/36). No es
+  profundidad (en P51/P60/P72/P79 llegamos MÁS hondo que MV-SF y no lo
+  vemos). P72: mate-en-10 de jugadas TODAS quietas que aterrizan en el
+  anillo del rey enemigo — las casillas absolutamente inmunes de
+  atomic (capturar ahí explota su propio rey) — y el orden de quiets no
+  tiene hoy NINGÚN término para eso (`see_ge` lo sabe como "no pierde",
+  nunca como señal positiva).
+
+**Dossier del intento 2, rankeado** (implementación en curso de #1-#2):
+1. `king-ring quiet bonus` (movepick.cpp:233-234): bonus TUNE a quiets
+   cuyo destino cae en el anillo del rey enemigo; un AND por quiet;
+   0 = bench bit-idéntico. Ataca la única señal que comparten las PVs
+   que fallamos.
+2. Predicado de jaque atómico-correcto en el bonus de quiets: la línea
+   234 usa `check_squares` (falla 3 veces en atomic: rey hardcoded 0,
+   descubiertas invisibles, falsos positivos con reyes adyacentes);
+   el sitio de retención 313 ya usa el correcto `gives_check`. Fix:
+   `gives_check` también en 234.
+3. Puntuar/ordenar los jaques retenidos del bulk path (hoy value=0 sin
+   sort). 4. `checkHistory` butterfly (tras probar que #2/#3 disparan).
+5. `AtomicMcpSlope` (2018 tiene ~2× nuestro presupuesto de quiets por
+   PENDIENTE, no por base — ningún AtomicMcpBase lo compensa; ir
+   sabiendo que la curva dice trueque). 6. Orden de capturas por
+   blast-SEE = redescubrimiento independiente de U3 (necesita U1).
+7. Etapa checks-first en banda de mate (última: a2 no-op, a5 perdedora).
+
+**Gates para CUALQUIER SPRT de mates** (con dos bugs de medición
+encontrados, obligatorios): bench idéntico a knob 0; contador que
+pruebe que la ruta dispara; nodes-to-mate del subconjunto ≥20 plies
+(n=36, determinista — los conteos de la suite no resuelven mejor que
+±2); coste SIEMPRE en bench; y ensanchar la suite (los 6 mates que
+faltan vienen de UNA familia de partidas) antes de creerse candidato
+alguno.
 - Idea de Wolfram aparcada con cariño: modo-solve del motor (comprometerse
   con una blanca fuerte y romperla; NNUE de solving separada) — tras la
   ola SPRT.
