@@ -234,9 +234,33 @@ heuristics". Su lista de atomic, traducida a spell, sobre la base
   SEE-de-casts de SB2. Pendiente.
 - **SB4 `capture-order`** (item 2): el orden de capturas respeta defensores
   congelados. Pendiente.
-- Cantera adicional: los verdictos de los experimentos FSF del propietario
-  (elo_logs, serie hito6/qpotion) — port de ganadores, veto de perdedores.
-  Inventario en curso.
+- **T153 `capture-see-120b`** (recuperado por el inventario): el AUDIT.md
+  registra `capture-see-120` como PASS STC contra la base vieja (10.308
+  partidas, LLR +2,98, ~+10) con su LTC en cola cuando la era murió. SB2
+  rehízo el SEE, así que revive como STC fresco de solo-opción
+  (`SpellCaptureSeeMargin=120`, default 0) contra la base actual, ambos
+  lados `15820b97`. Lanzado a 202.
+
+**El inventario de experimentos (3-ago), corregido y ampliado:**
+- Los `hito6_child_futility` de elo_logs son de ATOMIC, no de spell — esa
+  cantera no existe. La autoritativa es **`AUDIT.md`** (1.067 líneas en
+  este repo): ~25 veredictos SPRT de la era-torre, más el
+  `perf_optimizations_log.txt` del fork FSF viejo.
+- **Aviso de portabilidad**: v11 (orden por gate-impact) ganó **+100** en
+  el fork FSF viejo y el mismo concepto midió **-676** en este chasis.
+  Un ganador de un fork NO se presume ganador del otro; cada port se
+  re-mide.
+- Lista negra ampliada (veredictos-torre del AUDIT, NO re-testear tal
+  cual): merged-ordering, razor-guard, spell-refutation, nullmove-guard,
+  lmp-scale-200, conthist-skip, no-iir, futility-scale-150,
+  aspiration-200, gatehist-off, pillar-A budget, volatility-scale,
+  qsearch-spells, cast-decomposition-v2, MCTS, spell-see-ordering,
+  spell-policy-v1/v2, spell-stages-v1; y no-penalty-pv pasó STC pero cayó
+  en LTC (la ilusión clásica del TC corto).
+- Del fork viejo quedan ganadores YA incorporados al linaje (movegen de
+  freeze +45% NPS, reuso de jump, poda progresiva de puertas ~+80, lazy
+  generation) — verificar que el chasis actual los conserva es parte de
+  la higiene, no un test nuevo.
 
 ## Estado anterior (31-jul, madrugada) — contra la base vieja
 
