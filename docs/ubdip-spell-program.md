@@ -138,9 +138,19 @@ queda de primer orden y sin tocar:
   con `pieces()` crudo. Una torre enemiga detrás de una puerta de jump
   clava A TRAVÉS de la puerta (la transparencia vale para deslizadoras de
   ambos bandos) y hoy esa clavada es invisible; una "clavadora" congelada
-  no puede ejecutar la clavada y hoy cuenta como si pudiera. Lo consumen
-  `legal()` y el filtro de clavadas de `see_ge`. Es la misma clase de
-  corrección que SB2, no un refinamiento del bucle.
+  no puede ejecutar la clavada y hoy cuenta como si pudiera.
+  **Premisa corregida por sondas (3-ago): en spell chess NINGUNA clavada
+  ata legalmente** — el auto-jaque es legal (se juega a capturar al rey) y
+  `legal()` no filtra clavadas ni aquí ni en el oráculo FSF (tres posiciones
+  de sonda, listas idénticas 10/10). `blockersForKing` es estructura de
+  BÚSQUEDA (gives_check + filtro de clavadas de `see_ge`), así que el
+  parche es perft-neutral por construcción. **HECHO**: rama
+  `SB9-slider-blockers` (`9b27d068`), 34/34 tests, perft 61/61 vs oráculo,
+  bench 15267414 con la red campeona, y recibos de `see`: clavada por
+  puerta 0→208, clavadora congelada 208→0, y congelar la torre delantera
+  no asciende a la trasera (las congeladas siguen BLOQUEANDO ocupación).
+  Trampa evitada: limpiar snipers con `&~` y no `^` — un sniper sobre una
+  puerta ya falta de la ocupación deslizante y el `^` lo re-añadiría.
 - **EP+cast** (paridad de reglas, carril aparte del programa): chess.com
   permite poción + captura al paso en la misma jugada (verificado por
   rainrat, PR #6 de este repo); nuestro movegen las excluía en los dos
@@ -150,7 +160,9 @@ queda de primer orden y sin tocar:
   referencia (SPELL_SPEC tras el PR), así que ahí no hay deuda.
 
 Ronda 2 = SB9 + EP-cast, prioridad 202: detrás de los LTC atómicos vivos
-(T118/T150), delante del montón STC de 201.
+(T118/T150), delante del montón STC de 201. **Lanzados**: T151 `ep-cast`
+(bench 17477858) y T152 `SB9-slider-blockers` (bench 15267414), ambos vs
+SB2 (14594664), STC [0,3] cap 20k.
 
 ## Estado anterior (31-jul, madrugada) — contra la base vieja
 
