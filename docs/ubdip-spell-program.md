@@ -160,9 +160,22 @@ queda de primer orden y sin tocar:
   referencia (SPELL_SPEC tras el PR), así que ahí no hay deuda.
 
 Ronda 2 = SB9 + EP-cast, prioridad 202: detrás de los LTC atómicos vivos
-(T118/T150), delante del montón STC de 201. **Lanzados**: T151 `ep-cast`
-(bench 17477858) y T152 `SB9-slider-blockers` (bench 15267414), ambos vs
-SB2 (14594664), STC [0,3] cap 20k.
+(T118/T150), delante del montón STC de 201. **Lanzados**: T152
+`SB9-slider-blockers` (bench 15267414) vs SB2, STC [0,3] cap 20k.
+
+**EP-cast entró por corrección, no por SPRT (3-ago, decisión del
+propietario).** T151 se cerró sin jugar al caer en la cuenta de que era
+incoherente por diseño: el runner relega jugadas como texto y la base sin
+la regla no puede ni parsear `f@e7,e5d6` — habría medido desincronización,
+no ajedrez. Regla general: **un cambio que amplía el movegen no se puede
+A/B-testear por relay de texto contra una base sin el cambio**; o entra
+por corrección con recibos (aquí: verificación de chess.com, 32/32 tests,
+perft artesanal exacto, divergencias vs oráculo todas-ganancia), o se mide
+por relay de FEN. **La base es ahora `15820b97`** (bench con red campeona
+**17477858**); las ramas nuevas salen de ahí, y si T152 pasa, SB9 se
+rebasa encima antes de mergear. El árbitro FSF local (build 11-jul) es
+anterior a la regla: recompilar desde el PR #96 antes de cualquier panel
+con EP-casts en juego.
 
 ## Estado anterior (31-jul, madrugada) — contra la base vieja
 
