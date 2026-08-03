@@ -774,6 +774,13 @@ string Position::fen() const {
 // Calculates st->blockersForKing[c] and st->pinners[~c],
 // which store respectively the pieces preventing king of color c from being in check
 // and the slider pieces of color ~c pinning pieces of color c to the king.
+// Spell chess: self-check is legal, so this set is not a legality filter here --
+// it is the discovered-check hint of gives_check() and the pinned filter of
+// see_ge(). Both want the pins that could really be executed, so the same two
+// masks attackers_to() uses apply: a slider standing in an enemy freeze zone
+// gives no attacks and therefore pins nothing, and an active jump gate does not
+// block a ray, so a sniper behind one pins through it. Frozen pieces still
+// occupy their square, so the occupancy keeps them as blockers.
 void Position::update_slider_blockers(Color c) const {
 
     Square ksq = square<KING>(c);
@@ -784,8 +791,10 @@ void Position::update_slider_blockers(Color c) const {
     // Snipers are sliders that attack 's' when a piece and other snipers are removed
     Bitboard snipers = ((attacks_bb<ROOK>(ksq) & pieces(QUEEN, ROOK))
                         | (attacks_bb<BISHOP>(ksq) & pieces(QUEEN, BISHOP)))
-                     & pieces(~c);
-    Bitboard occupancy = pieces() ^ snipers;
+                     & pieces(~c) & ~frozen_pieces();
+    // Cleared with &~ and not ^: a sniper may itself stand on a gate, and is
+    // then already missing from the sliding occupancy
+    Bitboard occupancy = occupied_for_sliding() & ~snipers;
 
     while (snipers)
     {

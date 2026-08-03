@@ -289,11 +289,13 @@ class SpellRules(unittest.TestCase):
 
 
 PAWN, ROOK, QUEEN = 208, 1276, 2538
-HOLDINGS = "[JJFFFFFjjfffff] {F@-:0,J@-:0,f@-:0,j@-:0}"
+HAND = "[JJFFFFFjjfffff]"
+NO_ZONES = "{F@-:0,J@-:0,f@-:0,j@-:0}"
+HOLDINGS = f"{HAND} {NO_ZONES}"
 
 
-def board(pieces, stm="w"):
-    return f"{pieces}{HOLDINGS} {stm} - - 0 1"
+def board(pieces, stm="w", zones=NO_ZONES):
+    return f"{pieces}{HAND} {zones} {stm} - - 0 1"
 
 
 class SpellSEE(unittest.TestCase):
@@ -378,6 +380,53 @@ class SpellSEE(unittest.TestCase):
         fen = board("3rk3/8/3p4/3p4/8/8/8/4K2Q")
         self.assertEqual(see_at(fen, "h1d5"), PAWN)
         self.assertEqual(see_at(fen, "j@d6,h1d5"), PAWN - QUEEN)
+
+
+class SpellSliderBlockers(unittest.TestCase):
+    """Pins that the live spell state makes real, or unreal (SPELL_SPEC.md 2.1).
+
+    Position::update_slider_blockers is not a legality filter in spell chess --
+    self-check is legal and a piece pinned to its own king moves freely, in the
+    reference as in us. It is search truth: see_ge() refuses to let a pinned
+    piece recapture, so a pin it gets wrong is worth material.
+
+    The three cases below are the whole content of the spell-aware ray: a live
+    jump gate on the ray is not a blocker, a frozen slider is not a pinner, and
+    a frozen slider is still a blocker (it cannot move, but it is still there).
+
+    Common shape: white plays cxd5 and black's only recapture is the e6 pawn,
+    which stands on the e-file between its own king on e8 and a white rook.
+    """
+
+    RAY_BLOCKED = "4k3/8/4p3/3p4/2P1N3/8/8/4RK2"  # Ne4 sits on the e-file
+    RAY_OPEN    = "4k3/8/4p3/3p4/2P5/8/8/4RK2"    # nothing between e6 and e1
+    RAY_TWO_R   = "4k3/8/4p3/3p4/2P5/4R3/8/4RK2"  # a second white rook on e3
+
+    def test_jump_gate_on_the_ray_reveals_the_pin(self):
+        # Two pieces between king and rook (Ne4, pe6): no pin, so exd5
+        # recaptures and the capture is an even trade
+        self.assertEqual(see_at(board(self.RAY_BLOCKED), "c4d5"), 0)
+        # The gate makes e4 transparent for both colours, so the rook pins the
+        # e6 pawn THROUGH it: the recapture is gone and the pawn is free
+        gated = board(self.RAY_BLOCKED, zones="{F@-:0,J@e4:3,f@-:0,j@-:0}")
+        self.assertEqual(see_at(gated, "c4d5"), PAWN)
+
+    def test_frozen_slider_pins_nothing(self):
+        # An ordinary pin: the e6 pawn may not recapture, the pawn is free
+        self.assertEqual(see_at(board(self.RAY_OPEN), "c4d5"), PAWN)
+        # The same rook inside a black freeze zone (d1-f3) cannot execute the
+        # pin while the zone lasts, so the recapture is back
+        frozen = board(self.RAY_OPEN, zones="{F@-:0,J@-:0,f@e2:3,j@-:0}")
+        self.assertEqual(see_at(frozen, "c4d5"), 0)
+
+    def test_frozen_slider_still_blocks_the_ray_behind_it(self):
+        # The e3 rook pins the e6 pawn; the e1 rook is walled off behind it
+        self.assertEqual(see_at(board(self.RAY_TWO_R), "c4d5"), PAWN)
+        # Freezing d3-f5 catches the e3 rook only. It stops pinning -- and the
+        # e1 rook does NOT inherit the pin, because a frozen piece still stands
+        # on its square. Two blockers again, so the recapture comes back.
+        frozen = board(self.RAY_TWO_R, zones="{F@-:0,J@-:0,f@e4:3,j@-:0}")
+        self.assertEqual(see_at(frozen, "c4d5"), 0)
 
 
 if __name__ == "__main__":
