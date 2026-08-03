@@ -205,6 +205,43 @@ pruebe que la ruta dispara; nodes-to-mate del subconjunto ≥20 plies
 ±2); coste SIEMPRE en bench; y ensanchar la suite (los 6 mates que
 faltan vienen de UNA familia de partidas) antes de creerse candidato
 alguno.
+
+### Intento 2, fase de implementación (3-ago noche): #1 muere, #2 a cola
+
+TERCER bug de medición cazado antes de firmar nada: el harness de
+nodes-to-mate solo contaba `score mate > 0`, y **24/36 posiciones del
+subconjunto ≥20 tienen al DEFENSOR al mover** (mate negativo) — tiraba
+dos tercios del set en silencio. Doctrina: contar ambos signos y
+reportar SIEMPRE el split atacante/defensor (los dos candidatos
+resultaron ~30% más baratos atacando y más lentos reconociendo el mate
+propio; pooled = moneda al aire que esconde eso).
+
+- **#1 king-ring bonus (`mate2/king-ring-bonus`, d9ebae4): ARCHIVADO
+  por sus propios recibos**, con los gates formales en verde. La
+  instrumentación que exigimos fue la que lo mató: los bestMove-quiets
+  al anillo ya salen a rango medio 1,35 (58% primeros de serie, 2,29×
+  enriquecidos) — no hay margen que comprar — y el término degrada a
+  los bestMove fuera del anillo (1,53→1,59). Nodes-to-mate pooled
+  plano a 3 knobs. Si algún día se relanza: knob 3000, único valor no
+  peor que base en la suma. El proceso funcionó: cero flota gastada.
+- **#2 predicado de jaque atómico (`mate2/atomic-check-predicate`,
+  405bb59): → T163** (STC, prio 203, bench registrado 283285). Fix de
+  corrección de una línea (`gives_check` donde el scoring usaba
+  `check_squares`, ciego a jaques de rey y descubiertas y con falsos
+  positivos de reyes adyacentes — la retención de la línea 313 ya
+  usaba el correcto). Censo completo: 2,62% de quiets en desacuerdo,
+  100% de FPs explicados por adyacencia de reyes, y los FNs de rey son
+  el 56% de los desacuerdos-bestMove (los jaques invisibles eran la
+  jugada buena). Coste real −6,5% nps que debe recuperar en orden;
+  atacante geomean 0,667 (p=0,039 post-hoc, sugerente NO establecido).
+  El bench canónico +32,6% es lotería de profundidad (d10-d17 agregado
+  −0,9%; 84 FENs a d14 −15,8%) — leer el número de OB sabiéndolo.
+- **Gate de coste REDEFINIDO**: el bench canónico de 13 posiciones
+  oscila ±39% profundidad-a-profundidad ante cambios de ORDEN con
+  árbol agregado plano — sustituye a la sonda invertida de 4 pero
+  sigue infrapotenciado. Desde ya el coste se juzga con el agregado
+  d10-d17 o con N ancho a profundidad fija (84 FENs d14); el canónico
+  queda solo como firma de registro.
 - Idea de Wolfram aparcada con cariño: modo-solve del motor (comprometerse
   con una blanca fuerte y romperla; NNUE de solving separada) — tras la
   ola SPRT.
