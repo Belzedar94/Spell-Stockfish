@@ -230,6 +230,17 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
 
     Color us = pos.side_to_move();
 
+    // SB7: in chess an exchange-neutral capture is tempo-neutral, because the
+    // opponent has to spend their move recapturing. In spell chess that only
+    // holds while the opponent is on cooldown: with a charge free for the reply
+    // their recapture can arrive WITH a cast attached — freezing whatever we
+    // still aim at the square, or opening a line onto it — and the "even" trade
+    // has handed them a tempo and the initiative. So the malus is gated on the
+    // OPPONENT being armed for the reply, not on us holding a charge.
+    [[maybe_unused]] bool see0Tempo = false;
+    if constexpr (Type == CAPTURES)
+        see0Tempo = SpellSee0Tempo && pos.can_cast_on_reply(~us);
+
     [[maybe_unused]] Bitboard threatByLesser[KING + 1];
     if constexpr (Type == QUIETS)
     {
@@ -255,8 +266,21 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         const Piece     capturedPiece = pos.piece_on(to);
 
         if constexpr (Type == CAPTURES)
+        {
             m.value = (*captureHistory)[pc][to][type_of(capturedPiece)]
                     + 7 * int(PieceValue[capturedPiece]);
+
+            // Exchange-neutral to within a tempo, and the opponent can answer
+            // with a cast: dock it a tempo. The band is [-SpellSee0Tempo, 0]
+            // (see_ge(m, 1) false is SEE <= 0), and the malus is charged in the
+            // currency of this site, where a centipawn costs 7 ordering units —
+            // it prices the victim as SpellSee0Tempo cheaper than it is. A cast
+            // carried by the capture itself is already inside see_ge() (SB2),
+            // so a capture whose own freeze wins the exchange leaves the band
+            // and keeps its score.
+            if (see0Tempo && !pos.see_ge(m, 1) && pos.see_ge(m, -SpellSee0Tempo))
+                m.value -= 7 * SpellSee0Tempo;
+        }
 
         else if constexpr (Type == QUIETS)
         {

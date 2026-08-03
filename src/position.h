@@ -193,6 +193,8 @@ class Position {
     int      spell_cooldown(Color c, SpellType sp) const;
     int      spells_in_hand(Color c, SpellType sp) const;
     bool     can_cast(Color c, SpellType sp) const;
+    bool     can_cast_on_reply(Color c, SpellType sp) const;
+    bool     can_cast_on_reply(Color c) const;
     Bitboard frozen_squares(Color c) const;  // squares from which c's pieces cannot move
     Bitboard frozen_pieces() const;          // pieces of either color that are frozen
     Bitboard jump_transparent() const;       // active jump gates (transparent for sliding)
@@ -346,6 +348,19 @@ inline int Position::spells_in_hand(Color c, SpellType sp) const { return st->sp
 
 inline bool Position::can_cast(Color c, SpellType sp) const {
     return st->spellHand[c][sp] > 0 && st->spellCooldown[c][sp] == 0;
+}
+
+// Whether the side NOT to move can attach a cast to its very next move.
+// Cooldowns tick once per full move, inside the opponent's do_move (see the
+// spell block there), so the reply is made with a cooldown one lower than the
+// one standing in this position: a charge on cooldown 1 is free by then.
+inline bool Position::can_cast_on_reply(Color c, SpellType sp) const {
+    assert(c != sideToMove);
+    return st->spellHand[c][sp] > 0 && st->spellCooldown[c][sp] <= 1;
+}
+
+inline bool Position::can_cast_on_reply(Color c) const {
+    return can_cast_on_reply(c, SPELL_FREEZE) || can_cast_on_reply(c, SPELL_JUMP);
 }
 
 // A freeze zone cast by ~c restricts c's pieces (origin squares) while active

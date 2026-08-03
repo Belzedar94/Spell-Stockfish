@@ -113,6 +113,15 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Tempo charged in capture ordering to an exchange-neutral capture made while
+// the OPPONENT is armed for the reply: their recapture can come with a cast
+// attached, so the trade that SEE calls even costs us a tempo and the
+// initiative. One knob with one meaning (a tempo, in centipawns): it sets both
+// the band that counts as neutral, [-SpellSee0Tempo, 0], and the malus, which
+// is charged at this site's 7-units-per-centipawn rate. 0 disables it, and
+// the build is then bench-identical to the one without the patch.
+extern int SpellSee0Tempo;  // 25
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
