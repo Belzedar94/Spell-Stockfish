@@ -104,6 +104,16 @@ laboratorio lo convirtió en programa con recibos:
   ablaciones viven como spins UCI en el binario del lab (verificado
   nodo-a-nodo idéntico a la base con todo a 0).
 
+**CORRECCIÓN (4-ago): la "base equivocada" del post-mortem de abajo no
+era equivocada.** `c9edd7de` (MV-R4) pasó STC (T107, +2,95) y LTC (T119,
++2,97) el 28-29 jul: era la punta LEGÍTIMA del dev, y el 4-ago aterrizó
+en main vía PR#52 (merge `e4acf215`, bench 518466, unit tests 104/104).
+Lo que sí sostiene el post-mortem: los deltas del lab medidos contra
+c9edd7de no eran atribuibles a los candidatos, y la sonda de coste
+invertía el signo. **Desde ahora la base de registro de tests atomic es
+main (`e4acf215`, bench 518466)**; T159/T163 siguen siendo A/B válidos
+(dev y base comparten linaje pre-MV-R4 los dos).
+
 ### Post-mortem R15/R16 (3-ago noche): los recibos del lab no reproducen
 
 Intento 1 del mandato de persistencia — archivado con causa raíz, no
@@ -245,6 +255,11 @@ propio; pooled = moneda al aire que esconde eso).
 - Idea de Wolfram aparcada con cariño: modo-solve del motor (comprometerse
   con una blanca fuerte y romperla; NNUE de solving separada) — tras la
   ola SPRT.
+
+Intel de referencia (ijhy en #solver, 4-ago): hubo MV-SF buenos del
+13-sep-2019 y del 7-nov-2019 (este lo encontró Gannet); las versiones
+de alrededor eran muy flojas. Si se consiguen esos binarios, la vara
+del programa (hoy release 10 de 2018, 83/84) puede subir aún.
 
 ## Pendiente de responder a ubdip
 
