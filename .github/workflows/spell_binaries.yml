@@ -1,0 +1,199 @@
+name: Spell binaries
+
+# Every merge to main leaves downloadable binaries: one artifact per build and
+# a rolling `latest-main` prerelease that is overwritten on each push. This is
+# a separate pipeline from spell_ci.yml, which stays the correctness gate.
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: spell-binaries-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: ${{ matrix.shell }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86-64-bmi2
+            comp: gcc
+            shell: bash
+            ext: ""
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86-64-avx2
+            comp: gcc
+            shell: bash
+            ext: ""
+          - runner: windows-latest
+            os: windows
+            arch: x86-64-bmi2
+            comp: mingw
+            shell: msys2 {0}
+            ext: ".exe"
+          - runner: windows-latest
+            os: windows
+            arch: x86-64-avx2
+            comp: mingw
+            shell: msys2 {0}
+            ext: ".exe"
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Windows runner has no make/mingw pair on PATH by default. Same
+      # toolchain the Makefile expects for COMP=mingw.
+      - name: Set up MinGW
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: mingw64
+          path-type: inherit
+          install: mingw-w64-x86_64-gcc make
+
+      - name: Build identity
+        shell: bash
+        run: |
+          echo "SHA8=$(echo "$GITHUB_SHA" | cut -c1-8)" >> "$GITHUB_ENV"
+
+      # `make build` runs config-sanity -> net -> scripts/net.sh, which fetches
+      # EvalFileDefaultName (nn-*.nnue); incbin then bakes it into the binary.
+      # Same key spell_ci.yml uses, narrowed to the stock net so nothing else
+      # dropped in src/ ends up in the cache.
+      - name: Cache the embedded stock net
+        uses: actions/cache@v4
+        with:
+          path: src/nn-*.nnue
+          key: spell-stock-net-${{ hashFiles('src/evaluate.h') }}
+
+      # The spell variant net is a runtime net: EVALFILE bakes its name as the
+      # EvalFile option default (SPELL_EVALFILE_DEFAULT), it is never embedded,
+      # and the engine resolves a bare filename against its own directory. So a
+      # published net travels next to the binary, not inside it. None is
+      # published yet: while the release below has no .nnue asset the build
+      # stays netless — it plays with the embedded stock net — and every name
+      # carries -nonet so nobody mistakes it for a spell-aware binary.
+      - name: Fetch the spell net (optional)
+        id: spellnet
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NET_TAG: ${{ vars.SPELL_NET_RELEASE_TAG || 'spell-nets-v1' }}
+        run: |
+          net=$(gh release view "$NET_TAG" --repo "$GITHUB_REPOSITORY" --json assets \
+                  --jq '[.assets[].name | select(endswith(".nnue"))] | first // empty' 2>/dev/null || true)
+          suffix="-nonet"
+          if [ -n "$net" ]; then
+            gh release download "$NET_TAG" --repo "$GITHUB_REPOSITORY" \
+              --pattern "$net" --dir src --clobber
+            suffix=""
+            echo "Building against $net from release $NET_TAG."
+          else
+            echo "No .nnue asset under release '$NET_TAG': netless build."
+          fi
+          echo "net=$net" >> "$GITHUB_OUTPUT"
+          echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
+          echo "EXE_NAME=spell-stockfish-${{ matrix.os }}-${{ matrix.arch }}${suffix}${{ matrix.ext }}" >> "$GITHUB_ENV"
+
+      - name: Build
+        working-directory: src
+        env:
+          SPELL_NET: ${{ steps.spellnet.outputs.net }}
+        run: |
+          if [ -n "$SPELL_NET" ]; then
+            make -j2 build ARCH=${{ matrix.arch }} COMP=${{ matrix.comp }} \
+              EXE="$EXE_NAME" EVALFILE="$SPELL_NET"
+          else
+            make -j2 build ARCH=${{ matrix.arch }} COMP=${{ matrix.comp }} EXE="$EXE_NAME"
+          fi
+          strip "$EXE_NAME"
+
+      # bench reports through stderr and returns 0 even when the search never
+      # started, so the node count is the real gate.
+      - name: Bench sanity
+        working-directory: src
+        run: |
+          ./"$EXE_NAME" bench 16 1 8 default depth > bench.log 2>&1
+          tail -n 12 bench.log
+          nodes=$(grep -oE 'Nodes searched[[:space:]]*:[[:space:]]*[0-9]+' bench.log | grep -oE '[0-9]+$' | tail -n 1)
+          test -n "$nodes"
+          test "$nodes" -gt 0
+
+      # The embedded network is most of the binary and does not compress, so
+      # zipping it only costs upload time.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Spell-Stockfish-${{ env.SHA8 }}-${{ matrix.os }}-${{ matrix.arch }}
+          path: src/${{ env.EXE_NAME }}
+          if-no-files-found: error
+          compression-level: 0
+
+  rolling-release:
+    name: Rolling latest-main prerelease
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      # The tag is moved by hand: an existing release keeps its own tag, so
+      # editing the release would leave latest-main pinned at the commit that
+      # first created it.
+      - name: Publish latest-main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha8=$(echo "$GITHUB_SHA" | cut -c1-8)
+          built=$(date -u +'%Y-%m-%d %H:%M UTC')
+          ls -l dist
+
+          {
+            echo "Binaries built from \`main\`, refreshed on every merge."
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Commit | [\`$sha8\`](https://github.com/$GITHUB_REPOSITORY/commit/$GITHUB_SHA) |"
+            echo "| Built | $built |"
+            echo
+            echo "Pick the binary matching your CPU: \`x86-64-bmi2\` for anything from"
+            echo "Haswell/Zen 3 onwards, \`x86-64-avx2\` as the safer fallback."
+            echo
+            echo "\`-nonet\` means the binary carries only the stock chess network and is"
+            echo "spell-blind. Spell networks load at runtime through the \`EvalFile\` UCI"
+            echo "option; drop the .nnue next to the binary or point \`EvalFile\` at it."
+          } > notes.md
+
+          if gh release view latest-main --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/latest-main" \
+              -f sha="$GITHUB_SHA" -F force=true >/dev/null
+            gh release edit latest-main --repo "$GITHUB_REPOSITORY" \
+              --prerelease --title "Spell-Stockfish dev ($sha8)" --notes-file notes.md
+          else
+            gh release create latest-main --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" --prerelease \
+              --title "Spell-Stockfish dev ($sha8)" --notes-file notes.md
+          fi
+
+          gh release upload latest-main --repo "$GITHUB_REPOSITORY" dist/* --clobber
