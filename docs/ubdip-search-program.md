@@ -261,7 +261,30 @@ Intel de referencia (ijhy en #solver, 4-ago): hubo MV-SF buenos del
 de alrededor eran muy flojas. Si se consiguen esos binarios, la vara
 del programa (hoy release 10 de 2018, 83/84) puede subir aún.
 
-## Pendiente de responder a ubdip
+## Triaje 5-ago (aprobado por el propietario; § docs/elo-strategy-2026-08.md)
+
+Cerrados por negativo persistente sin tesis (post-mortem de una línea):
+
+- **U1/T131 blast-see −1,93**: la "fundación neutral" NO fue neutral — la
+  extracción con signo + promos/EP cambió veredictos de see_ge en juego
+  real. Relanzable solo tras diff de veredictos vs base sobre bench/perft
+  (el test diferencial del diseño se quedó corto: cubría delta material,
+  no paridad de veredicto).
+- **U2/T132 futility −0,70; U4/T134 statScore −0,37; U7/T137
+  drop-lesser-threat −0,41**: el proxy PieceValue pierde menos de lo que
+  el blast exacto cuesta; la semántica correcta no paga encima de
+  constantes ya TUNEadas (spsa90). Parametrización 2 solo en combo.
+- **T103 stalemate-bycatch −0,62 (CRASHES=1), T105 check-extension −0,69,
+  T110/T111/T114/T115/T116/T120 MV-R menores**: knobs de ±0-1 sobre el
+  mismo óptimo local. Sin segunda parametrización — familia agotada.
+- **SB4/T161 frozen-grab −0,57**: segunda refutación (r3 lo salvó una
+  vez); doble-refutado, archivado.
+
+Supervivientes con flota (prio 204 puesta a mano por el propietario):
+**U5/T135 ring-history +1,63** (la estrella del programa — la única idea
+UB con señal clara), U3/T133 ordering +0,26, T152 SB9 +0,60, T117 +0,92,
+LTCs de MV-R4, y los árbitros del mate-lab (T159/T163). El listón de
+entrada nuevo (≥3 Elo previstos con recibo, o combo) rige desde hoy.
 
 Su pregunta de royalty ("more like mv-sf than fsf?"): nuestra
 implementación es propia sobre el chasis SF-dev con FSF como oráculo de
