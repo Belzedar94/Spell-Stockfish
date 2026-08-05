@@ -110,20 +110,42 @@ medir otra cosa.
 
 ## R-C. blast_see como único oráculo táctico
 
-La fundación (U1) que falló como trocito: T131 −1,93 pese al diseño
-"bit-idéntico en NORMAL". **Autopsia en curso (bloqueante)**: harness de
-paridad de veredicto por clases (NORMAL / promo / EP / reyes-conectados /
-umbral negativo) sobre bench+perft+FENs de anillos cargados. Hipótesis
-ordenadas: (a) la extracción rompió la paridad en NORMAL (bug), (b) la
-semántica nueva de promo/EP tiene el signo mal respecto al do_move real,
-(c) la semántica es correcta pero los consumidores calibrados al proxy la
-castigan (→ se resuelve DENTRO de R-A/R-B, no antes).
+La fundación (U1) que falló como trocito: T131 −1,93. **AUTOPSIA RESUELTA
+(5-ago, rama `ub1-autopsy` en C:\at-ub1): veredicto (c)**, con (a) y (b)
+refutadas con recibos:
 
-Con la autopsia resuelta: `blast_see(Move) -> Value` con test diferencial de
-VEREDICTO (no solo de delta material) y TODOS los `PieceValue[captured]` del
-motor muriendo A LA VEZ — futility (2 sitios), statScore, orden de capturas,
-threatened-by. La ronda UB probó que de uno en uno son ruido; el paquete
-redefine la lente táctica entera y se mide como tal.
+- La extracción es BIT-IDÉNTICA en NORMAL/promo-quieta/enroque: 0
+  desacuerdos en 2.270 millones de comprobaciones estáticas y 13,38M de
+  llamadas en árbol real. La premisa del refactor está probada; blast_see
+  puede ser el oráculo único.
+- El diferencial contra do_move/undo_move da 0 discrepancias en 24,4M de
+  capturas: la semántica promo/EP es materialmente EXACTA.
+- Lo que mató el SPRT: en este motor `see_ge(m, thr>0)` solo aparece
+  cuando la captureHistory se ha ido muy negativa. La base devolvía 0 en
+  promo-captura/EP → fallaba siempre con umbral positivo → MANDABA LA
+  HISTORIA. UB1 devuelve el material real y pasa: le quita el voto a una
+  historia que YA HABÍA APRENDIDO que la promo-captura atómica es mala
+  (el 57% llegan a la puerta con captHist < −7·PieceValue). 0,057% de
+  vuelcos de veredicto (93% en dirección despodar) → +15,7% de árbol
+  d10-d15. Materialmente verdad, posicionalmente optimista: blast_see
+  cobra el peón gastado a 301 cuando es un pasado en 7ª, y la pieza
+  promovida vale 0 porque explota con su propio blast.
+- **Bonus, bug preexistente de la BASE**: movepick.cpp:215 puntúa al paso
+  con `PieceValue[piece_on(to)]` = casilla VACÍA → 0 → la puerta cae en 0
+  exacto, justo donde `blast_see(EP) = −1` invierte; el al paso queda
+  además ordenado el último de todas las capturas. Se arregla DENTRO de
+  R-A (etapa 6 lo heredaría calibrado en 0 para una clase entera).
+
+**Consecuencias de diseño para R-C/R-A**: (1) la extensión promo/EP es un
+CAMBIO DE POLÍTICA disfrazado de fundación — entra como spin propio del
+paquete (0 = base bit-idéntica, verificable con el harness `seeaudit` que
+la autopsia deja construido), jamás de rondón; (2) el conflicto
+material-vs-historia en umbral positivo se decide EXPLÍCITAMENTE antes de
+cablear consumidores — reaparecerá en U2/U3/U4; (3) la etapa 3 del
+MovePicker no quiere el delta crudo sino el delta contra el valor de la
+pieza GASTADA (peón en 7ª ≠ 301) — un blast_see relativo-a-inversión.
+Con eso: TODOS los `PieceValue[captured]` mueren A LA VEZ dentro del
+paquete R-A/R-B, medidos como paquete.
 
 ## R-E. La red con verdad absoluta
 
