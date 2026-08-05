@@ -1,0 +1,33 @@
+# Fixed ep-cast positions for the perft parity suite.
+#
+# Every FEN here has an en-passant square AND a castable spell in hand, so
+# the potion-gated en-passant captures of 15820b97 exist at depth 1. The
+# random walk in gen_perft_suite.py does not reach them: only 0.38% of the
+# positions it samples have ep active, and its sampled suite has none at all
+# — the rule was only watched from depth 2, by accident.
+#
+# Sampled with gen_perft_suite.py's engine driver (seed 20260805, walk
+# biased towards double pawn pushes), filtered on 'ep square set + own
+# spell with cooldown 0', deduplicated. Their node counts are recorded by
+# the external arbiter (Fairy-Stockfish PR #96), never by ourselves.
+#
+1nb1kb1r/r1p1q3/4p2p/pp1pp3/P1PPPPPp/1R6/1P6/RNB1KBN1[FFff] {F@-:2,J@-:0,f@-:0,j@-:0} b Qk g3 0 14
+rnbqkbnr/p2ppppp/8/1Pp5/8/8/1PPPPPPP/RNBQKBNR[JJFFFFjfffff] {F@-:2,J@-:0,f@-:0,j@-:2} w KQkq c6 0 3
+r1bqkbnr/p2ppp2/6p1/1Pp4p/1n3PP1/8/P1QPP2P/RNB1KBNR[JFFFFjfff] {F@-:0,J@-:2,f@-:2,j@-:0} w KQkq c6 0 7
+1nbq1rk1/3p2p1/r1p3Pp/ppP2p2/P3pP2/3P3B/2P1P2n/RNBQK1NR[FF] {F@-:0,J@-:0,f@-:1,j@-:0} w K b6 0 16
+1nb2rk1/q5p1/r1p3Pp/ppPp1p2/P1PP1P2/R2Qp2B/4P2n/1NB1K1NR[F] {F@-:0,J@-:0,f@-:0,j@-:0} w K d6 0 22
+rnb1kbnr/ppp3p1/5p2/Pq1pp1Pp/1PPP1P2/R7/4P2P/1NBQKBNR[FFFFff] {F@-:0,J@-:0,f@-:1,j@-:0} w Kkq h6 0 12
+1nbq1bnr/3pk3/r7/p1p1pp1p/pPPPPpPP/3R3B/5K2/1NBQ2NR[FFFfff] {F@-:2,J@-:0,f@-:0,j@-:0} b - e3 0 13
+r1b1k3/3p1n2/nP1b1q1r/p1p1pp1p/1PP1PpPP/1R1P4/2QK4/1NB2BNR[f] {F@-:0,J@-:0,f@-:0,j@-:0} b - e3 0 19
+1nb2b1r/1p2k1pp/r2qp2n/pPpp1p2/P2P1P1P/7R/2PQP1P1/RNB1KBN1[FFFff] {F@-:0,J@-:0,f@c3:3,j@-:0} w Q c6 0 10
+1n1qkb1r/1bp3pp/r4n2/pP2pp2/4pPP1/P1N4N/1P1PK2P/1RBQ1BR1[FFff] {F@-:0,J@-:0,f@-:0,j@-:0} b k f3 0 11
+rnb1kb1r/1pp3pp/Q6n/p2pPpq1/P3P3/8/1PP2PPP/RNB1KBNR[FFFFjjfff] {F@-:0,J@-:2,f@-:2,j@-:0} w KQkq f6 0 7
+r1bqkbn1/p1ppp1pr/8/np3pPp/PPP1P3/8/3P1P1P/RNBQKBNR[JFFFFjffff] {F@-:0,J@-:0,f@-:0,j@-:1} w KQq f6 0 7
+1nb1kbn1/1q2p2r/1pp1Pp2/7p/rppP2pP/RK1BQN2/5PP1/1NB4R[f] {F@-:0,J@-:0,f@-:0,j@-:0} b - h3 0 20
+rnb1kbnr/ppp2p1p/3q4/3pp1pP/6P1/2P5/PP1PPP2/RNBQKBNR[FFFFjjfffff] {F@-:0,J@-:2,f@-:0,j@-:0} w Qkq g6 0 7
+1n1qkbnr/8/1rpp4/pp2p1pp/PPPPpPbP/8/2Q5/RNB1KBNR[FFff] {F@-:0,J@-:0,f@-:0,j@-:0} b Kk d3 0 13
+rnb1k1n1/2p1bpp1/1p4r1/4pP1p/pPpqP2P/2N3P1/P7/R1BQKBNR[FFFFff] {F@-:0,J@-:0,f@-:0,j@-:1} b Qq b3 0 13
+r1bqkbn1/2p1ppp1/1pn5/3p3r/pP1PP1PP/2P4B/P4P2/RNB1K1NR[JFFFff] {F@-:2,J@-:0,f@-:0,j@-:0} b KQq b3 0 10
+rn2kbnr/pb2p1pp/8/1pp2p2/PPpP4/2N1P3/5PPP/R1BQKBNR[FFFFffff] {F@-:1,J@-:0,f@-:0,j@-:1} b KQkq d3 0 8
+r1b2bnr/p2k1p2/n7/1PpppP1p/1P2P3/B5q1/2PPBK2/RN1Q2NR[FFfff] {F@-:0,J@-:0,f@-:0,j@-:0} w - e6 0 13
+rnbqkbnr/2p1p3/1p5p/p1Pp1pB1/3P3P/5P2/PP2P1P1/RN1QKBNR[JFFFfff] {F@-:1,J@-:0,f@-:1,j@a1:3} w KQkq d6 0 7
