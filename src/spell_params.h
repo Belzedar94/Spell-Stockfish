@@ -67,6 +67,12 @@ extern int SpellGateHistStatWeight;   // 2
 // never push a king-ring gate out of the ring override.
 extern int SpellGateSelectWeight;  // 0 (off)
 
+// Weight of SpellGateHistory in the ORDERING score of a gated move. This is
+// the factorization: a gated move scores as its base move (butterfly, pawn,
+// continuation, threats — all unchanged) PLUS the gate's own record. The two
+// halves generalize separately, so neither conflates nor starves.
+extern int SpellGateOrderWeight;  // 0 (off)
+
 // Relevance gate for the SPELL stage: a cast is worth at most about a
 // tempo plus bounded tactics, so nodes whose static eval sits further
 // than this below alpha skip the gated-quiet expansion entirely

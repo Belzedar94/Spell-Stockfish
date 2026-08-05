@@ -43,6 +43,7 @@ int SpellGateHistOrderWeight = 0;
 int SpellGateHistStatWeight  = 0;
 
 int SpellGateSelectWeight = 0;
+int SpellGateOrderWeight  = 0;
 
 int SpellStageMargin = 365;
 
@@ -72,6 +73,7 @@ TUNE(SetRange(4, 96), SpellLmrMoveCountCap);
 TUNE(SetRange(0, 8), SpellGateHistOrderWeight);
 TUNE(SetRange(0, 8), SpellGateHistStatWeight);
 TUNE(SetRange(0, 4), SpellGateSelectWeight);
+TUNE(SetRange(0, 8), SpellGateOrderWeight);
 TUNE(SetRange(0, 2000), SpellStageMargin);
 TUNE(SetRange(0, 8), SpellQuietMinDepth);
 TUNE(SetRange(0, 1), SpellMergedOrdering);

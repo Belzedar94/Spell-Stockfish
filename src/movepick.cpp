@@ -323,6 +323,13 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
 
     Color us = pos.side_to_move();
 
+    // Factorized gate half: computed once per scoring pass, applied per gated
+    // move. The base half of the same move keeps its ordinary quiet score.
+    [[maybe_unused]] GateContext gateCtx{SQ_NONE, 0};
+    if constexpr (Type == QUIETS)
+        if (SpellGateOrderWeight && spellGateHistory)
+            gateCtx = gate_context(pos, us);
+
     [[maybe_unused]] Bitboard threatByLesser[KING + 1];
     if constexpr (Type == QUIETS)
     {
@@ -356,6 +363,12 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
             // histories
             m.value = 2 * (*mainHistory)[us][m.raw() & 0xFFFF];
             m.value += SpellGateHistOrderWeight * (*gateHistory)[us][gate_slot(m)];
+            if (SpellGateOrderWeight && spellGateHistory && m.is_spell())
+            {
+                const Square g = m.gate_sq();
+                m.value +=
+                  SpellGateOrderWeight * (*spellGateHistory)[us][m.spell_type()][gateCtx(g)][g];
+            }
             m.value += 2 * sharedHistory->pawn_entry(pos)[pc][to];
             m.value += (*continuationHistory[0])[pc][to];
             m.value += (*continuationHistory[1])[pc][to];
