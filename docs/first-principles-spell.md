@@ -151,6 +151,39 @@ cross-checks y carreras (mi mate en N vs su mate en N−1) como patrón de
 primera clase en qsearch — hoy qsearch hereda la lógica clásica de jaques
 duros sobre un juego donde el jaque es una amenaza negociable.
 
+**Recibos fase 1 (5-ago, rama `sd/urgent-defense` fc1f53ea en
+`Spell Project\sd-urgent-lab`, sin push): el sospechoso #1 REFUTADO.** La
+exención urgente del tope de puertas (réplica de `urgentPotionDefense`,
+3 líneas reales sobre `pos.checkers()`, spin 0 bit-idéntico, perft 85/85)
+NO compra los 3 mates del dossier, y el porqué invierte el diagnóstico:
+
+1. Los 3 movimientos de mate YA están en el universo raíz — no es hueco
+   de generación. Forzados con `searchmoves`, pos42 canta mate 3 y pos84
+   mate 4 al instante: el fallo es de ORDEN/asignación de presupuesto.
+2. Lo que esconde pos84 es el tope EN GENERAL: con `MaxFreezeGates=32/
+   MaxJumpGates=20` el motor juega el `h8h5` de la referencia y canta
+   mate 4; con la exención urgente sigue en la jugada mala.
+3. La exención además EMPEORA pos84 (línea forzada: mate 4 → cp 1372):
+   abrirle puertas al defensor dificulta PROBAR el mate. Física correcta,
+   palanca equivocada.
+4. Fire-rate del estado urgente: 19,4% de las generaciones SPELL_QUIETS
+   (d13) — el estado existe y es frecuente; el coste del spin es +10-29%
+   de nodos según profundidad. Sin SPRT: no hay recibo de ≥3 Elo.
+
+**Redirección**: el recibo es de S-A — el tope 8F/4J sobrevalora los
+ataques propios podando las defensas del rival en nodos SIN jaque, justo
+lo que el picker aprendido debe arreglar. pos42/pos84 entran como
+posiciones de la suite de decisión de S-A (vara: mate 3/mate 4 con
+time-to-move). El orden S-D-tras-S-A queda reforzado con recibos.
+
+Laterales de la fase 1: la suite perft llevaba roja en silencio desde
+`15820b97` (10 contadores obsoletos re-grabados y confirmados contra FSF
+PR96; +24 posiciones en jaque nuevas — el estado del spin no tenía NI UNA
+cobertura), y una divergencia de reglas real pre-existente: el empuje
+doble de peón sobre casilla jump-transparente (la referencia lo permite y
+se contradice — bloquea `a2a3` pero permite `a2a4`). Decisión de regla
+pendiente del propietario; anotada en la suite.
+
 ### S-E. Eval y datos (el frente dominante, ya en marcha)
 
 - datagen run9 (50M, en flota) → run1c: el camino corto del listón.
