@@ -195,7 +195,90 @@ y el listón del programa es: Spell-SF (base EP-cast + red campeona propia)
 debe batir a FSF+run5rl — si el generalista con red gana, el especializado
 no se está justificando.
 
-## El listón, medido (3-ago): FSF+run5rl nos saca 74-164 Elo
+## El listón (3-ago) es INCOMPARABLE, no falso — y la red campeona es el problema
+
+> **AVISO (5-ago): la tabla de abajo no mide lo que su título dice.** Mide
+> **Spell-SF+HARD2** contra **FSF+run5rl** — o sea, motor Y red distintos a la
+> vez. "Red campeona propia" es `spell-v2-HARD2` (`666BE56A`), la que fija el
+> Protocolo de este mismo doc para ambos lados. Con la red igualada el signo
+> se da la vuelta, y la propia red campeona resulta ser el eslabón flojo.
+>
+> **Batería A — Spell-SF+run5rl vs FSF+run5rl** (misma red en ambos lados):
+>
+> | TC | Partidas | W-L-D | Elo | LOS |
+> |---|---|---|---|---|
+> | 2+0,02 | 102 | 74-17-11 | **+219,3 ±76,9** | 100,0% |
+> | 10+0,1 | 102 | 75-22-5 | **+200,1 ±78,5** | 100,0% |
+> | 30+0,3 | 102 | 74-23-5 | **+190,9 ±77,3** | 100,0% |
+>
+> Gate del §7 cumplido: LOS 100% en los tres TCs con >100 partidas. **Con la
+> misma red, el especializado gana al generalista por ~200 Elo a los tres
+> TCs.** La premisa "si el generalista con red gana, el especializado no se
+> está justificando" se cumple al revés de como se creía.
+>
+> **Batería B — Spell-SF+HARD2 vs Spell-SF+run5rl** (mismo binario, solo
+> cambia `EvalFile`):
+>
+> | TC | Partidas | W-L-D | Elo | LOS |
+> |---|---|---|---|---|
+> | 2+0,02 | 116 | 41-75-0 | **−104,9 ±67,1** | 0,0% |
+> | 10+0,1 | 444 | 189-247-8 | **−45,7 ±32,3** | 0,2% |
+> | 30+0,3 | 148 | 75-73-0 | +4,7 ±56,4 | 56,5% |
+>
+> **HARD2 pierde contra run5rl dentro de nuestro propio motor**, con LOS
+> cerrado en contra en VSTC y STC (444 partidas en STC) y empate técnico en
+> LTC. Es la red que el Protocolo pone a ambos lados de todos los SB y la que
+> lleva embebida el motor de OpenBench. Ojo al matiz: las dos redes entran por
+> **rutas de eval distintas** — el banner dice `Spell NNUE loaded` con run5rl y
+> `Spell NNUE v2 loaded` con HARD2 —, así que la batería B cruza red Y ruta de
+> eval, no solo red. (Efecto colateral detectado: con la ruta v2 el comando
+> `eval` no imprime `Final evaluation`; la búsqueda va bien, es solo la traza.)
+>
+> **Por qué la tabla vieja no se puede restar de la nueva.** Aritmética de la
+> cadena a STC: Spell-SF+HARD2 vs FSF+run5rl ≈ (+200,1) + (−45,7) = **+154**,
+> frente al −149 de la tabla. La red explica ~46-105 Elo; quedan ~300 sin
+> explicar y **no se pueden atribuir**: el script del panel del 3-ago no está
+> en el repo, ni en `Match script\`, ni en los labs de `D:`. Lo único que
+> queda de aquello son los `panel_*.log` del 12-jul, que son otra medida.
+>
+> **Lo que sí se descartó, con recibos** (lab `Spell Project\chassis-gap-lab\`):
+> binario distinto (`b6c3dd64` está a UN commit de `15820b97`; recompilado
+> desde clon limpio da mismo perft y misma jugada a 1M nodos, y 34-5-1 vs FSF
+> a 80k); binario de FSF distinto (el baseline de jul-11 y el PR96 juegan
+> igual en 10 posiciones); red no cargada o perdida al re-enviar `UCI_Variant`
+> tras `ucinewgame` (`tools\seq_vft.py`: sobrevive en los dos motores);
+> coste fijo por jugada (0 ms en ambos); contabilidad de nodos; y el **relay
+> de FEN**, reproducido con `tools\relay_pair_runner.py` (el runner de OB con
+> un único cambio de contrato) contra su gemelo con historial, a la vez y al
+> mismo TC: **no cambia el signo** (relay 15-6, historial 17-4), 0 posiciones
+> repetidas 3+ veces en ninguna corrida, misma mezcla de desenlaces
+> (adjudicación 12 vs 11, captura de rey 16 vs 19) y el relay deja el
+> **106-108%** de los nodos por jugada, o sea que no cobra peaje de reloj.
+>
+> **Cadena de custodia auditada** antes de dar por bueno nada de esto: el
+> binario moderno a solas reproduce jugada, score, profundidad y **contador de
+> nodos exacto** (`f@d8,g4g5 / +0.46 / d11 / 200104`) de lo que el PGN
+> atribuye a su lado; en las terminales por captura de rey gana siempre quien
+> movió último; el recuento propio desde el PGN coincide con el marcador del
+> runner en tres matches; y las baterías corren con `variantfishtest_spell.py`
+> del propietario, cuya columna W es engine1 por construcción (verificado en
+> el fuente, líneas 280-305), con `engine1 = spell-v2-base-b6c3dd64.exe` en la
+> cabecera del log.
+>
+> **Consecuencia para el programa.** (1) "El hueco dominante de spell es de
+> EVAL" se queda sin su recibo principal. (2) El Protocolo de más abajo fija
+> HARD2 en ambos lados de todos los SB: eso no invalida los A/B (la red es
+> común), pero significa que **se está tuneando la búsqueda sobre una red que
+> pierde ~50-105 Elo contra otra que ya teníamos**, y que la ruta de eval v2
+> merece una auditoría antes de seguir gastando SPRTs encima.
+>
+> Rutas de los seis logs:
+> `Spell Project\chassis-gap-lab\gates\los-{ssf-run5rl-vs-fsf-run5rl,ssf-hard2-vs-ssf-run5rl}-{vstc,stc,ltc}\match.log`
+
+<details>
+<summary>Tabla original del 3-ago (retirada; se conserva por trazabilidad)</summary>
+
+### El listón, medido (3-ago): FSF+run5rl nos saca 74-164 Elo
 
 Cruce Spell-SF (base `15820b97` + red campeona propia) contra FSF+run5rl,
 relay de FEN, árbitro `spell/nnue-potions`+EP compilado **`all=yes`**
@@ -215,6 +298,8 @@ Contra FSF **clásico** el mismo día: +123/+193 con LOS 100%. La lectura: la
 brecha es la RED del generalista + su búsqueda tuneada para spell, no la
 eval clásica; y se estrecha con el tiempo (patrón NNUE profunda). El
 especializado aún no se justifica — de ahí la ronda 3.
+
+</details>
 
 ## Ronda 3 (3-ago): la caza de los +100 — ordering e history
 

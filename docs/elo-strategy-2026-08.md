@@ -31,8 +31,13 @@ La conclusión no es sutil: **los cientos de Elo han venido SIEMPRE de (a) qué
 datos ve la red y (b) qué forma tiene el árbol — nunca de re-pesar podas**.
 El propio math_god apunta igual: "meto una NNUE nueva en MVSF y destruye a
 fairy y atomic-stockfish" — su apuesta es que la eval manda el techo. Y
-nuestro listón spell sigue en −74 a −164 vs FSF+run5rl según TC: el hueco
-grande existe y es de eval.
+nuestro listón spell parecía estar en −74 a −164 vs FSF+run5rl según TC.
+**Corregido el 5-ago**: aquella medida cruzaba Spell-SF+HARD2 contra
+FSF+run5rl. Con la misma red a los dos lados, Spell-SF gana +219/+200/+191
+con LOS 100% a los tres TCs, y HARD2 es el eslabón flojo (pierde ~50-105
+Elo contra run5rl dentro de nuestro motor). Ver `ubdip-spell-program.md`:
+el "hueco grande de eval" contra el generalista no está medido; lo que sí
+está medido es un hueco de eval **entre nuestras propias redes**.
 
 ## 2. El patrón del parche de Opus (el playbook, no la anécdota)
 

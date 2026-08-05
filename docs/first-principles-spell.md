@@ -4,9 +4,14 @@ Compañero de `first-principles-atomic.md` bajo el mandato del 5-ago-2026
 ("pensar en grande"). Fuente de reglas: `SPELL_SPEC.md` (la única autoridad,
 con el binario congelado de referencia y chess.com por encima de todo).
 
-Contexto de fuerza: el listón está en **−74 a −164 Elo vs FSF+run5rl** según
-TC — el hueco dominante de spell es de EVAL, y por eso datagen run9 → run1c
-y la minería (lateral) mandan en presupuesto. Pero la ronda 3 de knobs de
+Contexto de fuerza (**revisado el 5-ago**): con la MISMA red en ambos lados,
+Spell-SF+run5rl le gana a FSF+run5rl **+219 / +200 / +191** Elo con LOS 100%
+a los tres TCs (102 partidas cada uno). El viejo listón de −74/−164 medía
+otra cosa: Spell-SF con **HARD2** contra FSF con run5rl, y HARD2 pierde
+~50-105 Elo contra run5rl dentro de nuestro propio motor. Ver
+`ubdip-spell-program.md`. El renglón "el hueco dominante de spell es de
+EVAL" se queda sin recibo y hay que re-derivar a dónde va el presupuesto;
+datagen run9 → run1c y la minería siguen en marcha mientras tanto. Pero la ronda 3 de knobs de
 búsqueda (SB4-SB9) está igual de neutra que la atomic, por la misma razón
 estructural: son trocitos sobre formas clásicas. Este doc hace el ejercicio
 completo para cuando el método (probado en atomic) llegue aquí — y una parte
@@ -15,8 +20,12 @@ spell se juega su identidad.
 
 ## 0. La física de spell
 
-1. **La explosión combinatoria es LA física.** Startpos: **1878 legales**
-   (20 normales + 1188 freeze-gated + 670 jump-gated) — ~94× el ajedrez.
+1. **La explosión combinatoria es LA física.** Startpos: **1814 legales**
+   (20 normales + 1124 freeze-gated + 670 jump-gated) — ~91× el ajedrez.
+   (Corregido el 5-ago: decía 1878 = 20+1188+670. Recontado con `go perft 1`
+   sobre el startpos en los DOS binarios actuales — Spell-SF `b6c3dd64` y
+   `FSF_Spell_PR96_f3c0d204_allvars` — y los dos dan 1814 con el mismo
+   desglose; el 1188 de freeze estaba 64 alto.)
    Medio juego cargado: hasta 8-32k pseudo-legales (types.h dimensiona los
    buffers a 32k). Cada jugada base existe además en ~decenas de copias
    gated (`f@gate,move` / `j@gate,move`). El motor ya rinde el universo en
