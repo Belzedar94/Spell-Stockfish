@@ -94,7 +94,7 @@ extern int SpellEconJump[3];    // by jumps in hand
 // already uses to force the spell stage) widens the budget instead of
 // duplicating a second override.
 extern int SpellGateDepthPivot;    // 8: depth at which the base cap applies
-extern int SpellGateDepthSlope;    // 0 (off): gates added 8 plies above pivot
+extern int SpellGateDepthSlope;    // 0 (off): gates added/removed 8 plies above pivot
 extern int SpellGateUrgencyBonus;  // 0 (off): extra gates when our king is attacked
 
 // Debug instrumentation for the gate picker: fire-rate of casts as bestMove

@@ -89,7 +89,7 @@ TUNE(SetRange(0, 8), SpellGateOrderWeight);
 TUNE(SetRange(0, 2000), SpellEconWeight);
 TUNE(SetRange(-32, 32), SpellEconFreeze, SpellEconJump);
 TUNE(SetRange(2, 20), SpellGateDepthPivot);
-TUNE(SetRange(0, 16), SpellGateDepthSlope);
+TUNE(SetRange(-16, 16), SpellGateDepthSlope);
 TUNE(SetRange(0, 16), SpellGateUrgencyBonus);
 TUNE(SetRange(0, 1), SpellPickerStats);
 TUNE(SetRange(0, 2000), SpellStageMargin);

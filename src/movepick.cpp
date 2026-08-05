@@ -551,6 +551,27 @@ top:
         // little about them — but it does honor the search's relevance
         // gate (allowSpells): a cast is worth at most about a tempo plus
         // bounded tactics, so hopeless nodes skip the expansion entirely.
+        //
+        // This IS the lazy-by-tranche generation the picker rework asks for,
+        // and it is worth stating plainly because it is easy to misread the
+        // stage list as "everything is generated up front". Nothing gated is
+        // built or scored until the previous tranche is exhausted: the TT
+        // move costs no generation at all, CAPTURE_INIT builds only base
+        // captures, generate<QUIETS> returns base quiets ONLY (the gated
+        // expansion is explicitly excluded there), and the gated universe —
+        // the expensive one, ~640 moves per node against ~40 base quiets —
+        // is built here, after GOOD_QUIET ran dry. A node that cuts off on
+        // its third move never pays a cent of it.
+        //
+        // The one exception is the SpellMergedOrdering candidate (off by
+        // default), which deliberately trades this laziness for first-visit
+        // ordering by generating the gated quiets inside QUIET_INIT.
+        //
+        // What is NOT split into tranches is the gated segment itself: the
+        // top-K gates of both spells are expanded in one pass. Splitting it
+        // further (freeze before jump, or top gates before the rest) would
+        // need a second generation pass over the same base quiets, so it is
+        // a different trade than the one this rework is making.
         cur = endCur = endSpells = endGenerated;
         if (!mergedSpells && allowSpells
             && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
