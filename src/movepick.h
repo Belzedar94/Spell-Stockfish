@@ -85,6 +85,7 @@ class MovePicker {
                const ButterflyHistory*,
                const LowPlyHistory*,
                const GateHistory*,
+               const SpellGateHistory*,
                const CapturePieceToHistory*,
                const PieceToHistory**,
                const SharedHistories*,
@@ -103,11 +104,15 @@ class MovePicker {
     Move select(Pred);
     template<GenType T>
     ExtMove* score(const Move* begin, const Move* end);
+    // Generates the gated quiets with this node's gate budget (adaptive K)
+    // and the learned per-gate bonus applied to the selection score.
+    Move* gen_gated_quiets(Move* dst);
 
     const Position&              pos;
     const ButterflyHistory*      mainHistory;
     const LowPlyHistory*         lowPlyHistory;
     const GateHistory*           gateHistory;
+    const SpellGateHistory*      spellGateHistory = nullptr;
     const CapturePieceToHistory* captureHistory;
     const PieceToHistory**       continuationHistory;
     const SharedHistories*       sharedHistory;

@@ -55,6 +55,18 @@ extern int SpellLmrMoveCountCap;  // 24
 extern int SpellGateHistOrderWeight;  // 2
 extern int SpellGateHistStatWeight;   // 2
 
+// ---------------------------------------------------------------------------
+// S-A, the learned gate picker. The fixed top-K-by-static-impact selection is
+// the single most important search decision of this engine and it never
+// learned anything; these knobs let the search earn its gates. Every default
+// is 0 = the historical behavior, bit for bit.
+
+// Weight of SpellGateHistory in the top-K gate SELECTION inside the gated
+// quiets generator. Capped at 4 on purpose: 4 x 13365 stays below the
+// king-ring bonus, so the learned term reorders gates within a tier but can
+// never push a king-ring gate out of the ring override.
+extern int SpellGateSelectWeight;  // 0 (off)
+
 // Relevance gate for the SPELL stage: a cast is worth at most about a
 // tempo plus bounded tactics, so nodes whose static eval sits further
 // than this below alpha skip the gated-quiet expansion entirely

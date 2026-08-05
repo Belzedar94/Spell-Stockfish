@@ -33,6 +33,29 @@ namespace Stockfish {
 // and its ring; a jump gate by the material and king attacks its lifted
 // blocker would reveal to our sliders.
 
+// Coarse context of the learned gate picker (SpellGateHistory in history.h).
+// The phase half is fixed per node, the quadrant half depends on the gate,
+// so the node computes the context once and applies it per gate square.
+struct GateContext {
+    Square eksq;
+    int    phase;  // 0 = opening, 1 = middlegame, 2 = endgame
+
+    int operator()(Square g) const {
+        if (eksq == SQ_NONE)
+            return phase;
+        return (2 * (rank_of(g) >= rank_of(eksq)) + (file_of(g) >= file_of(eksq))) * 3 + phase;
+    }
+};
+
+// Phase cuts on total non-pawn material (16604 at the start position):
+// roughly "both queens still around", "queens off / heavy pieces left",
+// "light endgame".
+inline GateContext gate_context(const Position& pos, Color us) {
+    const Value npm = pos.non_pawn_material();
+    return {pos.count<KING>(~us) ? pos.square<KING>(~us) : SQ_NONE,
+            npm > 11000 ? 0 : npm > 5000 ? 1 : 2};
+}
+
 // Score of freezing with the zone centered on g. eksq/eRing are the enemy
 // king square (or SQ_NONE) and king ring, precomputed by the caller.
 inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eksq, Bitboard eRing) {

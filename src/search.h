@@ -343,6 +343,7 @@ class Worker {
     ButterflyHistory mainHistory;
     LowPlyHistory    lowPlyHistory;
     GateHistory      gateHistory;
+    SpellGateHistory spellGateHistory;
 
     CapturePieceToHistory           captureHistory;
     CorrectionHistory<Continuation> continuationCorrectionHistory;

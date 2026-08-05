@@ -739,6 +739,7 @@ void Search::Worker::undo_null_move(Position& pos) {
 void Search::Worker::clear() {
     mainHistory.fill(-5);
     gateHistory.fill(0);
+    spellGateHistory.fill(0);
     captureHistory.fill(-699);
 
     // Each thread is responsible for clearing their part of shared history
@@ -1210,8 +1211,8 @@ moves_loop:  // When in check, search starts here
       allowSpells && !PvNode && !ourRoyalAttackers && depth < SpellQuietMinDepth;
 
     MovePicker mp(pos, ttData.move, depth, &mainHistory, &lowPlyHistory, &gateHistory,
-                  &captureHistory, contHist, &sharedHistory, ss->ply, move_arena(), gen_scratch(),
-                  allowSpells, onlyTacticalSpells);
+                  &spellGateHistory, &captureHistory, contHist, &sharedHistory, ss->ply,
+                  move_arena(), gen_scratch(), allowSpells, onlyTacticalSpells);
 
     value = bestValue;
 
@@ -1924,7 +1925,8 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
     // the moves. We presently use two stages of move generator in quiescence search:
     // captures, or evasions only when in check.
     MovePicker mp(pos, ttData.move, DEPTH_QS, &mainHistory, &lowPlyHistory, &gateHistory,
-                  &captureHistory, contHist, &sharedHistory, ss->ply, move_arena(), gen_scratch());
+                  &spellGateHistory, &captureHistory, contHist, &sharedHistory, ss->ply,
+                  move_arena(), gen_scratch());
 
     // Step 5. Loop through all pseudo-legal moves until no moves remain or a beta
     // cutoff occurs.
@@ -2227,6 +2229,17 @@ void update_quiet_histories(
     // Spells learn per-gate: casting there caused (or failed to cause)
     // a cutoff; non-spell quiets share the "no gate" slot
     workerThread.gateHistory[us][gate_slot(move)] << bonus;
+
+    // Factorized half of a gated move: the gate alone, per spell and coarse
+    // context. Updated unconditionally even while the read weights are 0 —
+    // a table that only starts learning when someone turns the weight on
+    // would be answering from an empty page.
+    if (move.is_spell())
+    {
+        const Square      gate = move.gate_sq();
+        const GateContext ctx  = gate_context(pos, us);
+        workerThread.spellGateHistory[us][move.spell_type()][ctx(gate)][gate] << bonus;
+    }
 
     if (ss->ply < LOW_PLY_HISTORY_SIZE)
         workerThread.lowPlyHistory[ss->ply][move.raw() & 0xFFFF] << bonus * 663 / 1024;

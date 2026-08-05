@@ -134,6 +134,21 @@ using ButterflyHistory = Stats<i16, 7183, COLOR_NB, UINT_16_HISTORY_SIZE>;
 // earn ordering priority by producing cutoffs, not by looking scary.
 using GateHistory = Stats<i16, 13365, COLOR_NB, SQUARE_NB + 1>;
 
+// Coarse context of the learned gate picker: the quadrant of the gate
+// relative to the ENEMY king (4 values) times a material phase bucket
+// (3 values). The two axes are the cheapest description of what makes a
+// gate pay: freezing near the enemy king is a different business from
+// freezing on our own side, and a freeze in the endgame buys something
+// else than a freeze in the opening. Everything finer would starve.
+constexpr int SPELL_GATE_CTX_NB = 12;
+
+// SpellGateHistory is the FACTORIZED half of a gated move: it learns the
+// gate alone, indexed by [color][spell][context][gate square], while the
+// base move keeps learning through the butterfly/continuation tables. The
+// flat GateHistory above conflates the two spells and every context into a
+// single square slot; this one separates what generalizes separately.
+using SpellGateHistory = Stats<i16, 13365, COLOR_NB, SPELL_NB, SPELL_GATE_CTX_NB, SQUARE_NB>;
+
 // LowPlyHistory is addressed by ply and move's from and to squares, used
 // to improve move ordering near the root
 using LowPlyHistory = Stats<i16, 7183, LOW_PLY_HISTORY_SIZE, UINT_16_HISTORY_SIZE>;

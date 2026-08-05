@@ -225,6 +225,7 @@ MovePicker::MovePicker(const Position&              p,
                        const ButterflyHistory*      mh,
                        const LowPlyHistory*         lph,
                        const GateHistory*           gh,
+                       const SpellGateHistory*      sgh,
                        const CapturePieceToHistory* cph,
                        const PieceToHistory**       ch,
                        const SharedHistories*       sh,
@@ -237,6 +238,7 @@ MovePicker::MovePicker(const Position&              p,
     mainHistory(mh),
     lowPlyHistory(lph),
     gateHistory(gh),
+    spellGateHistory(sgh),
     captureHistory(cph),
     continuationHistory(ch),
     sharedHistory(sh),
@@ -276,6 +278,39 @@ MovePicker::MovePicker(const Position&              p,
     stage =
       PROBCUT_TT
       + !(ttm && pos.capture_stage(ttm) && pos.pseudo_legal(ttm) && !is_useless_spell(pos, ttm));
+}
+
+// Generates the gated quiets of this node. The two policy decisions the
+// fixed top-K selection never made live here: how many gates this node
+// deserves, and which ones the search has learned to trust.
+Move* MovePicker::gen_gated_quiets(Move* dst) {
+
+    GateBudget budget;
+
+    // Learned per-gate bonus, folded into the generator's static impact
+    // score. Built only when the weight is on: 128 history reads per node
+    // are cheap, but not free enough to pay for while switched off.
+    int freezeBonus[SQUARE_NB], jumpBonus[SQUARE_NB];
+
+    if (SpellGateSelectWeight && spellGateHistory)
+    {
+        const Color       us  = pos.side_to_move();
+        const GateContext ctx = gate_context(pos, us);
+        const auto&       hF  = (*spellGateHistory)[us][SPELL_FREEZE];
+        const auto&       hJ  = (*spellGateHistory)[us][SPELL_JUMP];
+
+        for (Square g = SQ_A1; g <= SQ_H8; ++g)
+        {
+            const int c   = ctx(g);
+            freezeBonus[g] = SpellGateSelectWeight * hF[c][g];
+            jumpBonus[g]   = SpellGateSelectWeight * hJ[c][g];
+        }
+
+        budget.freezeBonus = freezeBonus;
+        budget.jumpBonus   = jumpBonus;
+    }
+
+    return generate_gated_quiets(pos, dst, budget);
 }
 
 // Assigns a numerical value to each move in a list, used for sorting.
@@ -430,7 +465,7 @@ top:
                 && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
                     || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
             {
-                Move* endAll = generate<SPELL_QUIETS>(pos, endGen);
+                Move* endAll = gen_gated_quiets(endGen);
                 if (ply != 0)
                     endAll = std::remove_if(endGen, endAll,
                                             [&](Move m) { return is_useless_spell(pos, m); });
@@ -481,7 +516,7 @@ top:
                     spellEnemyRoyal = pos.square<KING>(~us);
             }
 
-            const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
+            const Move* endGen = gen_gated_quiets(genScratch);
 
             endCur = endSpells = score<QUIETS>(genScratch, endGen);
 

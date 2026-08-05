@@ -197,7 +197,10 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target, Bitbo
 // Appends the gated (spell-casting) versions of the base moves, plus the new
 // slider/pawn moves a candidate jump gate enables. See SPELL_SPEC.md §4.
 template<Color Us, GenType Type>
-Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) {
+Move* generate_spell_moves(const Position& pos,
+                           Move*           baseStart,
+                           Move*           baseEnd,
+                           const GateBudget& budget) {
 
     Move* cur = baseEnd;
 
@@ -253,6 +256,12 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 jumpScoreReady = true;
             }
 
+            // Learned per-gate bonus (SpellGateHistory), already weighted by
+            // the caller. Bounded by construction below the king-ring bonus,
+            // so it reorders gates inside a tier but never demotes a
+            // king-ring gate out of the ring override.
+            const int* histBonus = sp == SPELL_FREEZE ? budget.freezeBonus : budget.jumpBonus;
+
             for (Bitboard b = allGates; b;)
             {
                 const Square g = pop_lsb(b);
@@ -267,10 +276,13 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 else
                     s = jumpScore[g];
 
+                if (histBonus)
+                    s += histBonus[g];
+
                 scored[n++] = {g, s};
             }
 
-            int limit = sp == SPELL_FREEZE ? MaxFreezeGates : MaxJumpGates;
+            int limit = sp == SPELL_FREEZE ? budget.maxFreeze : budget.maxJump;
             if (sp == SPELL_FREEZE && ringCount > limit)
                 limit = ringCount;
             if (n > limit)
@@ -434,22 +446,34 @@ Move* generate_all(const Position& pos, Move* moveList) {
     if constexpr (Type == QUIETS)
         return moveList;
 
-    return generate_spell_moves<Us, Type>(pos, cur, moveList);
+    // Non-QUIETS types never limit gates: the budget is inert here
+    return generate_spell_moves<Us, Type>(pos, cur, moveList, GateBudget());
 }
 
 // The gated quiet moves alone: the base quiets are regenerated at the buffer
 // start as gating material, the gated segment is appended and then slid to
 // the front.
 template<Color Us>
-Move* generate_spell_quiets(const Position& pos, Move* moveList) {
+Move* generate_spell_quiets(const Position& pos, Move* moveList, const GateBudget& budget) {
 
     Move* baseEnd  = generate_all<Us, QUIETS>(pos, moveList);
-    Move* spellEnd = generate_spell_moves<Us, QUIETS>(pos, moveList, baseEnd);
+    Move* spellEnd = generate_spell_moves<Us, QUIETS>(pos, moveList, baseEnd, budget);
 
     return std::move(baseEnd, spellEnd, moveList);
 }
 
 }  // namespace
+
+// The default budget is the pair of global caps with purely static gate
+// scoring: what the engine did before the gate picker learned anything.
+GateBudget::GateBudget() :
+    maxFreeze(MaxFreezeGates),
+    maxJump(MaxJumpGates) {}
+
+Move* generate_gated_quiets(const Position& pos, Move* moveList, const GateBudget& budget) {
+    return pos.side_to_move() == WHITE ? generate_spell_quiets<WHITE>(pos, moveList, budget)
+                                       : generate_spell_quiets<BLACK>(pos, moveList, budget);
+}
 
 
 // <CAPTURES>     Generates all pseudo-legal captures plus queen promotions
@@ -463,11 +487,10 @@ Move* generate(const Position& pos, Move* moveList) {
 
     static_assert(Type != LEGAL, "Unsupported type in generate()");
 
-    Color us = pos.side_to_move();
+    [[maybe_unused]] Color us = pos.side_to_move();
 
     if constexpr (Type == SPELL_QUIETS)
-        return us == WHITE ? generate_spell_quiets<WHITE>(pos, moveList)
-                           : generate_spell_quiets<BLACK>(pos, moveList);
+        return generate_gated_quiets(pos, moveList, GateBudget());
     else
         return us == WHITE ? generate_all<WHITE, Type>(pos, moveList)
                            : generate_all<BLACK, Type>(pos, moveList);
