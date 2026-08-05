@@ -1214,6 +1214,11 @@ moves_loop:  // When in check, search starts here
                   &spellGateHistory, &captureHistory, contHist, &sharedHistory, ss->ply,
                   move_arena(), gen_scratch(), allowSpells, onlyTacticalSpells);
 
+    // Picker instrumentation (SpellPickerStats): which tranche produced the
+    // bestMove of this node, and how late it came out
+    PickClass bestPickClass = PICK_OTHER;
+    u64       bestPickRank  = 0;
+
     value = bestValue;
 
     int moveCount = 0;
@@ -1656,6 +1661,11 @@ moves_loop:  // When in check, search starts here
             if (value + inc > alpha)
             {
                 bestMove = move;
+                if (SpellPickerStats)
+                {
+                    bestPickClass = mp.last_class();
+                    bestPickRank  = u64(moveCount);
+                }
 
                 if (PvNode && !rootNode)  // Update pv even in fail-high case
                     ss->pv->update(move, (ss + 1)->pv);
@@ -1713,6 +1723,8 @@ moves_loop:  // When in check, search starts here
                          ttData.move, PvNode);
         if (!PvNode)
             ttMoveHistory << (bestMove == ttData.move ? 792 : -779);
+        if (SpellPickerStats)
+            SpellPickerStat::record_best(bestPickClass, bestMove.is_spell(), bestPickRank);
     }
 
     // Bonus for prior quiet countermove that caused the fail low

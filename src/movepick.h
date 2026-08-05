@@ -21,6 +21,7 @@
 
 #include "history.h"
 #include "movegen.h"
+#include "spell_stats.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -98,6 +99,8 @@ class MovePicker {
     ~MovePicker() { arena->release(); }
     Move next_move();
     void skip_quiet_moves();
+    // Stage class of the move next_move() emitted last (instrumentation only)
+    PickClass last_class() const { return lastClass; }
 
    private:
     template<typename Pred>
@@ -122,8 +125,9 @@ class MovePicker {
     int      threshold;
     Depth    depth;
     int      ply;
-    bool     skipQuiets  = false;
-    bool     allowSpells = true;
+    bool      skipQuiets  = false;
+    bool      allowSpells = true;
+    PickClass lastClass   = PICK_OTHER;
     // Shallow non-PV nodes may restrict the SPELL stage to tactical casts;
     // the royal context for that classification is computed lazily once
     // per node in SPELL_INIT (mirrors the search's own precompute).

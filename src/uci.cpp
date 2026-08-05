@@ -40,6 +40,7 @@
 #include "position.h"
 #include "score.h"
 #include "search.h"
+#include "spell_stats.h"
 #include "types.h"
 #include "ucioption.h"
 
@@ -179,6 +180,17 @@ int UCIEngine::loop() {
             benchmark(is);
         else if (token == "d")
             sync_cout << engine.visualize() << sync_endl;
+        else if (token == "spellstats")
+        {
+            std::string sub;
+            if (is >> sub && sub == "clear")
+            {
+                SpellPickerStat::clear();
+                sync_cout << "info string spell picker stats cleared" << sync_endl;
+            }
+            else
+                sync_cout << SpellPickerStat::report() << sync_endl;
+        }
         else if (token == "eval")
             engine.trace_eval();
         else if (token == "datagen")

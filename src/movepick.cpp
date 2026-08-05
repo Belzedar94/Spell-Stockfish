@@ -318,7 +318,17 @@ Move* MovePicker::gen_gated_quiets(Move* dst) {
         budget.jumpBonus   = jumpBonus;
     }
 
-    return generate_gated_quiets(pos, dst, budget);
+    Move* end = generate_gated_quiets(pos, dst, budget);
+
+    if (SpellPickerStats)
+    {
+        Bitboard gates = 0;
+        for (const Move* m = dst; m != end; ++m)
+            gates |= square_bb(m->gate_sq());
+        SpellPickerStat::record_gates(popcount(gates), u64(end - dst));
+    }
+
+    return end;
 }
 
 // Assigns a numerical value to each move in a list, used for sorting.
@@ -455,6 +465,7 @@ top:
     case QSEARCH_TT :
     case PROBCUT_TT :
         ++stage;
+        lastClass = PICK_TT;
         return ttMove;
 
     case CAPTURE_INIT :
@@ -482,7 +493,10 @@ top:
                 std::swap(*endBadCaptures++, *cur);
                 return false;
             }))
+        {
+            lastClass = PICK_GOOD_CAPTURE;
             return *(cur - 1);
+        }
 
         ++stage;
         [[fallthrough]];
@@ -522,7 +536,10 @@ top:
 
     case GOOD_QUIET :
         if (!skipQuiets && select([&]() { return cur->value > goodQuietThreshold; }))
+        {
+            lastClass = PICK_QUIET;
             return *(cur - 1);
+        }
 
         ++stage;
         [[fallthrough]];
@@ -573,7 +590,10 @@ top:
                     || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
                                          spellOurRoyal);
             }))
+        {
+            lastClass = PICK_SPELL;
             return *(cur - 1);
+        }
 
         // Prepare the pointers to loop over the bad captures
         cur    = moves;
@@ -584,7 +604,10 @@ top:
 
     case BAD_CAPTURE :
         if (select([]() { return true; }))
+        {
+            lastClass = PICK_BAD_CAPTURE;
             return *(cur - 1);
+        }
 
         // Prepare the pointers to loop over the base quiets again
         cur    = endCaptures;
@@ -595,7 +618,10 @@ top:
 
     case BAD_QUIET :
         if (!skipQuiets)
+        {
+            lastClass = PICK_BAD_QUIET;
             return select([&]() { return cur->value <= goodQuietThreshold; });
+        }
 
         return Move::none();
 
@@ -611,12 +637,15 @@ top:
     }
 
     case EVASION :
+        lastClass = PICK_OTHER;
         return select([]() { return true; });
 
     case QCAPTURE :
+        lastClass = PICK_QCAPTURE;
         return select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); });
 
     case PROBCUT :
+        lastClass = PICK_OTHER;
         return select(
           [&]() { return !is_useless_spell(pos, *cur) && pos.see_ge(*cur, threshold); });
     }

@@ -97,6 +97,11 @@ extern int SpellGateDepthPivot;    // 8: depth at which the base cap applies
 extern int SpellGateDepthSlope;    // 0 (off): gates added 8 plies above pivot
 extern int SpellGateUrgencyBonus;  // 0 (off): extra gates when our king is attacked
 
+// Debug instrumentation for the gate picker: fire-rate of casts as bestMove
+// per stage, mean rank of the cast bestMove, unique gates tried per node.
+// Reported by the `spellstats` command; `spellstats clear` resets.
+extern int SpellPickerStats;  // 0 (off)
+
 // Relevance gate for the SPELL stage: a cast is worth at most about a
 // tempo plus bounded tactics, so nodes whose static eval sits further
 // than this below alpha skip the gated-quiet expansion entirely
