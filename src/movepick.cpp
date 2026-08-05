@@ -288,9 +288,9 @@ Move* MovePicker::gen_gated_quiets(Move* dst) {
     // Urgency uses the search's own predicate — our king capturable in one,
     // attackers evaluated spell-aware — so the budget widens on exactly the
     // nodes where the search already refuses to skip the spell stage.
-    const bool urgent = SpellGateUrgencyBonus != 0 && pos.count<KING>(pos.side_to_move())
-                     && (pos.attackers_to(pos.square<KING>(pos.side_to_move()))
-                         & pos.pieces(~pos.side_to_move()));
+    const bool urgent =
+      SpellGateUrgencyBonus != 0 && pos.count<KING>(pos.side_to_move())
+      && (pos.attackers_to(pos.square<KING>(pos.side_to_move())) & pos.pieces(~pos.side_to_move()));
 
     GateBudget budget(gate_budget_for(MaxFreezeGates, depth, urgent),
                       gate_budget_for(MaxJumpGates, depth, urgent));
@@ -309,7 +309,7 @@ Move* MovePicker::gen_gated_quiets(Move* dst) {
 
         for (Square g = SQ_A1; g <= SQ_H8; ++g)
         {
-            const int c   = ctx(g);
+            const int c    = ctx(g);
             freezeBonus[g] = SpellGateSelectWeight * hF[c][g];
             jumpBonus[g]   = SpellGateSelectWeight * hJ[c][g];
         }
@@ -354,8 +354,8 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
     if constexpr (Type == QUIETS)
         if (SpellEconWeight)
         {
-            econFreeze = SpellEconWeight
-                       * SpellEconFreeze[std::min(pos.spells_in_hand(us, SPELL_FREEZE), 5)];
+            econFreeze =
+              SpellEconWeight * SpellEconFreeze[std::min(pos.spells_in_hand(us, SPELL_FREEZE), 5)];
             econJump =
               SpellEconWeight * SpellEconJump[std::min(pos.spells_in_hand(us, SPELL_JUMP), 2)];
         }

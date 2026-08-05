@@ -82,7 +82,7 @@ inline void clear() {
 
 inline std::string report() {
 
-    static const char* names[PICK_CLASS_NB] = {"tt",          "good_capture", "quiet",   "spell",
+    static const char* names[PICK_CLASS_NB] = {"tt",          "good_capture", "quiet",    "spell",
                                                "bad_capture", "bad_quiet",    "qcapture", "other"};
 
     const auto ratio = [](u64 num, u64 den) { return den ? double(num) / double(den) : 0.0; };
@@ -105,8 +105,8 @@ inline std::string report() {
         if (!b && !s)
             continue;
         os << "  " << std::left << std::setw(16) << names[c] << std::right << std::setw(14) << b
-           << std::setw(17) << s << std::setw(13) << std::setprecision(2)
-           << 100.0 * ratio(s, b + s) << "%\n";
+           << std::setw(17) << s << std::setw(13) << std::setprecision(2) << 100.0 * ratio(s, b + s)
+           << "%\n";
     }
     os << "  total           " << std::right << std::setw(14) << totalBase << std::setw(17)
        << totalCast << std::setw(13) << std::setprecision(2)

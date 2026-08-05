@@ -120,11 +120,11 @@ class MovePicker {
     const PieceToHistory**       continuationHistory;
     const SharedHistories*       sharedHistory;
     Move                         ttMove;
-    ExtMove *cur, *endCur, *endBadCaptures, *endCaptures, *endGenerated, *endSpells;
-    int      stage;
-    int      threshold;
-    Depth    depth;
-    int      ply;
+    ExtMove * cur, *endCur, *endBadCaptures, *endCaptures, *endGenerated, *endSpells;
+    int       stage;
+    int       threshold;
+    Depth     depth;
+    int       ply;
     bool      skipQuiets  = false;
     bool      allowSpells = true;
     PickClass lastClass   = PICK_OTHER;
@@ -134,12 +134,12 @@ class MovePicker {
     bool onlyTacticalSpells = false;
     // SpellMergedOrdering generated the gated quiets inside QUIET_INIT, so
     // the SPELL stage must not regenerate them
-    bool      mergedSpells        = false;
-    Bitboard  spellRoyalAttackers = 0;
-    Square    spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
+    bool       mergedSpells        = false;
+    Bitboard   spellRoyalAttackers = 0;
+    Square     spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
     MoveArena* arena;
     ExtMove*   moves;
-    Move*     genScratch;
+    Move*      genScratch;
 };
 
 }  // namespace Stockfish

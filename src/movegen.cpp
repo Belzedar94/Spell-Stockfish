@@ -197,9 +197,9 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target, Bitbo
 // Appends the gated (spell-casting) versions of the base moves, plus the new
 // slider/pawn moves a candidate jump gate enables. See SPELL_SPEC.md §4.
 template<Color Us, GenType Type>
-Move* generate_spell_moves(const Position& pos,
-                           Move*           baseStart,
-                           Move*           baseEnd,
+Move* generate_spell_moves(const Position&   pos,
+                           Move*             baseStart,
+                           Move*             baseEnd,
                            const GateBudget& budget) {
 
     Move* cur = baseEnd;

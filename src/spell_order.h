@@ -51,9 +51,12 @@ struct GateContext {
 // roughly "both queens still around", "queens off / heavy pieces left",
 // "light endgame".
 inline GateContext gate_context(const Position& pos, Color us) {
-    const Value npm = pos.non_pawn_material();
-    return {pos.count<KING>(~us) ? pos.square<KING>(~us) : SQ_NONE,
-            npm > 11000 ? 0 : npm > 5000 ? 1 : 2};
+
+    const Value  npm   = pos.non_pawn_material();
+    const int    phase = npm > 11000 ? 0 : npm > 5000 ? 1 : 2;
+    const Square eksq  = pos.count<KING>(~us) ? pos.square<KING>(~us) : SQ_NONE;
+
+    return {eksq, phase};
 }
 
 // Per-node gate budget: the global cap modulated by remaining depth and by
