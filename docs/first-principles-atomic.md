@@ -199,3 +199,25 @@ pasan: U5/T135 ring-history (+1,63, la única señal clara de la ronda — es
 de hecho el embrión de la etapa 2 de R-A), U3/T133, T152/SB9, T117, LTCs
 de MV-R4, T163 (que ES el fix del predicado de R-A etapa 5), T159 (leer
 con la curva mcp en la mano).
+
+## Apéndice: los dos items de ubdip que faltaban (releído 5-ago, verbatim)
+
+Contraste del doc contra el feedback original completo (29-jul): seis de sus
+ocho puntos ya estaban mapeados (futility→R-B, threat-by-lesser→R-B,
+ring-history→U5/T135, promos-EP→R-C, SEE0-tempo→R-A etapa 6, statScore→R-B,
+reyes conectados→R-B). Dos NO estaban y son estructurales:
+
+- **R-C+: amenazas descubiertas de explosión en el SEE** ("considering
+  discovered king explosion threats is a bit more fancy, but could be quite
+  feasible"). blast_see hoy valora el evento; la extensión valora lo que la
+  jugada ABRE: mover una pieza puede liberar un sniper sobre casilla
+  adyacente a un rey (amenaza letal creada) o des-bloquear la del rival.
+  Entra como spin propio de R-C tras el paquete base — mismo trato que
+  promo/EP: política explícita, jamás de rondón.
+- **R-A etapa 2 generalizada: anillos de piezas FUERTES, no solo reyes**
+  ("quiet moves in rings around kings or strong pieces"). Un quiet junto a
+  la dama enemiga prepara un blast rentable aunque no toque al rey; el
+  predicado de la etapa 2 se parametriza por conjunto de objetivos (reyes
+  = mate; pesadas = material) con pesos separados. La versión reyes-solo
+  va primero; la generalización es su segunda parametrización natural
+  bajo el mandato de persistencia.
