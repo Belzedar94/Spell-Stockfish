@@ -108,6 +108,36 @@ cargados.
 correcto cambia qué podas disparan; medir R-B contra el orden viejo sería
 medir otra cosa.
 
+**Recibos C2-solo (5-ago, re-medición sobre base pura): NO paga.** Tres
+hallazgos con recibos:
+
+1. **Sobre la base, C2 es UN knob, no dos**: `AtomicSeeDisc=1` entra solo
+   por `blast_see_rel()` (position.cpp:1497), consumido únicamente en la
+   rama `AtomicMpBlastOrder==2` (movepick.cpp:291). Sin R-A la descubierta
+   no cambia un nodo (bit-idéntico, 0 llamadas en el censo). C2-sola ≡
+   `AtomicMcpConnected=50` sola.
+2. **Veredicto de mates, determinista (3 reps byte-idénticas, jobs 2)**:
+   base pura 80/84 y 32/36 largos; C2-sola 77/84 y 30/36 — pierde P51
+   (24 plies, defensor) y P58 (25, atacante), gana ninguna. El −17,4% de
+   árbol d10-d17 se compra podando soluciones reales: nodos pareados ≥20
+   plies ×1,027 (más lenta donde duele), <20 ×0,906. Trueque invertido de
+   la curva mcp. No cumple el criterio "≥+2 largos sin coste" → sin rama
+   mínima, sin SPRT.
+3. **El recibo histórico "78/84, 30/36" de C2-sobre-R-A NO reproduce**: era
+   dependencia de jobs 4 (P79 entrando/saliendo); a jobs 2 el +1/+1 se
+   invierte a −1/−1. Además R-A queda BAJO la base pura aquí (78 vs 80),
+   coherente con T166 en negativo. Doctrina: comparaciones de mates solo
+   entre brazos corridos bajo condiciones idénticas en la misma tanda.
+
+**Dependencia viva**: si T166 (RA1 mínima) muere, `AtomicSeeDisc` se queda
+sin consumidor — la descubierta necesitaría re-cablearse a un sitio del
+oráculo que la base pise (futility/statScore de R-B), no viajar como mitad
+de C2. Intento 2 del mandato de persistencia sería `AtomicMcpConnected`
+75-85 (50 es el único punto muestreado de 20-200, mitad seca del
+presupuesto en 18% de nodos), pero con signo hoy negativo no alcanza el
+listón de entrada de ≥3 Elo previstos: aparcado salvo que T166/T167
+reviva la familia.
+
 ## R-C. blast_see como único oráculo táctico
 
 La fundación (U1) que falló como trocito: T131 −1,93. **AUTOPSIA RESUELTA
