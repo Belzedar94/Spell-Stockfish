@@ -56,6 +56,19 @@ inline GateContext gate_context(const Position& pos, Color us) {
             npm > 11000 ? 0 : npm > 5000 ? 1 : 2};
 }
 
+// Per-node gate budget: the global cap modulated by remaining depth and by
+// urgency. With both slopes at 0 this returns the cap unchanged, which is
+// exactly what the engine did when 12/6 (today 8/4) were constants.
+inline int gate_budget_for(int base, Depth d, bool urgent) {
+
+    int k = base;
+    if (SpellGateDepthSlope)
+        k += SpellGateDepthSlope * std::clamp(int(d) - SpellGateDepthPivot, -8, 8) / 8;
+    if (urgent)
+        k += SpellGateUrgencyBonus;
+    return std::max(1, k);
+}
+
 // Score of freezing with the zone centered on g. eksq/eRing are the enemy
 // king square (or SQ_NONE) and king ring, precomputed by the caller.
 inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eksq, Bitboard eRing) {

@@ -285,7 +285,15 @@ MovePicker::MovePicker(const Position&              p,
 // deserves, and which ones the search has learned to trust.
 Move* MovePicker::gen_gated_quiets(Move* dst) {
 
-    GateBudget budget;
+    // Urgency uses the search's own predicate — our king capturable in one,
+    // attackers evaluated spell-aware — so the budget widens on exactly the
+    // nodes where the search already refuses to skip the spell stage.
+    const bool urgent = SpellGateUrgencyBonus != 0 && pos.count<KING>(pos.side_to_move())
+                     && (pos.attackers_to(pos.square<KING>(pos.side_to_move()))
+                         & pos.pieces(~pos.side_to_move()));
+
+    GateBudget budget(gate_budget_for(MaxFreezeGates, depth, urgent),
+                      gate_budget_for(MaxJumpGates, depth, urgent));
 
     // Learned per-gate bonus, folded into the generator's static impact
     // score. Built only when the weight is on: 128 history reads per node

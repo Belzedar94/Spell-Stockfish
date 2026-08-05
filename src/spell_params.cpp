@@ -51,6 +51,10 @@ int SpellEconWeight    = 0;
 int SpellEconFreeze[6] = {0, -6, -2, 1, 3, 5};
 int SpellEconJump[3]   = {0, -6, 2};
 
+int SpellGateDepthPivot   = 8;
+int SpellGateDepthSlope   = 0;
+int SpellGateUrgencyBonus = 0;
+
 int SpellStageMargin = 365;
 
 int SpellQuietMinDepth = 0;
@@ -82,6 +86,9 @@ TUNE(SetRange(0, 4), SpellGateSelectWeight);
 TUNE(SetRange(0, 8), SpellGateOrderWeight);
 TUNE(SetRange(0, 2000), SpellEconWeight);
 TUNE(SetRange(-32, 32), SpellEconFreeze, SpellEconJump);
+TUNE(SetRange(2, 20), SpellGateDepthPivot);
+TUNE(SetRange(0, 16), SpellGateDepthSlope);
+TUNE(SetRange(0, 16), SpellGateUrgencyBonus);
 TUNE(SetRange(0, 2000), SpellStageMargin);
 TUNE(SetRange(0, 8), SpellQuietMinDepth);
 TUNE(SetRange(0, 1), SpellMergedOrdering);

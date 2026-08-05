@@ -86,6 +86,17 @@ extern int SpellEconWeight;     // 0 (off)
 extern int SpellEconFreeze[6];  // by freezes in hand
 extern int SpellEconJump[3];    // by jumps in hand
 
+// Adaptive K: MaxFreezeGates/MaxJumpGates stop being universal constants and
+// become the BASE of a per-node budget. The tree is widest at the horizon,
+// where a speculative gate costs the most and buys the least, so a positive
+// slope spends gates near the root and saves them near the leaves. Urgency
+// (our own king capturable in one, the same spell-aware predicate the search
+// already uses to force the spell stage) widens the budget instead of
+// duplicating a second override.
+extern int SpellGateDepthPivot;    // 8: depth at which the base cap applies
+extern int SpellGateDepthSlope;    // 0 (off): gates added 8 plies above pivot
+extern int SpellGateUrgencyBonus;  // 0 (off): extra gates when our king is attacked
+
 // Relevance gate for the SPELL stage: a cast is worth at most about a
 // tempo plus bounded tactics, so nodes whose static eval sits further
 // than this below alpha skip the gated-quiet expansion entirely
