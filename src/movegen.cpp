@@ -211,8 +211,15 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
     // Search policy (not a rule): the QUIETS stage considers only the top
     // few gates by impact score. The full universe stays available to
-    // LEGAL/NON_EVASIONS (perft, UCI) and to EVASIONS (in check), and the
-    // limit is lifted while an enemy freeze zone is active.
+    // LEGAL/NON_EVASIONS (perft, UCI), and the limit is lifted while an
+    // enemy freeze zone is active.
+    //
+    // Careful with the EVASIONS branch below: the cap is indeed not applied
+    // when Type == EVASIONS, but that is dead weight for the search. In
+    // spell-chess the MovePicker has no evasion staging (self-check is
+    // legal, so "in check" nodes are ordered like any other; see movepick.cpp
+    // stage init), so generate<EVASIONS> is never called from search. Being
+    // in check does NOT widen the gate set.
     const bool limitGates = Type == QUIETS && !pos.spell_zone(~Us, SPELL_FREEZE);
 
     const Square   eksq = pos.count<KING>(~Us) ? pos.square<KING>(~Us) : SQ_NONE;
