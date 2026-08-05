@@ -45,6 +45,12 @@ int SpellGateHistStatWeight  = 0;
 int SpellGateSelectWeight = 0;
 int SpellGateOrderWeight  = 0;
 
+// Shape only: the weight below is what turns it on. Hand counts run 0..5
+// (freeze) and 0..2 (jump); slot 0 is unreachable (no spell, no cast).
+int SpellEconWeight    = 0;
+int SpellEconFreeze[6] = {0, -6, -2, 1, 3, 5};
+int SpellEconJump[3]   = {0, -6, 2};
+
 int SpellStageMargin = 365;
 
 int SpellQuietMinDepth = 0;
@@ -74,6 +80,8 @@ TUNE(SetRange(0, 8), SpellGateHistOrderWeight);
 TUNE(SetRange(0, 8), SpellGateHistStatWeight);
 TUNE(SetRange(0, 4), SpellGateSelectWeight);
 TUNE(SetRange(0, 8), SpellGateOrderWeight);
+TUNE(SetRange(0, 2000), SpellEconWeight);
+TUNE(SetRange(-32, 32), SpellEconFreeze, SpellEconJump);
 TUNE(SetRange(0, 2000), SpellStageMargin);
 TUNE(SetRange(0, 8), SpellQuietMinDepth);
 TUNE(SetRange(0, 1), SpellMergedOrdering);

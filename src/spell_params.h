@@ -73,6 +73,19 @@ extern int SpellGateSelectWeight;  // 0 (off)
 // halves generalize separately, so neither conflates nor starves.
 extern int SpellGateOrderWeight;  // 0 (off)
 
+// Economy prior. 5 freezes and 2 jumps per game make a cast an INVESTMENT,
+// not a move: the fifth freeze is cheap, the last one is expensive, and the
+// tree never knew the difference. The shape is indexed by spells in hand
+// BEFORE the cast (index 0 is unreachable — casting requires one in hand).
+//
+// The cooldown axis is degenerate on purpose: can_cast() already requires
+// cooldown == 0, so every castable spell pays exactly the same "and now I
+// cannot cast for three of my own moves" — a constant, folded into the
+// shape rather than paid for with a second table lookup.
+extern int SpellEconWeight;     // 0 (off)
+extern int SpellEconFreeze[6];  // by freezes in hand
+extern int SpellEconJump[3];    // by jumps in hand
+
 // Relevance gate for the SPELL stage: a cast is worth at most about a
 // tempo plus bounded tactics, so nodes whose static eval sits further
 // than this below alpha skip the gated-quiet expansion entirely

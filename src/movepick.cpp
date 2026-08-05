@@ -330,6 +330,18 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
         if (SpellGateOrderWeight && spellGateHistory)
             gateCtx = gate_context(pos, us);
 
+    // Economy prior: constant per spell within a node (the hand does not
+    // change while we score), so it is priced once and applied per cast.
+    [[maybe_unused]] int econFreeze = 0, econJump = 0;
+    if constexpr (Type == QUIETS)
+        if (SpellEconWeight)
+        {
+            econFreeze = SpellEconWeight
+                       * SpellEconFreeze[std::min(pos.spells_in_hand(us, SPELL_FREEZE), 5)];
+            econJump =
+              SpellEconWeight * SpellEconJump[std::min(pos.spells_in_hand(us, SPELL_JUMP), 2)];
+        }
+
     [[maybe_unused]] Bitboard threatByLesser[KING + 1];
     if constexpr (Type == QUIETS)
     {
@@ -363,11 +375,15 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
             // histories
             m.value = 2 * (*mainHistory)[us][m.raw() & 0xFFFF];
             m.value += SpellGateHistOrderWeight * (*gateHistory)[us][gate_slot(m)];
-            if (SpellGateOrderWeight && spellGateHistory && m.is_spell())
+            if (m.is_spell())
             {
-                const Square g = m.gate_sq();
-                m.value +=
-                  SpellGateOrderWeight * (*spellGateHistory)[us][m.spell_type()][gateCtx(g)][g];
+                const SpellType sp = m.spell_type();
+                if (SpellGateOrderWeight && spellGateHistory)
+                {
+                    const Square g = m.gate_sq();
+                    m.value += SpellGateOrderWeight * (*spellGateHistory)[us][sp][gateCtx(g)][g];
+                }
+                m.value += sp == SPELL_FREEZE ? econFreeze : econJump;
             }
             m.value += 2 * sharedHistory->pawn_entry(pos)[pc][to];
             m.value += (*continuationHistory[0])[pc][to];
