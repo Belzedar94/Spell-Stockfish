@@ -77,6 +77,102 @@ posiciones de atomicdb con jugada probada → time-to-correct-move (R-E fase
 oráculo). Meta honesta: cerrar ≥la mitad de la brecha 29→35 del subset largo
 sin coste neto en bench agregado.
 
+### La línea de MV-SF del 13-sep-2019, medida SOLA: REFUTADA (6-ago)
+
+Lab `capthist/mvsf-2019` en "Atomic Project\capthist-lab", sobre base pura
+e4acf215, jamás registrado.
+
+**La fuente, localizada y leída**: `a9344db3` "Use capture history to rank
+atomic moves" (ddugovic/Stockfish, 13-sep-2019; padre `e47849b6`, 12-sep). El
+diff es un fichero, una línea partida en dos: `m.value = pos.see<ATOMIC>(m) * 6`
+pasa a `... * 6 + (*captureHistory)[moved_piece][to][type_of(piece_on(to))]`.
+Su SPRT: STC LLR 2,98 en [-5,10] con 683 partidas, LTC 2,96 con 508. Y la
+premisa reproduce en nuestras suites (5-ago, 3 reps, jobs 4, mt 20 s):
+**mvsf-20190912 = 80/84 y 32/36 largos** (estable en las tres), **mvsf-20190913
+= 83/82/82 y 35/34/34**. La línea vale de verdad +2/+3, ella sola.
+
+**El hallazgo que cambia el problema: media línea YA ES NUESTRA.** movepick.cpp
+:215-216 de la base pura puntúa `captureHistory[pc][to][víctima] + 7 *
+PieceValue[víctima]`, y `CapturePieceToHistory` tiene el MISMO tope ±10692 en
+los dos motores. Lo que MV-SF añadió aquel día ya lo tenemos. La diferencia
+viva no es la historia: es el término MATERIAL. El de MV-SF es
+`see<ATOMIC_VARIANT>`, el delta CON SIGNO de la explosión (capturador en
+`from` + víctima + anillo no-peón); el nuestro es la víctima BRUTA ortodoxa.
+Portar la línea honestamente = cambiar la CANTIDAD, no añadir la historia.
+
+**Implementación** (80 líneas insertadas, 42 de código): `Position::
+blast_capture_value` expone el mismo `result` que `see_ge` (position.cpp:1382)
+ya calcula para capturas — misma precedencia de reyes, mismo −1 de tempo;
+promo/EP devuelven 0 porque esa política es R-C y no viaja de rondón — y
+`AtomicMpBlastMat` es su coeficiente, con 0 = base **bit-idéntica**
+(canonical 518466, d10-d17 7.563.584, wide84@d14 4.191.481, diff vacío).
+Cross-check de que no estamos midiendo otro oráculo: bv tiene que ser el punto
+exacto de volteo de `see_ge` — **393.899 sondas, 0 desacuerdos**.
+Traducción de escala con el tope de historia fijo: los MG atómicos de MV-SF
+(P244 N437 B552 R787 Q1447) corren 1,34× por debajo de nuestro
+`AtomicCapturePieceValue` (P301 N702 B738 R1079 Q1862), así que su 6 aterriza
+en **≈4,5** aquí; 7 es el otro punto natural (nuestro propio coeficiente,
+cambiando solo la cantidad). Barrido 3 / 5 / 7 / 11.
+
+**El término dispara, y fuerte** (censo MP_AUDIT, bench d13 + 3 FENs largos a
+depth 20): 22-27% de las listas de capturas se reordenan, 26-36% de las
+capturas cambian de rango, 13-19% de las listas cambian su PRIMERA captura y
+6-18% cambian de lado en la puerta `see_ge(m, −value/18)` — que se alimenta del
+propio score. Y el diagnóstico físico crudo: **65-75% de las capturas tienen
+delta de blast NEGATIVO** (la base las ordena todas como ganancias) y 4-9%
+**explotan un rey**. No es un no-op como C2: es medio tablero.
+
+**Y aun así pierde.** Cinco brazos en la MISMA tanda, jobs 2, movetime 20 s,
+3 reps intercaladas (252 intentos por brazo):
+
+| brazo | 84×3 | por rep | ≥20×3 | <20×3 | d10-d17 | wide84@d14 |
+|---|---|---|---|---|---|---|
+| **C0 base** | 239/252 | 79,67 | **95/108** | 144/144 | — | — |
+| C3 | 234/252 | 78,00 | 90/108 | 144/144 | +3,9% | −16,7% |
+| C5 (≈MV-SF) | 238/252 | 79,33 | 94/108 | 144/144 | −9,3% | +21,1% |
+| C7 | 237/252 | 79,00 | 93/108 | 144/144 | −0,9% | +23,4% |
+| C11 | 232/252 | 77,33 | 88/108 | 144/144 | +3,9% | +24,9% |
+
+El listón era ≥+2 largos sobre 3 reps sin coste neto >+10% en d10-d17: **el
+coste pasa en los cuatro brazos y ninguno llega siquiera a la paridad**. Sin
+dosis-respuesta ascendente en 3→5→7→11; el óptimo de la familia es el 0.
+
+**El trueque, posición a posición** (cuentas de 3 reps): compra **P76** (29
+plies) de forma determinista — 0/3 en la base, **3/3 en C5, C7 y C11** — y
+vende P51 (24, def: 3→1/0/0), P57 (22, def: 3→0 en C3/C7/C11), P58 (25, atac:
+2→0 en C5) y P68 (29, atac: 3→0 en C11). **P76 es exactamente la posición que
+la pendiente 128 también desbloqueaba**: dos mecanismos independientes abren la
+misma puerta y los dos la pagan con el mismo tipo de mates. Los pareados van
+todos por debajo de 1 (≥20 atacante ×0,79-0,91, defensor ×0,70-0,90): árbol más
+barato que resuelve menos, con el adorno de supervivencia de siempre.
+
+**Oráculo de atomicdb** (hallar_ganadora, 1.998 posiciones, pareado con
+McNemar, C5 contra base): 2k **1.376 vs 1.375, p=1** (empate exacto); 32k 1.554
+vs 1.527, p=0,053; 512k 1.591 vs 1.566, p=0,049 — es decir, ligeramente EN
+CONTRA a presupuesto alto, nada a favor en ninguno. Bucket largo sin diferencia
+(p=0,44/0,46). Ni siquiera queda el hallazgo lateral de calidad de datos que sí
+dejó la pendiente (+2,2 puntos a 2k, p=0,003).
+
+**Por qué no porta** (la lección, no la excusa): en MV-SF-2019 la línea AÑADÍA
+señal — el orden de capturas era material puro y la historia entró a
+corregirlo. Aquí la historia ya está, y lo que el brazo hace es QUITARLE el voto
+al proxy ortodoxo para dárselo a un delta de explosión materialmente honesto,
+que además realimenta su propia puerta de buenas/malas. Es la firma de
+T131/U1 otra vez: material exacto sustituyendo a una historia que ya había
+aprendido el sesgo correcto. **Un motor sin la mitad histórica mejora con el
+delta con signo; el nuestro ya paga por él.** Corolario de método: antes de
+portar un diff histórico, comprobar cuál de sus mitades ya vive en la base —
+el mismo parche es una mejora o una sustitución según lo que haya debajo.
+
+**Consecuencias para R-A**: (1) la etapa 3 ("blasts ganadores ordenados por
+`blast_see` con signo") queda medida SOLA y en rojo sobre base pura; si
+sobrevive es dentro del paquete y con la puerta buenas/malas re-cableada — un
+umbral que no se derive del propio score —, jamás como término suelto; (2) el
+65-75% de capturas con delta negativo es el recibo que sostiene el vuelco de la
+etapa 6: esas capturas hoy compiten como ganancias puras; (3) `blast_capture_
+value` queda construido y verificado contra `see_ge`, listo para los
+consumidores de R-B sin volver a pagar la fundación.
+
 ## R-B. Podas conscientes de la explosión
 
 **Tesis**: todo margen de poda presupone "lo máximo que gana esta jugada ≈
@@ -109,6 +205,12 @@ cargados.
   MV-SF es UNA línea de movepick — captHist sumado al `see*6` atómico — y
   vale 80→83/84 él solo: material de R-A). Con tres puntos y dosis-respuesta
   limpia la familia se cierra sin tercera parametrización.
+  - **Seguimiento de esa pista, cerrado el mismo 6-ago**: la línea se portó y
+    se midió sola sobre base pura → **también roja** (post-mortem en R-A). Su
+    mitad de historia ya era nuestra; la mitad material que faltaba compra el
+    mismo P76 que la pendiente y vende los mismos mates largos. Las dos vías
+    hacia el orden de MV-SF-2019 están ahora refutadas por separado: lo que
+    queda es el PAQUETE R-A, no ninguna de sus líneas.
   - **El tope de 2018 (`depth < 16`), enterrado gratis**: era el guard del
     array `FutilityMoveCounts[2][16]` de SF10, no una política. Contador:
     271.692 llamadas del paso 14 a d≥16 y **0 disparos evitados** — a esa
