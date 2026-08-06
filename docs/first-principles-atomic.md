@@ -91,12 +91,36 @@ cargados.
   puertas: no futility/movecount-prune cuando una pieza enemiga no-peón
   tiene captura legal adyacente a nuestro rey. Predicado barato precomputado
   por nodo; contador de "podas evitadas" para atribución.
-- **Presupuesto de quiets por PENDIENTE** (`AtomicMcpSlope`): la diferencia
-  estructural MEDIDA con MV-SF-2018 (~2× quiets por profundidad; ningún
-  AtomicMcpBase lo compensa — la curva base 7→40 es un trueque con ceguera
-  real a mcp 20/28, recibos en el doc del programa). Pendiente, no base; y
-  modulada por reyes-conectados (física 3: densidad táctica local colapsa →
-  presupuesto abajo cerca del contacto).
+- **Presupuesto de quiets por PENDIENTE** (`AtomicMcpSlope`): **REFUTADO
+  6-ago con recibos** (lab `slope/mcp-curve` en "Atomic Project\slope-lab",
+  jamás registrado). La premisa sobrevive y queda citada en fuente: nuestra
+  base `(7+d²)/(3−improving)` da d²/2 improving; MV-SF sep/nov-2019
+  `(5+d²)(1+improving)/2` da d² — **2× exacto**, y ningún `AtomicMcpBase` lo
+  expresa. Lo que muere es la inferencia: en NUESTRO motor la pendiente
+  **vende** mates largos de forma MONÓTONA — slope 64/96/128 = **91/87/85**
+  largos sobre 108 intentos (5 brazos × 3 reps, jobs 2, mt 20 s, ancla
+  oscilando solo 78/78/79). El mecanismo predicho SÍ existe y es
+  determinista (P76, 29 plies, 0/3 → **3/3**, solo con slope 128) pero se
+  paga con P68, P79 y P10 enteros: el mismo trueque de la curva base a otro
+  precio. Coste sí pasaba (+2,4% d10-d17, −7,6% wide84) y el pareado
+  favorable (×0,867 atacante) está adornado por supervivencia — el brazo
+  tira justo las más duras. Diagnóstico: **la pendiente no es portable, es
+  el complemento de un ORDEN que no tenemos** (el diff 12→13-sep-2019 de
+  MV-SF es UNA línea de movepick — captHist sumado al `see*6` atómico — y
+  vale 80→83/84 él solo: material de R-A). Con tres puntos y dosis-respuesta
+  limpia la familia se cierra sin tercera parametrización.
+  - **El tope de 2018 (`depth < 16`), enterrado gratis**: era el guard del
+    array `FutilityMoveCounts[2][16]` de SF10, no una política. Contador:
+    271.692 llamadas del paso 14 a d≥16 y **0 disparos evitados** — a esa
+    profundidad el umbral base ya vale 87-131 y el MCP no dispara nunca.
+    Brazo bit-idéntico a la base; nadie tiene que volver a mirarlo.
+  - **Modulación por reyes conectados: DOBLE-REFUTADA.** 50 fue guillotina
+    (5-ago); 85 vende P57 entero y da ×1,295 de nodos donde duele. Cerrada.
+  - **Hallazgo lateral con recibo, no reclamado como Elo**: con slope 128 la
+    calidad de decisión contra teoremas de atomicdb sube a **2.000 nodos**
+    (68,9%→71,1%, McNemar p=0,003; bucket largo 55,3%→59,9%, p=0,005) y el
+    efecto **es cero a 32k** (450 vs 450 exacto). Palanca de calidad de
+    DATOS para datagen a presupuesto bajo, no de fuerza del motor.
 - **statScore por blast** (U4/search.cpp:1641) y **threatened-by-lesser
   re-derivado** (U7: primera versión = eliminación, medida ya hecha en
   T137 −0,41 — la eliminación sola no paga; la versión blast-rentable entra
