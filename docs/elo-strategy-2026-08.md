@@ -121,3 +121,59 @@ baten en combos, no de uno en uno contra la flota entera.
 El orden A→B→C no es dogma de calendario: A empieza hoy (no gasta flota),
 B ya corre, C se implementa mientras A gatea. D libera la máquina que A y C
 van a necesitar.
+
+## Revisión 6-ago (post-release 1.0): estado de cada frente
+
+**El listón spell está RESUELTO y este doc queda corregido en su premisa**:
+la medición formal del release (400/300/100 partidas fijas, misma red
+run5rl a ambos lados, arnés con timeout y descartes contados) da
+**+221/+271/+168 con LOS 100%×3 contra el baseline de referencia**. El
+"−74..−164" del §1 era el cruce HARD2-vs-run5rl, no el chasis. La vara
+nueva es interna: regla de coronación (toda campeona bate también a
+run5rl) y auto-mejora. Los ~300 Elo del listón viejo quedan archivados
+como incomparables (script del panel perdido; relay exonerado).
+
+**Atomic — veredictos del 5/6-ago:**
+- **R-A (orden)**: negativo en flota (T166 −1.3 muriendo, T167 −0.7) y
+  POR DEBAJO de la base pura en la suite de mates bajo condiciones
+  idénticas (78 vs 80). El reorden solo no paga. Post-mortems al morir;
+  el fix del bug de EP de la BASE (movepick.cpp:215) sobrevive como
+  candidata mínima propia.
+- **R-B**: familia B refutada; C2-solo refutada (es UN knob; −2 mates
+  largos por −17% de árbol). `AtomicSeeDisc` sin consumidor → se
+  re-cablea a futility/statScore DENTRO de la apuesta viva. **La apuesta
+  viva de atomic es AtomicMcpSlope** (§C de este doc): presupuesto de
+  quiets por PENDIENTE, la única diferencia estructural medida con
+  MV-SF-2018 — y sigue SIN testear. Es el siguiente diseño grande.
+- **R-C**: fundación probada bit-exacta (0 discrepancias en 2.270M
+  comprobaciones); viaja dentro del paquete que la consuma.
+- **R-E**: Gate 1 GANADO (vena +33,5 real vs control, fuga descartada);
+  Gate 2 = empate de Elo a 3 TCs → cambio de eje: las etiquetas-teorema
+  van a la MEZCLA de datos de la próxima red atomic, no a fine-tune. Las
+  suites-oráculo quedan como infraestructura de recibos.
+- Supervivientes de cola: T135 (2.50, a nada del pase → clon LTC +
+  auditoría por máquina), T152/T117/T133/MV-R4-LTC siguen su curso.
+
+**Spell — veredictos del 5/6-ago:**
+- **S-A es EL frente**, con el recibo definitivo de la fase 1 de S-D: el
+  tope 8F/4J esconde mates reales (pos84 canta mate 4 con gates32/20) y
+  poda defensas del rival en nodos sin jaque. T170 (SPSA del picker sobre
+  run5rl, config idéntica, knobs reseteados) corriendo; a su convergencia
+  → SPRT mínimo con pos42/pos84 de recibos antes/después.
+- **S-D**: refutado como fix de mates (la exención urgente EMPEORA
+  pos84); su orden tras S-A/S-B queda reforzado con recibos. Fire-rate
+  del estado urgente (19,4%) archivado para el rework de qsearch.
+- **S-B/S-C**: sin cambios — S-B espera las clases de S-A; SB9 (+0.60)
+  decide el embrión de S-C.
+- **S-E (dominante)**: flota entera sobre run5rl; T169 genera el pool
+  run9 con seed independiente verificado contra 18 datagens históricos;
+  **run1c se diseña AHORA** (receta antes de que el pool llene). Minería
+  saturada hasta que el pool nuevo resetee la palanca (tesis del doc de
+  mining, confirmada por r3).
+
+**Transversal**: el desierto de knobs neutros SIGUE (toda la cola en
+±1 tras miles de partidas) — refuerza la tesis de este doc: apuestas
+grandes (slope en atomic, picker en spell) y datos (run1c, mezcla R-E),
+no trocitos. Deuda infra taskeada: portada bajo ráfaga (#18, recibos de
+la sonda), orden de locks del parent-wake, verificación del cierre
+guard×8.
