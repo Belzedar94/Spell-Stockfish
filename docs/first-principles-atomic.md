@@ -173,6 +173,35 @@ etapa 6: esas capturas hoy compiten como ganancias puras; (3) `blast_capture_
 value` queda construido y verificado contra `see_ge`, listo para los
 consumidores de R-B sin volver a pagar la fundación.
 
+### Síntesis transversal (6-ago): tres intentos, un patrón
+
+**Hacer el material HONESTO en el orden de capturas ha fallado tres veces
+seguidas, por vías independientes**: U1/T131 (blast_see como oráculo único,
+−1,93 en flota), C2/`AtomicSeeDisc` (sin consumidor fuera de R-A; refutada),
+y la línea captHist de MV-SF (roja sobre base pura, 95→94/108 largos). Las
+tres sustituyen `PieceValue[víctima]` por un delta con signo; las tres
+pierden. La lectura honesta: **el proxy ortodoxo + captureHistory NO es un
+error, es un óptimo local defendido** — la historia ya aprendió el sesgo de
+la explosión (recibo T131: el 57% de las promo-capturas llegan a la puerta
+con captHist < −7·PieceValue) y el material exacto le quita el voto a quien
+ya sabía la respuesta, además de realimentar la puerta buenas/malas desde su
+propio score.
+
+Consecuencia de presupuesto: **ninguna cuarta parametrización de esta
+familia** sin un cambio de eje explícito — o el PAQUETE R-A completo con la
+puerta re-cableada (umbral independiente del score), o nada. Los recibos
+laterales que SÍ sobreviven a la tanda (el 65-75% de deltas negativos, el
+4-9% que explotan un rey, `blast_capture_value` fundado y verificado, y la
+palanca de calidad de datos a 2k nodos de la pendiente) son material para el
+eje de DATOS y para la etapa 6, no para más knobs de orden.
+
+**Y una coincidencia que apunta a algo**: P76 (29 plies) es la ÚNICA posición
+que abren tanto la pendiente 128 como la línea captHist, y las dos la pagan
+con P51/P57/P58/P68. Dos mecanismos ortogonales, la misma puerta y el mismo
+precio: sugiere que el subset largo no está limitado por el ORDEN sino por
+el presupuesto que la búsqueda concede a una clase de líneas quietas —
+hipótesis para el eje siguiente, no para otra ronda de scoring.
+
 ## R-B. Podas conscientes de la explosión
 
 **Tesis**: todo margen de poda presupone "lo máximo que gana esta jugada ≈
