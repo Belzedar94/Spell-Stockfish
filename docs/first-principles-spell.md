@@ -180,9 +180,26 @@ Laterales de la fase 1: la suite perft llevaba roja en silencio desde
 `15820b97` (10 contadores obsoletos re-grabados y confirmados contra FSF
 PR96; +24 posiciones en jaque nuevas — el estado del spin no tenía NI UNA
 cobertura), y una divergencia de reglas real pre-existente: el empuje
-doble de peón sobre casilla jump-transparente (la referencia lo permite y
-se contradice — bloquea `a2a3` pero permite `a2a4`). Decisión de regla
-pendiente del propietario; anotada en la suite.
+doble de peón sobre casilla jump-transparente, que la referencia permite y
+nosotros no.
+
+**Divergencia cerrada el 7-ago** (PR #10, merge `a99095b8`): la regla de la
+referencia es la correcta y el bug era nuestro. La casilla **intermedia** se
+filtraba con la ocupación phase-flipped de la casilla de LLEGADA, que declara
+sólida una casilla vacía transparente — correcto para aterrizar, falso para
+cruzar. Seis líneas de motor: `crossable = ~pieces() | jump_transparent()` en
+`generate_pawn_moves` (el `step2` deriva de `push1 & TRank3BB & crossable`) y
+el predicado espejo en `Position::pseudo_legal`. Las dos posiciones pasan a
+listas idénticas a FSF PR96 (847→875 y 1629→1685, cero de más y cero de
+menos) y la suite queda **164/164 con nuestro motor y 164/164 con el control
+FSF**. La asimetría `a2a3` ilegal / `a2a4` legal no era una contradicción de
+la referencia sino la regla: aterrizar y cruzar son filtros distintos.
+
+No se registra SPRT: el bench no se mueve (8.367.683) porque el patrón exige
+zona de salto activa sobre casilla vacía de fila relativa 3 con peón propio
+detrás, y el árbol del bench no llega ahí. Con la firma idéntica, un test de
+fuerza sería ruido puro. El valor está en datagen y en los paneles, donde una
+jugada legal que no generábamos sí envenena posiciones.
 
 ### S-E. Eval y datos (el frente dominante, ya en marcha)
 
