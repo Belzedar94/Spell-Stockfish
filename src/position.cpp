@@ -1027,22 +1027,24 @@ bool Position::pseudo_legal(const Move m) const {
         if ((Rank8BB | Rank1BB) & to)
             return false;
 
-        // Pushes use the phase-flipped occupancy, mirroring the generator:
-        // jump-transparent squares invert their state, so an empty one blocks
-        // the push (and the intermediate square of a double push) while an
-        // occupied one may be landed on (a capture, even of an own piece) or
-        // jumped over. A candidate jump cast extends the transparency by its
-        // gate (the gated double push over the gate); landing on the gate
-        // itself is rejected by legal().
+        // Landing uses the phase-flipped occupancy, mirroring the generator:
+        // jump-transparent squares invert their state, so an empty one cannot
+        // be pushed onto while an occupied one may be landed on (a capture,
+        // even of an own piece). The intermediate square of a double push is
+        // only crossed, so there a transparent square never blocks whatever
+        // its physical state. A candidate jump cast extends the transparency
+        // by its gate (the gated double push over the gate); landing on the
+        // gate itself is rejected by legal().
         Bitboard flipOcc = pieces() ^ jump_transparent();
         if (m.is_spell() && m.spell_type() == SPELL_JUMP)
             flipOcc ^= square_bb(m.gate_sq());
+        const Bitboard crossable = ~flipOcc | (jump_transparent() & ~pieces());
 
         const bool isCapture    = bool(attacks_bb<PAWN>(from, us) & pieces(~us) & to);
         const bool isSinglePush = (from + pawn_push(us) == to) && !(flipOcc & to);
         const bool isDoublePush = (from + 2 * pawn_push(us) == to)
                                && (relative_rank(us, from) == RANK_2) && !(flipOcc & to)
-                               && !(flipOcc & (to - pawn_push(us)));
+                               && (crossable & (to - pawn_push(us)));
 
         if (!(isCapture || isSinglePush || isDoublePush))
             return false;

@@ -95,8 +95,13 @@ Move* generate_pawn_moves(const Position& pos, Move* moveList) {
     // empty one counts as solid. Pawn captures target physical enemies.
     // Note: a push may even land on an OWN piece standing on a transparent
     // square — the reference resolves this as a self-capture in do_move.
+    // The intermediate square of a double push is only CROSSED, never landed
+    // on, so the phase flip does not govern it: a jump-transparent square is
+    // jumped over whatever its physical state (reference rule), which the
+    // landing mask alone would forbid while the square is empty.
     const Bitboard flipOcc      = pos.pieces() ^ pos.jump_transparent();
     const Bitboard emptySquares = ~flipOcc;
+    const Bitboard crossable    = ~pos.pieces() | pos.jump_transparent();
     const Bitboard enemies      = pos.pieces(Them);
 
     const Bitboard movablePawns = pos.pieces(Us, PAWN) & ~pos.frozen_squares(Us);
@@ -110,8 +115,9 @@ Move* generate_pawn_moves(const Position& pos, Move* moveList) {
     // occupied square belong to the CAPTURES partition and the rest are true
     // quiets. Both partitions together preserve the legal universe.
     {
-        const Bitboard step1 = shift<Up>(pawnsNotOn7) & emptySquares;
-        const Bitboard step2 = shift<Up>(step1 & TRank3BB) & emptySquares;
+        const Bitboard push1 = shift<Up>(pawnsNotOn7);
+        const Bitboard step1 = push1 & emptySquares;
+        const Bitboard step2 = shift<Up>(push1 & TRank3BB & crossable) & emptySquares;
 
         if constexpr (Type != CAPTURES)
         {

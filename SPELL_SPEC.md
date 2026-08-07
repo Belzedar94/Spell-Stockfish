@@ -127,11 +127,17 @@ This makes `parse(fen(pos))` idempotent and rejects impossible zone/cooldown com
     occupied or empty.
   - Pieces (knight/bishop/rook/queen/king) may NOT land quietly on a jump-transparent square,
     whether it is physically empty or occupied. Capturing a piece that stands on one is allowed.
-  - **Pawn pushes use a PHASE-FLIPPED occupancy**: a transparent square inverts its state — an
-    occupied one counts as empty (the push may land on it; the reference resolves the landing as a
-    forward "capture"), an empty one counts as solid (no push may land there, e.g. after the jumped
-    piece moved away while the zone persists). Applies to single-push landings and both squares of
-    a double push. Pawn captures target physical enemies as usual.
+  - **Pawn push LANDINGS use a PHASE-FLIPPED occupancy**: a transparent square inverts its state —
+    an occupied one counts as empty (the push may land on it; the reference resolves the landing as
+    a forward "capture"), an empty one counts as solid (no push may land there, e.g. after the
+    jumped piece moved away while the zone persists). Applies to the single-push landing and to the
+    landing of a double push. Pawn captures target physical enemies as usual.
+  - The **intermediate square of a double push is only CROSSED**, so the phase flip does not govern
+    it: a transparent square is jumped over whatever its physical state, occupied or empty. This is
+    the pawn form of the jump rule ("pawns may exploit this rule by jumping over a piece from the
+    second to the fourth rank") and it holds for an already-active zone exactly as it does for the
+    candidate gate of the cast being made. Note the asymmetry it produces on an empty transparent
+    rank-3 square: `a2a3` is illegal (a landing) while `a2a4` is legal (a crossing).
 - **En passant king-safety** (the one non-king move with a legality filter, inherited from the
   reference): an ep capture is illegal if, with both pawns removed and the capturer placed on the
   ep square, the own king is attacked — attackers evaluated spell-aware (jump transparency can
