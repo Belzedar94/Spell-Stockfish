@@ -188,6 +188,42 @@ class SpellRules(unittest.TestCase):
         moves = moves_at(moves=["g1f3", "b8c6"])
         self.assertIn("j@f3,f2f4", moves)
 
+    def test_double_push_crosses_empty_transparent_square(self):
+        # The intermediate square is only CROSSED, so an ACTIVE jump zone over
+        # it never blocks the double push — not even once the jumped piece has
+        # left and the square is physically empty (the phase flip would call
+        # such a square solid, which is right for a LANDING and wrong here).
+        # Arbitrated move-for-move against FSF PR#96 f3c0d204 on the two suite
+        # rows that carried this divergence.
+        fen = ("1r1qk1nr/2pp1Q2/p1n1P1pp/4p1P1/2p1P3/b1P5/PP3P1P/R1B2KNR"
+               "[JFFjff] {F@-:2,J@-:0,f@-:2,j@-:0} b k - 0 12")
+        moves = moves_at(fen, ["j@a3,a3b2"])       # black vacates a3, zone stays
+        self.assertIn("a2a4", moves)               # crossing the empty zone: legal
+        self.assertNotIn("a2a3", moves)            # landing on it: still illegal
+        self.assertIn("j@b2,a2a4", moves)          # and it gates like any base move
+        self.assertEqual(len(moves), 875)
+
+    def test_double_push_crosses_empty_transparent_square_black(self):
+        # Same rule for the other colour and the other relative rank
+        fen = ("rnbqkbnr/p1p1ppp1/1B1pQ3/1p5p/8/2PP2PN/PP2PP1P/RN2KB1R"
+               "[JFFFjfff] {F@-:1,J@-:0,f@-:0,j@h2:3} w KQkq - 2 11")
+        moves = moves_at(fen, ["j@e6,e6b3"])       # white vacates e6, zone stays
+        self.assertIn("e7e5", moves)
+        self.assertNotIn("e7e6", moves)
+        self.assertEqual(len(moves), 1685)
+
+    def test_ep_square_is_the_crossed_transparent_square(self):
+        # The en-passant square of such a push is the intermediate square, as
+        # for any double push: it is physically empty and pseudo-attacked. The
+        # zone has expired by the time the capture is available, so the ep
+        # capture lands on an ordinary empty square.
+        fen = ("4k3/8/8/8/1p6/b7/P7/4K3[JJFFFFFjjfffff] "
+               "{F@-:0,J@-:0,f@-:0,j@-:0} b - - 0 1")
+        after = fen_after(fen, ["j@a3,a3b2", "a2a4"])
+        self.assertIn(" a3 ", after)               # ep square recorded
+        self.assertIn("{F@-:0,J@-:0,f@-:0,j@-:2}", after)   # zone already gone
+        self.assertIn("b4a3", moves_at(fen, ["j@a3,a3b2", "a2a4"]))
+
     def test_opponent_can_use_active_jump_zone(self):
         # White opens the e-file queen diagonal via jump; the zone persists
         # through black's reply, so black sliders also see through it
