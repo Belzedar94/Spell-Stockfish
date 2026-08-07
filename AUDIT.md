@@ -35,9 +35,12 @@ comparator against the frozen binary was the key tool; 10 iterations from 4/61 t
    rest of self-check is legal).
 2. En passant keeps the classic king-safety filter, evaluated spell-aware — a jump-transparent
    pawn can create a "pin through the gate".
-3. Pawn pushes use PHASE-FLIPPED occupancy on transparent squares (occupied→landable as capture,
-   even onto OWN pieces = self-capture; empty→solid). Pieces may never land quietly on transparent
-   squares; captures onto occupied ones are fine.
+3. Pawn push LANDINGS use PHASE-FLIPPED occupancy on transparent squares (occupied→landable as
+   capture, even onto OWN pieces = self-capture; empty→solid). The intermediate square of a double
+   push is only CROSSED, so there a transparent square never blocks, occupied or empty: `a2a3` onto
+   an empty transparent a3 is illegal while `a2a4` over it is legal (corrected 2026-08-07 — the
+   earlier reading that took this asymmetry for a contradiction in the reference was wrong). Pieces
+   may never land quietly on transparent squares; captures onto occupied ones are fine.
 4. Castling: in-check test on pre-cast state only; path test WITH candidate context; transparent
    ROOK can't castle, transparent KING can; freeze gate ∉ block(king-from) ∪ {king-destination}.
 5. `needsEvasion = checkers && !allow_self_check` in the reference → LEGAL never uses evasion
