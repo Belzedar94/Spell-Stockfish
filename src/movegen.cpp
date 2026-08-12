@@ -218,8 +218,17 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
     // Search policy (not a rule): the QUIETS stage considers only the top
     // few gates by impact score. The full universe stays available to
     // LEGAL/NON_EVASIONS (perft, UCI) and to EVASIONS (in check), and the
-    // limit is lifted while an enemy freeze zone is active.
-    const bool limitGates = Type == QUIETS && !pos.spell_zone(~Us, SPELL_FREEZE);
+    // policy is lifted while an enemy freeze zone is active.
+    const bool gatePolicy = !pos.spell_zone(~Us, SPELL_FREEZE);
+    const bool limitGates = Type == QUIETS && gatePolicy;
+
+    // CAPTURES gets the domination filter as well. It gates every capture on
+    // all 64 freeze squares, so it collects the same clones QUIETS did, and
+    // the filter is an exact relation rather than a budget: no score cut has
+    // to be trusted for it to be safe. Its scope stays the two search stages,
+    // so the legal universe (LEGAL/NON_EVASIONS for perft and UCI validation,
+    // EVASIONS in check) still never reaches it.
+    const bool dropDominatedGates = (Type == QUIETS || Type == CAPTURES) && gatePolicy;
 
     const Square   eksq = pos.count<KING>(~Us) ? pos.square<KING>(~Us) : SQ_NONE;
     const Bitboard eRing =
@@ -238,10 +247,12 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
         // Drop freeze gates that another candidate already covers: same frozen
         // enemy set and same blocked own set, or a strictly better one of each.
-        // Runs before the score-based cut so the MaxFreezeGates budget is spent
-        // on distinct effects instead of copies of the same one — with a lone
-        // enemy piece, all nine surrounding gates are one effect.
-        if (limitGates && sp == SPELL_FREEZE)
+        // On QUIETS it runs before the score-based cut, so the MaxFreezeGates
+        // budget is spent on distinct effects instead of copies of the same
+        // one; on CAPTURES, which expands every gate, it drops the copies
+        // outright — with a lone enemy piece, all nine surrounding gates are
+        // one effect.
+        if (dropDominatedGates && sp == SPELL_FREEZE)
             allGates = dominant_freeze_gates(pos, Us, allGates);
 
         Square gateList[SQUARE_NB];
