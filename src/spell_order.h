@@ -49,6 +49,87 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
     return s;
 }
 
+// Freeze gates that are not redundant copies of another gate.
+//
+// A freeze zone's ENTIRE effect on the opponent is the set of enemy pieces
+// standing in it: empty squares are irrelevant (moving *into* a zone is legal,
+// so a zone denies no squares), and the zone expires after their single reply.
+// Its only other effect is on the caster, whose base move may not originate
+// inside the new 3x3 area.
+//
+// That makes two relations exact rather than heuristic:
+//
+//   * INTERCHANGEABLE — same frozen enemy set, same blocked own set. The two
+//     gates generate the same base moves and leave the opponent the same
+//     replies, and both lines transpose to an identical position once the zone
+//     expires (verified: every legal reply converges byte-for-byte).
+//
+//   * DOMINATED — gate A freezes a superset of B's enemy pieces while blocking
+//     a subset of our own. Then A produces every gated move B produces, and
+//     leaves the opponent a subset of B's replies; since the continuations
+//     transpose, max over a subset can never exceed max over the superset, so
+//     searching B after A cannot find anything better.
+//
+// Both are search policy, not rules: this runs only on the QUIETS stage, which
+// already limits gates. The legal universe (perft, UCI validation, evasions)
+// never sees it.
+//
+// Gates that freeze nothing are passed through untouched — is_useless_spell
+// owns that case, together with its root exception.
+inline Bitboard dominant_freeze_gates(const Position& pos, Color us, Bitboard candidates) {
+
+    const Bitboard them    = pos.pieces(~us);
+    const Bitboard movable = pos.pieces(us) & ~pos.frozen_squares(us);
+
+    Square   sq[SQUARE_NB];
+    Bitboard frozen[SQUARE_NB], blocked[SQUARE_NB];
+    int      pc[SQUARE_NB];
+    int      n         = 0;
+    Bitboard survivors = 0;
+
+    for (Bitboard b = candidates; b;)
+    {
+        const Square   g    = pop_lsb(b);
+        const Bitboard zone = FreezeZoneBB[g];
+        const Bitboard f    = zone & them;
+
+        if (!f)
+        {
+            survivors |= square_bb(g);
+            continue;
+        }
+        sq[n]      = g;
+        frozen[n]  = f;
+        blocked[n] = zone & movable;
+        pc[n]      = popcount(f);
+        ++n;
+    }
+
+    for (int i = 0; i < n; ++i)
+    {
+        bool dominated = false;
+        for (int j = 0; j < n && !dominated; ++j)
+        {
+            // A dominator freezes a superset, so it cannot freeze fewer pieces.
+            // This integer test rejects most pairs before touching a bitboard.
+            if (j == i || pc[j] < pc[i])
+                continue;
+
+            // j must freeze at least what i freezes and block at most what i blocks
+            if ((frozen[j] & frozen[i]) != frozen[i] || (blocked[j] & blocked[i]) != blocked[j])
+                continue;
+
+            // strictly better on one axis wins; exact twins keep the lower index,
+            // which also keeps the relation acyclic
+            dominated = (frozen[j] != frozen[i] || blocked[j] != blocked[i]) ? true : j < i;
+        }
+        if (!dominated)
+            survivors |= square_bb(sq[i]);
+    }
+
+    return survivors;
+}
+
 // Search-policy filter (reference: is_useless_potion, applied when the
 // MovePicker emits a move — the legal universe is untouched): a freeze
 // whose zone contains no enemy piece wastes the spell, and a jump gated on

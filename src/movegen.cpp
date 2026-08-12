@@ -236,6 +236,14 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
         Bitboard allGates = sp == SPELL_FREEZE ? ~Bitboard(0) : occupied;
 
+        // Drop freeze gates that another candidate already covers: same frozen
+        // enemy set and same blocked own set, or a strictly better one of each.
+        // Runs before the score-based cut so the MaxFreezeGates budget is spent
+        // on distinct effects instead of copies of the same one — with a lone
+        // enemy piece, all nine surrounding gates are one effect.
+        if (limitGates && sp == SPELL_FREEZE)
+            allGates = dominant_freeze_gates(pos, Us, allGates);
+
         Square gateList[SQUARE_NB];
         int    gateCount = 0;
 
