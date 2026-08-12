@@ -195,6 +195,8 @@ int UCIEngine::loop() {
             is >> moveStr;
             engine.trace_see(moveStr);
         }
+        else if (token == "auditgates")
+            engine.audit_gates();
         else if (token == "compiler")
             sync_cout << compiler_info() << sync_endl;
         else if (token == "export_net")

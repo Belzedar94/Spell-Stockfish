@@ -30,8 +30,11 @@
 #include <utility>
 #include <vector>
 
+#include "attacks.h"
+#include "bitboard.h"
 #include "evaluate.h"
 #include "misc.h"
+#include "movegen.h"
 #include "nnue/network.h"
 #include "nnue/nnue_common.h"
 #include "nnue/nnue_accumulator.h"
@@ -43,6 +46,9 @@
 #include "position.h"
 #include "search.h"
 #include "shm.h"
+#include "spell.h"
+#include "spell_order.h"
+#include "spell_params.h"
 #include "syzygy/tbprobe.h"
 #include "types.h"
 #include "uci.h"
@@ -545,6 +551,144 @@ void Engine::trace_see(const std::string& moveStr) const {
     }
 
     sync_cout << "see " << Notation::move(m, p.is_chess960()) << " " << lo << sync_endl;
+}
+
+// Debug-only helper behind the non-UCI `auditgates` command: dumps, for the
+// current position, the per-gate primitives that tools/redundancy_audit.py
+// aggregates into the gate-redundancy report.
+//
+// Everything reported is read back from the REAL generators
+// (generate<SPELL_QUIETS>, generate<CAPTURES>) and the real policy helpers
+// (dominant_freeze_gates, freeze_gate_score, is_useless_spell), so the audit
+// measures the engine instead of a python model of the spell rules that would
+// silently drift from it. The command touches no search state: it works on a
+// private Position copy and only writes to stdout.
+//
+// Line grammar (decimal unless a field is marked hex; <gate> is 0..63):
+//   gateaudit fen <fen>
+//   gateaudit pos stm <w|b> men <n> freeze <0|1> jump <0|1> enemyfreeze <0|1>
+//   gateaudit cand <gate> frozen <hex> blocked <hex> score <n> dom <0|1>
+//   gateaudit sel freeze useful <n> dom <n> usefuldom <n> ring <n> limit <n> selected <n>
+//   gateaudit sel jump cand <n> limit <n> selected <n>
+//   gateaudit base <stage> <n>
+//   gateaudit gate <stage> <freeze|jump> <gate> moves <n> useful <n>
+//                          frozen <hex> blocked <hex> base <hex,hex,...>
+//   gateaudit done
+//
+// `cand` lines cover all 64 freeze gates: `frozen`/`blocked` are the two
+// bitboards the domination test compares and `dom` is that test's verdict, so
+// the pre-patch candidate pool and the post-patch one are both reconstructible
+// from a single dump. `base` lists the base moves of the gated moves that
+// survive is_useless_spell, which is what the MovePicker actually emits.
+void Engine::audit_gates() const {
+
+    StateListPtr audit_states(new std::deque<StateInfo>(1));
+    Position     p;
+    p.set(pos.fen(), options["UCI_Chess960"], &audit_states->back());
+
+    const Color    us      = p.side_to_move();
+    const Bitboard them    = p.pieces(~us);
+    const Bitboard movable = p.pieces(us) & ~p.frozen_squares(us);
+    const Square   eksq    = p.count<KING>(~us) ? p.square<KING>(~us) : SQ_NONE;
+    const Bitboard eRing =
+      eksq != SQ_NONE ? Attacks::attacks_bb<KING>(eksq) | square_bb(eksq) : Bitboard(0);
+
+    std::stringstream ss;
+    ss << "gateaudit fen " << p.fen() << '\n'
+       << "gateaudit pos stm " << (us == WHITE ? 'w' : 'b') << " men " << popcount(p.pieces())
+       << " freeze " << int(p.can_cast(us, SPELL_FREEZE))  //
+       << " jump " << int(p.can_cast(us, SPELL_JUMP))      //
+       << " enemyfreeze " << int(bool(p.spell_zone(~us, SPELL_FREEZE))) << '\n';
+
+    // The freeze candidate pool exactly as generate_spell_moves builds it for
+    // the QUIETS stage: every square, then the domination filter.
+    const Bitboard dom = dominant_freeze_gates(p, us, ~Bitboard(0));
+
+    int nUseful = 0, nUsefulDom = 0, ringCount = 0;
+
+    for (Square g = SQ_A1; g <= SQ_H8; ++g)
+    {
+        const Bitboard zone = FreezeZoneBB[g];
+        const Bitboard f    = zone & them;
+        const bool     kept = bool(dom & square_bb(g));
+
+        nUseful += bool(f);
+        nUsefulDom += bool(f) && kept;
+        // movegen counts the king ring over the post-filter pool, zero-frozen
+        // gates included: it is the same loop that scores the survivors
+        if (kept && (zone & eRing))
+            ++ringCount;
+
+        ss << "gateaudit cand " << int(g)                                //
+           << " frozen " << std::hex << u64(f)                           //
+           << " blocked " << u64(zone & movable) << std::dec             //
+           << " score " << freeze_gate_score(p, us, g, eksq, eRing)      //
+           << " dom " << int(kept) << '\n';
+    }
+
+    const int freezeLimit = std::max(MaxFreezeGates, ringCount);
+    ss << "gateaudit sel freeze useful " << nUseful                //
+       << " dom " << popcount(dom)                                 //
+       << " usefuldom " << nUsefulDom                              //
+       << " ring " << ringCount                                    //
+       << " limit " << freezeLimit                                 //
+       << " selected " << std::min(popcount(dom), freezeLimit) << '\n';
+    ss << "gateaudit sel jump cand " << popcount(p.pieces())  //
+       << " limit " << MaxJumpGates                           //
+       << " selected " << std::min(popcount(p.pieces()), MaxJumpGates) << '\n';
+
+    // Per (stage, spell, gate) buckets of the moves the search really sees
+    const auto dump = [&](const char* stage, const Move* begin, const Move* end) {
+        struct Bucket {
+            int         moves  = 0;
+            int         useful = 0;
+            std::string base;
+        };
+        std::vector<Bucket> bucket(2 * SQUARE_NB);
+        int                 nBase = 0;
+
+        for (const Move* m = begin; m != end; ++m)
+        {
+            if (!m->is_spell())
+            {
+                ++nBase;
+                continue;
+            }
+            Bucket& b = bucket[usize(m->spell_type()) * SQUARE_NB + usize(m->gate_sq())];
+            ++b.moves;
+            if (is_useless_spell(p, *m))
+                continue;
+            ++b.useful;
+            std::stringstream hex;
+            hex << std::hex << m->base_move().raw();
+            b.base += (b.useful > 1 ? "," : "") + hex.str();
+        }
+
+        ss << "gateaudit base " << stage << ' ' << nBase << '\n';
+
+        for (SpellType sp : {SPELL_FREEZE, SPELL_JUMP})
+            for (Square g = SQ_A1; g <= SQ_H8; ++g)
+            {
+                const Bucket& b = bucket[usize(sp) * SQUARE_NB + usize(g)];
+                if (!b.moves)
+                    continue;
+
+                const Bitboard zone = FreezeZoneBB[g];
+                ss << "gateaudit gate " << stage << ' '
+                   << (sp == SPELL_FREEZE ? "freeze" : "jump") << ' ' << int(g)  //
+                   << " moves " << b.moves << " useful " << b.useful             //
+                   << " frozen " << std::hex << u64(sp == SPELL_FREEZE ? zone & them : Bitboard(0))
+                   << " blocked " << u64(sp == SPELL_FREEZE ? zone & movable : Bitboard(0))
+                   << std::dec << " base " << (b.base.empty() ? "-" : b.base) << '\n';
+            }
+    };
+
+    MoveList<SPELL_QUIETS> quiets(p);
+    MoveList<CAPTURES>     captures(p);
+    dump("quiets", quiets.begin(), quiets.end());
+    dump("captures", captures.begin(), captures.end());
+
+    sync_cout << ss.str() << "gateaudit done" << sync_endl;
 }
 
 const OptionsMap& Engine::get_options() const { return options; }
