@@ -339,7 +339,9 @@ ExtMove* MovePicker::score(const Move* begin, const Move* end) {
             // NOTE (refuted idea, AUDIT.md): adding the gate impact score to
             // gated quiets here lost ~-150 Elo at VSTC — the king-ring bonus
             // ordered speculative freezes above history-proven quiets, and
-            // the per-node tables cost ~40% NPS on top.
+            // the per-node tables cost ~40% NPS on top. The ring bonus is gone
+            // and the score is now per silenced piece, but the refutation was
+            // never re-run: ordering stays history-only until it is.
 
             if (ply < LOW_PLY_HISTORY_SIZE)
                 m.value += 8 * (*lowPlyHistory)[ply][m.raw() & 0xFFFF] / (1 + ply);
@@ -467,19 +469,10 @@ top:
             && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
                 || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
         {
-            // Royal context for the tactical-only restriction, mirroring
+            // Freeze context for the tactical-only restriction, mirroring
             // the search's own per-node precompute
             if (onlyTacticalSpells)
-            {
-                const Color us = pos.side_to_move();
-                if (pos.count<KING>(us))
-                {
-                    spellOurRoyal       = pos.square<KING>(us);
-                    spellRoyalAttackers = pos.attackers_to(spellOurRoyal) & pos.pieces(~us);
-                }
-                if (pos.count<KING>(~us))
-                    spellEnemyRoyal = pos.square<KING>(~us);
-            }
+                spellFreeze = freeze_context(pos, pos.side_to_move());
 
             const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
 
@@ -497,9 +490,7 @@ top:
                     return true;
                 if (is_useless_spell(pos, *cur))
                     return false;
-                return !onlyTacticalSpells
-                    || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
-                                         spellOurRoyal);
+                return !onlyTacticalSpells || is_tactical_spell(pos, *cur, spellFreeze);
             }))
             return *(cur - 1);
 

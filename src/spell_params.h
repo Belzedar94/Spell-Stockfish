@@ -33,9 +33,19 @@ namespace Stockfish {
 extern int MaxFreezeGates;  // 12
 extern int MaxJumpGates;    // 6
 
-// Gate impact scoring bonuses
-extern int SpellGateKingBonus;      // 10000: zone covers the enemy king
-extern int SpellGateKingRingBonus;  // 50000: zone touches the enemy king ring
+// Jump gate impact: the lifted blocker reveals an attack on the enemy king
+extern int SpellGateKingBonus;  // 10000
+
+// Freeze gate impact, priced per SILENCED ENEMY PIECE (spell_order.h): a zone
+// denies no squares, so only the pieces standing in it are an effect. Material
+// counts as a fraction because the piece loses one reply, not its life; the
+// king carries its own term (it has no material value here); the last two are
+// the tactical motifs — a checker defused, and a piece we attack that can no
+// longer run.
+extern int SpellFrozenMaterialPct;   // 25 (% of the frozen piece's value)
+extern int SpellFrozenKingBonus;     // 2000
+extern int SpellFrozenCheckerBonus;  // 1500
+extern int SpellFrozenAttackedPct;   // 60 (% extra when we attack it)
 
 // Depth penalty (plies) for gated moves: the reference searches spell moves
 // shallower (PotionDepthPenaltyTactical/Quiet), which is where a large share

@@ -21,6 +21,7 @@
 
 #include "history.h"
 #include "movegen.h"
+#include "spell_order.h"
 #include "types.h"
 
 namespace Stockfish {
@@ -120,17 +121,16 @@ class MovePicker {
     bool     skipQuiets  = false;
     bool     allowSpells = true;
     // Shallow non-PV nodes may restrict the SPELL stage to tactical casts;
-    // the royal context for that classification is computed lazily once
+    // the freeze context for that classification is computed lazily once
     // per node in SPELL_INIT (mirrors the search's own precompute).
     bool onlyTacticalSpells = false;
     // SpellMergedOrdering generated the gated quiets inside QUIET_INIT, so
     // the SPELL stage must not regenerate them
-    bool      mergedSpells        = false;
-    Bitboard  spellRoyalAttackers = 0;
-    Square    spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
-    MoveArena* arena;
-    ExtMove*   moves;
-    Move*     genScratch;
+    bool          mergedSpells = false;
+    FreezeContext spellFreeze;
+    MoveArena*    arena;
+    ExtMove*      moves;
+    Move*         genScratch;
 };
 
 }  // namespace Stockfish

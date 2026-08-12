@@ -221,9 +221,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
     // limit is lifted while an enemy freeze zone is active.
     const bool limitGates = Type == QUIETS && !pos.spell_zone(~Us, SPELL_FREEZE);
 
-    const Square   eksq = pos.count<KING>(~Us) ? pos.square<KING>(~Us) : SQ_NONE;
-    const Bitboard eRing =
-      eksq != SQ_NONE ? Attacks::attacks_bb<KING>(eksq) | square_bb(eksq) : Bitboard(0);
+    const Square eksq = pos.count<KING>(~Us) ? pos.square<KING>(~Us) : SQ_NONE;
 
     // Squares revealed to each own slider by lifting one blocker, scored once
     int  jumpScore[SQUARE_NB];
@@ -259,9 +257,12 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                 int    score;
             };
             GateScore scored[SQUARE_NB];
-            int       n = 0, ringCount = 0;
+            int       n = 0;
 
-            if (sp == SPELL_JUMP && !jumpScoreReady)
+            FreezeContext freezeCtx;
+            if (sp == SPELL_FREEZE)
+                freezeCtx = freeze_context(pos, Us);
+            else if (!jumpScoreReady)
             {
                 jump_gate_scores(pos, Us, eksq, jumpScore);
                 jumpScoreReady = true;
@@ -270,23 +271,15 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
             for (Bitboard b = allGates; b;)
             {
                 const Square g = pop_lsb(b);
-                int          s;
-
-                if (sp == SPELL_FREEZE)
-                {
-                    s = freeze_gate_score(pos, Us, g, eksq, eRing);
-                    if (FreezeZoneBB[g] & eRing)
-                        ++ringCount;
-                }
-                else
-                    s = jumpScore[g];
-
+                const int    s =
+                  sp == SPELL_FREEZE ? freeze_gate_score(pos, Us, g, freezeCtx) : jumpScore[g];
                 scored[n++] = {g, s};
             }
 
-            int limit = sp == SPELL_FREEZE ? MaxFreezeGates : MaxJumpGates;
-            if (sp == SPELL_FREEZE && ringCount > limit)
-                limit = ringCount;
+            // No king-ring override any more: the score no longer rewards a
+            // zone for merely touching squares around the king, so the gates
+            // that really reach him carry their own weight to the top.
+            const int limit = sp == SPELL_FREEZE ? MaxFreezeGates : MaxJumpGates;
             if (n > limit)
             {
                 std::partial_sort(

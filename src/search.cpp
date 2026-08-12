@@ -1179,21 +1179,13 @@ moves_loop:  // When in check, search starts here
       (ss - 1)->continuationHistory, (ss - 2)->continuationHistory, (ss - 3)->continuationHistory,
       (ss - 4)->continuationHistory, (ss - 5)->continuationHistory, (ss - 6)->continuationHistory};
 
-    // Spell chess: royal context for classifying tactical freezes (zone
-    // touches the enemy king, silences our king's attackers, or freezes an
-    // attacked/major/king-attacking enemy piece), computed once per node
-    Bitboard ourRoyalAttackers = 0;
-    Square   ourRoyal = SQ_NONE, enemyRoyal = SQ_NONE;
+    // Spell chess: context for classifying tactical freezes (a zone that
+    // silences the enemy king, an attacker of our king, a major piece, or a
+    // piece we already attack), computed once per node
+    FreezeContext freezeCtx;
     if (pos.can_cast(us, SPELL_FREEZE))
-    {
-        if (pos.count<KING>(us))
-        {
-            ourRoyal          = pos.square<KING>(us);
-            ourRoyalAttackers = pos.attackers_to(ourRoyal) & pos.pieces(~us);
-        }
-        if (pos.count<KING>(~us))
-            enemyRoyal = pos.square<KING>(~us);
-    }
+        freezeCtx = freeze_context(pos, us);
+    const Bitboard ourRoyalAttackers = freezeCtx.ourRoyalAttackers;
 
     // Relevance gate for the spell stage: PV nodes, nodes with our king
     // under attack (defensive freeze) and nodes whose static eval is
@@ -1253,8 +1245,7 @@ moves_loop:  // When in check, search starts here
 
         // A tactical freeze is treated like a capture or a check throughout
         // pruning, reductions and extensions (reference policy)
-        const bool tacticalSpell =
-          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal);
+        const bool tacticalSpell = is_tactical_spell(pos, move, freezeCtx);
 
         // Capturing the king ends the game: the terminal move is never pruned
         const bool royalCapture = capture && type_of(pos.piece_on(move.to_sq())) == KING;
