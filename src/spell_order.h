@@ -35,16 +35,23 @@ namespace Stockfish {
 
 // Score of freezing with the zone centered on g. eksq/eRing are the enemy
 // king square (or SQ_NONE) and king ring, precomputed by the caller.
+//
+// The king-ring term fires on a bare zone/ring OVERLAP, which is a proxy, not
+// an effect: freezing an empty square next to the king denies nothing (the
+// king may still move into a zone). SpellFreezeGateEffectOnly requires an
+// enemy piece to stand in the overlap, so the bonus tracks what the cast
+// actually silences.
 inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eksq, Bitboard eRing) {
 
     const Bitboard zone = FreezeZoneBB[g];
+    const Bitboard them = pos.pieces(~us);
 
     int s = 0;
-    for (Bitboard t = zone & pos.pieces(~us); t;)
+    for (Bitboard t = zone & them; t;)
         s += PieceValue[pos.piece_on(pop_lsb(t))];
     if (eksq != SQ_NONE && (zone & square_bb(eksq)))
         s += SpellGateKingBonus;
-    if (zone & eRing)
+    if (zone & eRing & (SpellFreezeGateEffectOnly ? them : ~Bitboard(0)))
         s += SpellGateKingRingBonus;
     return s;
 }

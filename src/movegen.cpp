@@ -203,7 +203,7 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target, Bitbo
 // Appends the gated (spell-casting) versions of the base moves, plus the new
 // slider/pawn moves a candidate jump gate enables. See SPELL_SPEC.md §4.
 template<Color Us, GenType Type>
-Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) {
+Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, bool prune) {
 
     Move* cur = baseEnd;
 
@@ -241,7 +241,17 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
         // Runs before the score-based cut so the MaxFreezeGates budget is spent
         // on distinct effects instead of copies of the same one — with a lone
         // enemy piece, all nine surrounding gates are one effect.
-        if (limitGates && sp == SPELL_FREEZE)
+        //
+        // SpellDominateCaptures extends the same filter to the gated captures,
+        // which have no budget at all and expand every gate against every base
+        // capture. Both forms are search policy, tied to the same conditions as
+        // the budget: never at the root, never while an enemy freeze is live.
+        const bool dominate = sp == SPELL_FREEZE
+                           && (limitGates
+                               || (Type == CAPTURES && prune && SpellDominateCaptures
+                                   && !pos.spell_zone(~Us, SPELL_FREEZE)));
+
+        if (dominate)
             allGates = dominant_freeze_gates(pos, Us, allGates);
 
         Square gateList[SQUARE_NB];
@@ -274,8 +284,16 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
                 if (sp == SPELL_FREEZE)
                 {
+                    const Bitboard zone = FreezeZoneBB[g];
+
+                    // A gate that freezes nothing cannot be searched anyway
+                    // (is_useless_spell), so letting it hold a budget slot
+                    // spends the slot on nothing at all
+                    if (SpellFreezeGateEffectOnly && prune && !(zone & pos.pieces(~Us)))
+                        continue;
+
                     s = freeze_gate_score(pos, Us, g, eksq, eRing);
-                    if (FreezeZoneBB[g] & eRing)
+                    if (zone & eRing & (SpellFreezeGateEffectOnly ? pos.pieces(~Us) : ~Bitboard(0)))
                         ++ringCount;
                 }
                 else
@@ -300,10 +318,19 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
         for (int gi = 0; gi < gateCount; ++gi)
         {
-            const Square gate = gateList[gi];
+            const Square   gate   = gateList[gi];
+            const Bitboard gateBB = square_bb(gate);
 
             if (sp == SPELL_FREEZE)
             {
+                // A zone holding no enemy piece freezes nothing: the MovePicker
+                // discards every one of these casts through is_useless_spell,
+                // so building the cross product with the base moves is pure
+                // waste. Skipping here (after the score cut, never before) also
+                // leaves the gate budget itself untouched.
+                if (prune && !(FreezeZoneBB[gate] & pos.pieces(~Us)))
+                    continue;
+
                 // Gate the base moves. The caster's own move may not start in
                 // the newly frozen 3x3 area.
                 const Bitboard blocked = FreezeBlockBB[gate];
@@ -331,7 +358,12 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
             }
             else  // SPELL_JUMP
             {
-                // Gate the base moves (may not land on the gate square)
+                // Gate the base moves (may not land on the gate square).
+                // A base move that does not travel THROUGH the gate makes no
+                // use of the transparency: the identical move without the cast
+                // is already in the list, reaches the same position and keeps
+                // the spell in hand, so the gated copy is strictly dominated
+                // (is_useless_spell, applied here instead of at emission).
                 for (Move* it = baseStart; it != baseEnd; ++it)
                 {
                     const Move     base = *it;
@@ -340,6 +372,10 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
                     if (mt != NORMAL && mt != CASTLING && mt != EN_PASSANT)
                         continue;
                     if (base.to_sq() == gate)
+                        continue;
+                    if (prune
+                        && !(Attacks::between_bb(base.from_sq(), base.to_sq())
+                             & ~square_bb(base.to_sq()) & gateBB))
                         continue;
                     if (!keep(pos.capture(base)))
                         continue;
@@ -401,7 +437,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
 
 
 template<Color Us, GenType Type>
-Move* generate_all(const Position& pos, Move* moveList) {
+Move* generate_all(const Position& pos, Move* moveList, bool prune = false) {
 
     static_assert(Type != LEGAL && Type != SPELL_QUIETS, "Unsupported type in generate_all()");
 
@@ -448,17 +484,17 @@ Move* generate_all(const Position& pos, Move* moveList) {
     if constexpr (Type == QUIETS)
         return moveList;
 
-    return generate_spell_moves<Us, Type>(pos, cur, moveList);
+    return generate_spell_moves<Us, Type>(pos, cur, moveList, prune);
 }
 
 // The gated quiet moves alone: the base quiets are regenerated at the buffer
 // start as gating material, the gated segment is appended and then slid to
 // the front.
 template<Color Us>
-Move* generate_spell_quiets(const Position& pos, Move* moveList) {
+Move* generate_spell_quiets(const Position& pos, Move* moveList, bool prune) {
 
     Move* baseEnd  = generate_all<Us, QUIETS>(pos, moveList);
-    Move* spellEnd = generate_spell_moves<Us, QUIETS>(pos, moveList, baseEnd);
+    Move* spellEnd = generate_spell_moves<Us, QUIETS>(pos, moveList, baseEnd, prune);
 
     return std::move(baseEnd, spellEnd, moveList);
 }
@@ -473,31 +509,31 @@ Move* generate_spell_quiets(const Position& pos, Move* moveList) {
 //
 // Returns a pointer to the end of the move list.
 template<GenType Type>
-Move* generate(const Position& pos, Move* moveList) {
+Move* generate(const Position& pos, Move* moveList, bool pruneUselessGates) {
 
     static_assert(Type != LEGAL, "Unsupported type in generate()");
 
     Color us = pos.side_to_move();
 
     if constexpr (Type == SPELL_QUIETS)
-        return us == WHITE ? generate_spell_quiets<WHITE>(pos, moveList)
-                           : generate_spell_quiets<BLACK>(pos, moveList);
+        return us == WHITE ? generate_spell_quiets<WHITE>(pos, moveList, pruneUselessGates)
+                           : generate_spell_quiets<BLACK>(pos, moveList, pruneUselessGates);
     else
-        return us == WHITE ? generate_all<WHITE, Type>(pos, moveList)
-                           : generate_all<BLACK, Type>(pos, moveList);
+        return us == WHITE ? generate_all<WHITE, Type>(pos, moveList, pruneUselessGates)
+                           : generate_all<BLACK, Type>(pos, moveList, pruneUselessGates);
 }
 
 // Explicit template instantiations
-template Move* generate<CAPTURES>(const Position&, Move*);
-template Move* generate<QUIETS>(const Position&, Move*);
-template Move* generate<SPELL_QUIETS>(const Position&, Move*);
-template Move* generate<EVASIONS>(const Position&, Move*);
-template Move* generate<NON_EVASIONS>(const Position&, Move*);
+template Move* generate<CAPTURES>(const Position&, Move*, bool);
+template Move* generate<QUIETS>(const Position&, Move*, bool);
+template Move* generate<SPELL_QUIETS>(const Position&, Move*, bool);
+template Move* generate<EVASIONS>(const Position&, Move*, bool);
+template Move* generate<NON_EVASIONS>(const Position&, Move*, bool);
 
 // generate<LEGAL> generates all the legal moves in the given position
 
 template<>
-Move* generate<LEGAL>(const Position& pos, Move* moveList) {
+Move* generate<LEGAL>(const Position& pos, Move* moveList, bool) {
 
     Move* cur = moveList;
 

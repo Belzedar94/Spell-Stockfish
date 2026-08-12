@@ -47,16 +47,18 @@ int SpellStageMargin = 365;
 int SpellQuietMinDepth = 0;
 
 // SPRT candidate toggles — defaults are behavior-preserving (see header)
-int SpellMergedOrdering   = 0;
-int SpellNullMoveGuard    = 0;
-int SpellLmpScalePct      = 100;
-int SpellFutilityScalePct = 100;
-int SpellNoPenaltyPV      = 0;
-int SpellAspirationPct    = 100;
-int SpellCaptureSeeMargin = 0;
-int SpellNoIIR            = 0;
-int SpellContHistSkip     = 0;
-int SpellRazorGuard       = 0;
+int SpellMergedOrdering       = 0;
+int SpellNullMoveGuard        = 0;
+int SpellLmpScalePct          = 100;
+int SpellFutilityScalePct     = 100;
+int SpellNoPenaltyPV          = 0;
+int SpellAspirationPct        = 100;
+int SpellCaptureSeeMargin     = 0;
+int SpellNoIIR                = 0;
+int SpellContHistSkip         = 0;
+int SpellRazorGuard           = 0;
+int SpellFreezeGateEffectOnly = 0;
+int SpellDominateCaptures     = 0;
 
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
@@ -81,5 +83,7 @@ TUNE(SetRange(0, 500), SpellCaptureSeeMargin);
 TUNE(SetRange(0, 1), SpellNoIIR);
 TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
+TUNE(SetRange(0, 1), SpellFreezeGateEffectOnly);
+TUNE(SetRange(0, 1), SpellDominateCaptures);
 
 }  // namespace Stockfish

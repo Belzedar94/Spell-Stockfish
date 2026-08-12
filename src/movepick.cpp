@@ -388,7 +388,10 @@ top:
     case CAPTURE_INIT :
     case PROBCUT_INIT :
     case QCAPTURE_INIT : {
-        const Move* endGen = generate<CAPTURES>(pos, genScratch);
+        // Away from the root the gated copies that make no use of their gate
+        // are dropped by the generator itself, so they are never scored,
+        // sorted or emitted (ProbCut discards them at every ply).
+        const Move* endGen = generate<CAPTURES>(pos, genScratch, ply != 0 || stage == PROBCUT_INIT);
 
         cur = endBadCaptures = moves;
         endCur = endCaptures = score<CAPTURES>(genScratch, endGen);
@@ -400,11 +403,9 @@ top:
 
     case GOOD_CAPTURE :
         if (select([&]() {
-                // A gated capture with an irrelevant gate is dominated by
-                // the bare capture: drop it entirely (not even "bad") —
-                // except at the root, where searchmoves may force it
-                if (ply != 0 && is_useless_spell(pos, *cur))
-                    return false;
+                // A gated capture with an irrelevant gate is dominated by the
+                // bare capture; the generator already refused to build one
+                // (except at the root, where searchmoves may force it)
                 if (pos.see_ge(*cur, -cur->value / 18))
                     return true;
                 std::swap(*endBadCaptures++, *cur);
@@ -430,11 +431,7 @@ top:
                 && (pos.can_cast(pos.side_to_move(), SPELL_FREEZE)
                     || pos.can_cast(pos.side_to_move(), SPELL_JUMP)))
             {
-                Move* endAll = generate<SPELL_QUIETS>(pos, endGen);
-                if (ply != 0)
-                    endAll = std::remove_if(endGen, endAll,
-                                            [&](Move m) { return is_useless_spell(pos, m); });
-                endGen       = endAll;
+                endGen       = generate<SPELL_QUIETS>(pos, endGen, ply != 0);
                 mergedSpells = true;
             }
 
@@ -481,7 +478,7 @@ top:
                     spellEnemyRoyal = pos.square<KING>(~us);
             }
 
-            const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch);
+            const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch, ply != 0);
 
             endCur = endSpells = score<QUIETS>(genScratch, endGen);
 
@@ -495,8 +492,6 @@ top:
         if (select([&]() {
                 if (ply == 0)  // searchmoves may force any legal cast
                     return true;
-                if (is_useless_spell(pos, *cur))
-                    return false;
                 return !onlyTacticalSpells
                     || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
                                          spellOurRoyal);
@@ -542,11 +537,10 @@ top:
         return select([]() { return true; });
 
     case QCAPTURE :
-        return select([&]() { return ply == 0 || !is_useless_spell(pos, *cur); });
+        return select([]() { return true; });
 
     case PROBCUT :
-        return select(
-          [&]() { return !is_useless_spell(pos, *cur) && pos.see_ge(*cur, threshold); });
+        return select([&]() { return pos.see_ge(*cur, threshold); });
     }
 
     assert(false);

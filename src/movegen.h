@@ -49,8 +49,14 @@ struct ExtMove: public Move {
 
 inline bool operator<(const ExtMove& f, const ExtMove& s) { return f.value < s.value; }
 
+// pruneUselessGates is a SEARCH policy, never a rule: it drops the gated moves
+// the MovePicker would discard anyway through is_useless_spell (a freeze whose
+// zone holds no enemy piece, a jump whose gate is not on the base move's path),
+// so the generator never builds them in the first place. It must stay false for
+// the legal universe (perft, UCI validation) and at the root, where searchmoves
+// may legitimately force such a cast.
 template<GenType>
-Move* generate(const Position& pos, Move* moveList);
+Move* generate(const Position& pos, Move* moveList, bool pruneUselessGates = false);
 
 // The MoveList struct wraps the generate() function and returns a convenient
 // list of moves. Using MoveList is sometimes preferable to directly calling

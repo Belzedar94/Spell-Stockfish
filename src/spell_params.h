@@ -113,6 +113,21 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
+// Score freeze gates by what they actually freeze. Two changes, both aimed at
+// the same defect: a gate whose zone holds no enemy piece can never be
+// searched (is_useless_spell drops it), yet it still competes for the
+// MaxFreezeGates budget — and it wins, because SpellGateKingRingBonus fires on
+// a bare zone/king-ring overlap. Measured on a K+R vs K endgame: 16 of the 17
+// budgeted gates freeze nothing. With this on, empty gates never enter the
+// budget and the ring bonus needs an enemy piece in the overlap.
+extern int SpellFreezeGateEffectOnly;  // 0 (off)
+
+// Extend the freeze-gate domination filter to the CAPTURES stage. That stage
+// has no gate budget at all, so it expands every gate against every base
+// capture; the domination argument (superset frozen, subset blocked) holds
+// there exactly as it does for quiets.
+extern int SpellDominateCaptures;  // 0 (off)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

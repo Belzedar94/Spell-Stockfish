@@ -116,7 +116,7 @@ class MovePicker {
     int      stage;
     int      threshold;
     Depth    depth;
-    int      ply;
+    int      ply         = 0;  // the ProbCut constructor takes none: 0 = the root
     bool     skipQuiets  = false;
     bool     allowSpells = true;
     // Shallow non-PV nodes may restrict the SPELL stage to tactical casts;
