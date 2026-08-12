@@ -26,8 +26,12 @@ namespace Stockfish {
 // (test #2: 1200 iterations x 8 pairs = 19,200 games at 2.0+0.02,
 // 2026-07-13; see AUDIT.md). Notable: both GateHistory weights converged
 // to 0 — the learned gate ordering reads as noise at VSTC.
-int MaxFreezeGates = 8;
+int MinFreezeGates = 8;  // the value the fixed cap held
+int MaxFreezeGates = 16;
 int MaxJumpGates   = 4;
+
+int SpellGateCapPct   = 100;  // after the domination prune, every effect counts
+int SpellGateCapWidth = 500;
 
 int SpellGateKingBonus     = 11789;
 int SpellGateKingRingBonus = 60993;
@@ -59,8 +63,11 @@ int SpellContHistSkip     = 0;
 int SpellRazorGuard       = 0;
 
 // SPSA exposure: every spell search-policy knob becomes a UCI option
+TUNE(SetRange(1, 32), MinFreezeGates);
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
+TUNE(SetRange(0, 300), SpellGateCapPct);
+TUNE(SetRange(50, 4000), SpellGateCapWidth);
 TUNE(SetRange(1000, 30000), SpellGateKingBonus);
 TUNE(SetRange(5000, 120000), SpellGateKingRingBonus);
 TUNE(SetRange(0, 3), SpellDepthPenaltyTactical);

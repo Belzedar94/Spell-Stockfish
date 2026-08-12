@@ -19,6 +19,8 @@
 #ifndef SPELL_ORDER_H_INCLUDED
 #define SPELL_ORDER_H_INCLUDED
 
+#include <algorithm>
+
 #include "attacks.h"
 #include "position.h"
 #include "spell.h"
@@ -76,7 +78,13 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
 //
 // Gates that freeze nothing are passed through untouched — is_useless_spell
 // owns that case, together with its root exception.
-inline Bitboard dominant_freeze_gates(const Position& pos, Color us, Bitboard candidates) {
+//
+// *effects, when asked for, receives the number of surviving gates that
+// actually freeze something: the count of DISTINCT effects the position
+// offers, which is what the gate cap should be measured against. Survivors
+// that freeze nothing are not effects and are not counted.
+inline Bitboard
+dominant_freeze_gates(const Position& pos, Color us, Bitboard candidates, int* effects = nullptr) {
 
     const Bitboard them    = pos.pieces(~us);
     const Bitboard movable = pos.pieces(us) & ~pos.frozen_squares(us);
@@ -105,6 +113,7 @@ inline Bitboard dominant_freeze_gates(const Position& pos, Color us, Bitboard ca
         ++n;
     }
 
+    int distinct = 0;
     for (int i = 0; i < n; ++i)
     {
         bool dominated = false;
@@ -124,10 +133,55 @@ inline Bitboard dominant_freeze_gates(const Position& pos, Color us, Bitboard ca
             dominated = (frozen[j] != frozen[i] || blocked[j] != blocked[i]) ? true : j < i;
         }
         if (!dominated)
+        {
             survivors |= square_bb(sq[i]);
+            ++distinct;
+        }
     }
 
+    if (effects)
+        *effects = distinct;
     return survivors;
+}
+
+// How many freeze gates the QUIETS stage keeps at this node.
+//
+// The old fixed MaxFreezeGates was tuned (SPSA session #2) while the candidate
+// list was full of duplicates — around a lone enemy piece all nine surrounding
+// gates are ONE effect — so "8" meant very different amounts of search in
+// different positions. It was also not the cap that ran: the king-ring
+// override lifted the limit to however many gates touched a 5x5 area, and
+// forcing MaxFreezeGates down to 2 moved the bench by 4% (8,750,376 vs
+// 8,416,372) because the override was doing the deciding.
+//
+// Now that dominant_freeze_gates leaves only distinct effects, dropping one is
+// dropping a reply the opponent really has, so the default keeps them ALL
+// (SpellGateCapPct = 100) and the shape comes from the cost side instead:
+//
+//   * supply — a lone piece in an endgame offers one or two effects and no cap
+//     is needed; a middlegame offers up to about twenty (measured on the bench
+//     suite: the share term only starts to bind past 60%, so the peak count is
+//     in the teens, well under the ~29 a duplicate-free pool suggests). The
+//     budget therefore follows the supply instead of standing at an absolute
+//     number that means something different in every phase.
+//
+//   * cost — a kept gate is not a move, it is a whole subtree per base move:
+//     the gate loop replays the entire base list, so this node's gated width
+//     is about cap * baseCount. That makes baseCount, our own mobility, the
+//     material/phase term that matters here, and it is already in hand for
+//     free. Holding cap * baseCount under SpellGateCapWidth spends the extra
+//     gates where they are cheap and declines them where they are not.
+//
+// MinFreezeGates is the old fixed value, so a node never keeps fewer gates than
+// the nominal cap allowed. Clamped by hand rather than with std::clamp, whose
+// behavior is undefined if SPSA ever proposes Min > Max.
+inline int freeze_gate_cap(int effects, int baseCount) {
+
+    int cap = effects * SpellGateCapPct / 100;
+
+    cap = std::min(cap, SpellGateCapWidth / std::max(baseCount, 1));
+    cap = std::max(cap, MinFreezeGates);
+    return std::min(cap, MaxFreezeGates);
 }
 
 // Search-policy filter (reference: is_useless_potion, applied when the
