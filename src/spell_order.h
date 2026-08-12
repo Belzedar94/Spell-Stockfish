@@ -70,6 +70,14 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
 //     transpose, max over a subset can never exceed max over the superset, so
 //     searching B after A cannot find anything better.
 //
+// Domination has one hole, and it is the empty subset. "Fewer replies is never
+// worse" holds while the opponent still has a reply; take the last one away and
+// the node stops being a minimum over replies and becomes a stalemate, scored
+// VALUE_DRAW. A defender who is lost in every line is then better off with no
+// line at all, so a gate that freezes strictly more can be strictly worse and
+// the dominated gate can be the only win. Gates that freeze the same set are
+// unaffected: they stalemate or not together.
+//
 // Both are search policy, not rules: this runs only on the QUIETS stage, which
 // already limits gates. The legal universe (perft, UCI validation, evasions)
 // never sees it.
@@ -80,6 +88,28 @@ inline Bitboard dominant_freeze_gates(const Position& pos, Color us, Bitboard ca
 
     const Bitboard them    = pos.pieces(~us);
     const Bitboard movable = pos.pieces(us) & ~pos.frozen_squares(us);
+
+    // Stalemate guard material: the enemy pieces a gate has to cover before it
+    // can be suspected of leaving the opponent no reply at all.
+    //
+    // Leaving the king out is the whole design decision. The obvious cheaper
+    // test — "the gate freezes every enemy piece" — misses the shape that
+    // actually occurs, because a king walled in by its own pieces and our
+    // attacks is already stuck without being frozen. With black on Kh8/g7/h7
+    // and a knight covering g8, a zone over the two pawns alone stalemates
+    // while the king sits outside it, and that zone dominates every smaller
+    // one: demanding the king too would leave exactly that hole open.
+    //
+    // Every non-king piece is assumed mobile once unfrozen. False for a
+    // blocked pawn or a boxed rook, but settling it needs a movegen per gate,
+    // which is the cost this filter exists to avoid, so the guard is partial
+    // by construction: it catches the stalemates that follow from freezing
+    // alone, not the ones that also need a piece to be self-blocked. The king
+    // cannot be settled here at any price — it is the one piece that may not
+    // step onto an attacked square, and which squares we attack depends on the
+    // base move, which has not been chosen yet. Assuming it may be stuck costs
+    // width; assuming it can always move costs the win.
+    const Bitboard theirNonKing = them & ~pos.pieces(~us, KING);
 
     Square   sq[SQUARE_NB];
     Bitboard frozen[SQUARE_NB], blocked[SQUARE_NB];
@@ -117,6 +147,14 @@ inline Bitboard dominant_freeze_gates(const Position& pos, Color us, Bitboard ca
 
             // j must freeze at least what i freezes and block at most what i blocks
             if ((frozen[j] & frozen[i]) != frozen[i] || (blocked[j] & blocked[i]) != blocked[j])
+                continue;
+
+            // Stalemate guard: a strictly larger frozen set that leaves the
+            // opponent nothing but their king may have taken their last reply
+            // away, and a draw does not dominate anything. Such a gate speaks
+            // only for itself. Equal frozen sets share the verdict either way,
+            // so the interchangeable tie-break below is untouched.
+            if (frozen[j] != frozen[i] && !(theirNonKing & ~frozen[j]))
                 continue;
 
             // strictly better on one axis wins; exact twins keep the lower index,
