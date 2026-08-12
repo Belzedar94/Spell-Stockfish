@@ -244,6 +244,12 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd) 
         if (limitGates && sp == SPELL_FREEZE)
             allGates = dominant_freeze_gates(pos, Us, allGates);
 
+        // Same treatment for jump gates, where the classes are degenerate: a
+        // gate that opens no line and crosses no double push enables nothing
+        // the stage would keep, so it only ate budget.
+        if (limitGates && sp == SPELL_JUMP)
+            allGates = effective_jump_gates(pos, Us, allGates);
+
         Square gateList[SQUARE_NB];
         int    gateCount = 0;
 

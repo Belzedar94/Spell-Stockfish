@@ -130,6 +130,84 @@ inline Bitboard dominant_freeze_gates(const Position& pos, Color us, Bitboard ca
     return survivors;
 }
 
+// Jump gates that change the QUIETS stage's move list at all.
+//
+// The freeze argument above does not carry over: a jump zone is transparent
+// for BOTH sides, so the square's effect on the opponent's single reply —
+// their sliders seeing through it, their pawns crossing it, the square denied
+// to them as a quiet landing — is a function of the exact square. Two distinct
+// squares are never interchangeable for the opponent, so nothing can be
+// collapsed on that side.
+//
+// The caster's side settles it anyway. Restricted to what a gate ADDS for us,
+// the effects are pairwise disjoint: a revealed square has exactly one nearest
+// blocker per slider ray, and a double push exactly one crossed square, so no
+// two gates ever enable the same move. Two gates with a non-empty effect can
+// then be neither equal nor nested, and the whole lattice collapses to its one
+// degenerate class — the gates whose effect is EMPTY, interchangeable with
+// each other and with not casting at all.
+//
+// Dropping that class costs no move: those gates produce only casts whose gate
+// is not on the base move's path, which is exactly what is_useless_spell
+// discards one stage later. What it buys is the MaxJumpGates budget. Every
+// occupied square is a candidate (32 of them in the opening) and the score
+// that cuts them counts revealed enemy material, which is 0 for every quiet
+// reveal — so the budget went to arbitrary gates that opened nothing.
+//
+// A gate survives when it is
+//   * the nearest blocker of one of our sliders on a ray that hides a quiet
+//     destination, or
+//   * the square a new pawn double push would cross, or
+//   * already transparent (only the opponent's zone can do that — our own
+//     would block the cast), the one way a gate can lie on the path of a base
+//     move that is generated anyway. Kept unconditionally rather than tested
+//     against the base list: at most one square, and it may carry a real cast.
+//
+// Search policy on the QUIETS stage only, like the freeze filter above; the
+// legal universe never sees it.
+inline Bitboard effective_jump_gates(const Position& pos, Color us, Bitboard candidates) {
+
+    const Bitboard occupied    = pos.pieces();
+    const Bitboard occSliding  = pos.occupied_for_sliding();
+    const Bitboard transparent = pos.jump_transparent();
+
+    // Where a gated quiet may land: empty, and not transparent (no piece may
+    // land quietly on a transparent square)
+    const Bitboard quietTarget = ~occupied & ~transparent;
+
+    Bitboard survivors = candidates & transparent;
+
+    Bitboard sliders = pos.pieces(us, BISHOP, ROOK, QUEEN) & ~pos.frozen_squares(us);
+    while (sliders)
+    {
+        const Square    from = pop_lsb(sliders);
+        const PieceType pt   = type_of(pos.piece_on(from));
+        const Bitboard  seen = Attacks::attacks_bb(pt, from, occSliding);
+
+        // Only a square this slider actually sees can hide anything from it,
+        // and a transparent one is already counted
+        Bitboard blockers = seen & candidates & ~survivors;
+        while (blockers)
+        {
+            const Square   b = pop_lsb(blockers);
+            const Bitboard revealed =
+              Attacks::attacks_bb(pt, from, occSliding & ~square_bb(b)) & ~seen;
+
+            if (revealed & quietTarget)
+                survivors |= square_bb(b);
+        }
+    }
+
+    // The crossed square of a new double push: an own pawn on its home rank, a
+    // solid (not already transparent) piece in front of it, a free landing
+    const Bitboard pawns =
+      pos.pieces(us, PAWN) & ~pos.frozen_squares(us) & (us == WHITE ? Rank2BB : Rank7BB);
+    const Bitboard crossed = us == WHITE ? shift<NORTH>(pawns) : shift<SOUTH>(pawns);
+    const Bitboard landing = us == WHITE ? shift<SOUTH>(quietTarget) : shift<NORTH>(quietTarget);
+
+    return survivors | (candidates & occSliding & crossed & landing);
+}
+
 // Search-policy filter (reference: is_useless_potion, applied when the
 // MovePicker emits a move — the legal universe is untouched): a freeze
 // whose zone contains no enemy piece wastes the spell, and a jump gated on
