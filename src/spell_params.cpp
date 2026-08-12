@@ -58,7 +58,7 @@ int SpellNoIIR                = 0;
 int SpellContHistSkip         = 0;
 int SpellRazorGuard           = 0;
 int SpellFreezeGateEffectOnly = 0;
-int SpellDominateCaptures     = 0;
+int SpellDominateCaptures     = 1;
 
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
