@@ -30,8 +30,23 @@ namespace Stockfish {
 // Cap on candidate gate squares per spell in the QUIETS generation stage
 // (unlimited while an enemy freeze zone is active, and in-check nodes use
 // the full EVASIONS universe anyway).
-extern int MaxFreezeGates;  // 12
+//
+// The freeze cap is adaptive (freeze_gate_cap in spell_order.h): Min/Max
+// bracket a budget driven by how many DISTINCT effects the position offers
+// and by what a gate costs here. MinFreezeGates is the value the fixed cap
+// used to hold, so the nominal cap is never tightened; MaxFreezeGates is now
+// a real ceiling, which the old king-ring override let the limit ignore.
+extern int MinFreezeGates;  // 8
+extern int MaxFreezeGates;  // 16
 extern int MaxJumpGates;    // 6
+
+// Share (%) of the distinct freeze effects the cap aims to keep
+extern int SpellGateCapPct;  // 100
+
+// Width budget for the gated expansion: cap is held under
+// SpellGateCapWidth / baseCount, since each kept gate replays the whole
+// base move list and every copy is a subtree.
+extern int SpellGateCapWidth;  // 500
 
 // Gate impact scoring bonuses
 extern int SpellGateKingBonus;      // 10000: zone covers the enemy king

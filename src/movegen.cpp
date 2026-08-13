@@ -238,21 +238,25 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
 
         // Drop freeze gates that another candidate already covers: same frozen
         // enemy set and same blocked own set, or a strictly better one of each.
-        // Runs before the score-based cut so the MaxFreezeGates budget is spent
-        // on distinct effects instead of copies of the same one — with a lone
-        // enemy piece, all nine surrounding gates are one effect.
+        // Runs before the score-based cut so the gate budget is spent on
+        // distinct effects instead of copies of the same one — with a lone
+        // enemy piece, all nine surrounding gates are one effect. How many
+        // distinct effects survive is what the budget is then measured against.
         //
         // SpellDominateCaptures extends the same filter to the gated captures,
         // which have no budget at all and expand every gate against every base
         // capture. Both forms are search policy, tied to the same conditions as
         // the budget: never at the root, never while an enemy freeze is live.
-        const bool dominate = sp == SPELL_FREEZE
-                           && (limitGates
-                               || (Type == CAPTURES && prune && SpellDominateCaptures
-                                   && !pos.spell_zone(~Us, SPELL_FREEZE)));
+        // The effect count is written in both cases and read only on the QUIETS
+        // side, which is the only one with a budget to size.
+        int        freezeEffects = 0;
+        const bool dominate      = sp == SPELL_FREEZE
+                            && (limitGates
+                                || (Type == CAPTURES && prune && SpellDominateCaptures
+                                    && !pos.spell_zone(~Us, SPELL_FREEZE)));
 
         if (dominate)
-            allGates = dominant_freeze_gates(pos, Us, allGates);
+            allGates = dominant_freeze_gates(pos, Us, allGates, &freezeEffects);
 
         Square gateList[SQUARE_NB];
         int    gateCount = 0;
@@ -269,7 +273,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
                 int    score;
             };
             GateScore scored[SQUARE_NB];
-            int       n = 0, ringCount = 0;
+            int       n = 0;
 
             if (sp == SPELL_JUMP && !jumpScoreReady)
             {
@@ -280,31 +284,33 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
             for (Bitboard b = allGates; b;)
             {
                 const Square g = pop_lsb(b);
-                int          s;
 
-                if (sp == SPELL_FREEZE)
-                {
-                    const Bitboard zone = FreezeZoneBB[g];
+                // A gate that freezes nothing cannot be searched anyway
+                // (is_useless_spell), so letting it hold a budget slot spends
+                // the slot on nothing at all. Both halves of
+                // SpellFreezeGateEffectOnly survive here — this one and the
+                // ring bonus condition in freeze_gate_score; what the adaptive
+                // cap removes is the geometric ringCount override, which no
+                // option could reach.
+                if (sp == SPELL_FREEZE && SpellFreezeGateEffectOnly && prune
+                    && !(FreezeZoneBB[g] & pos.pieces(~Us)))
+                    continue;
 
-                    // A gate that freezes nothing cannot be searched anyway
-                    // (is_useless_spell), so letting it hold a budget slot
-                    // spends the slot on nothing at all
-                    if (SpellFreezeGateEffectOnly && prune && !(zone & pos.pieces(~Us)))
-                        continue;
-
-                    s = freeze_gate_score(pos, Us, g, eksq, eRing);
-                    if (zone & eRing & (SpellFreezeGateEffectOnly ? pos.pieces(~Us) : ~Bitboard(0)))
-                        ++ringCount;
-                }
-                else
-                    s = jumpScore[g];
-
+                const int s =
+                  sp == SPELL_FREEZE ? freeze_gate_score(pos, Us, g, eksq, eRing) : jumpScore[g];
                 scored[n++] = {g, s};
             }
 
-            int limit = sp == SPELL_FREEZE ? MaxFreezeGates : MaxJumpGates;
-            if (sp == SPELL_FREEZE && ringCount > limit)
-                limit = ringCount;
+            // The king-ring override that used to lift the limit to the number
+            // of ring-touching gates is gone with the fixed cap it bypassed. It
+            // never changed their PRIORITY — SpellGateKingRingBonus dwarfs every
+            // other term, so those gates already fill the top of the sort — only
+            // their COUNT, which is the one thing a cap is for: a 5x5 area
+            // around the enemy king decided how many subtrees the node paid
+            // for, whatever number the cap named.
+            const int limit = sp == SPELL_FREEZE
+                              ? freeze_gate_cap(freezeEffects, int(baseEnd - baseStart))
+                              : MaxJumpGates;
             if (n > limit)
             {
                 std::partial_sort(
