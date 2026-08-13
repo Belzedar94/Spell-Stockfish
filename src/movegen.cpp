@@ -267,6 +267,15 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
         if (dominate)
             allGates = dominant_freeze_gates(pos, Us, allGates);
 
+        // Same treatment for jump gates, where the classes are degenerate: a
+        // gate that opens no line and crosses no double push enables nothing
+        // the stage would keep, so it only ate budget. Tied to pruneUselessGates
+        // for the same reason the emission-side skip below is: away from the
+        // root those gates produce nothing at all, but at ply 0 they still
+        // produce the off-path copies searchmoves may force.
+        if (limitGates && prune && sp == SPELL_JUMP)
+            allGates = effective_jump_gates(pos, Us, allGates);
+
         Square gateList[SQUARE_NB];
         int    gateCount = 0;
 
