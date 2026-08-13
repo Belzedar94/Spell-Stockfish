@@ -53,9 +53,19 @@ Key enpassant[FILE_NB];
 Key castling[CASTLING_RIGHT_NB];
 Key side, noPawns;
 
-// Spell chess: active zone gate (SQ_NONE contributes nothing), cooldown value
-// and hand count are all part of the position identity (repetition, TT).
-Key spellGate[COLOR_NB][SPELL_NB][SQUARE_NB];
+// Spell chess: cooldown value and hand count are part of the position
+// identity verbatim (repetition, TT). An active zone enters the key by its
+// EFFECT rather than by the square its gate sits on:
+//   JUMP   - spellGate[c][s], the gate square itself. Its transparency is
+//            square identity (an empty gate still bans quiet landings and
+//            still opens slider rays), so no two jump gates are equivalent.
+//   FREEZE - spellFrozen[c][s], one key per enemy piece the 3x3 zone catches.
+//            Empty zone squares contribute nothing: a freeze denies no
+//            squares (moving into a zone is legal) and expires after the
+//            victim's single reply, so the pieces it silences ARE its whole
+//            effect on the future (SPELL_SPEC.md 2.1, spell_order.h).
+Key spellGate[COLOR_NB][SQUARE_NB];
+Key spellFrozen[COLOR_NB][SQUARE_NB];
 Key spellCd[COLOR_NB][SPELL_NB][SPELL_COOLDOWN + 1];
 Key spellHand[COLOR_NB][SPELL_NB][8];
 
@@ -63,10 +73,37 @@ Key spellHand[COLOR_NB][SPELL_NB][8];
 
 namespace {
 
-// Fold the full spell state of one color/spell pair into a key
+// Board-independent part of one color/spell pair's contribution to the key.
+// The freeze zone is deliberately absent: it is folded in separately by
+// freeze_effect_key(), which needs the board to know what the zone catches.
 inline Key spell_state_key(Color c, SpellType sp, Square gate, int cd, int hand) {
-    return (gate != SQ_NONE ? Zobrist::spellGate[c][sp][gate] : 0) ^ Zobrist::spellCd[c][sp][cd]
-         ^ Zobrist::spellHand[c][sp][hand];
+    return (sp == SPELL_JUMP && gate != SQ_NONE ? Zobrist::spellGate[c][gate] : 0)
+         ^ Zobrist::spellCd[c][sp][cd] ^ Zobrist::spellHand[c][sp][hand];
+}
+
+// Hash of every live freeze zone by its effect: the enemy pieces it silences.
+// Two gates that catch the same pieces produce the same key, so the lines they
+// open — which transpose to a byte-identical position the moment the zone
+// expires — share transposition table entries instead of being searched twice.
+//
+// This never merges two positions of the same line, so repetition detection is
+// untouched: a live zone forces its owner's cooldown to 2 or 3, the cooldown
+// ticks down once per opponent move, and the only way back up is a cast, which
+// spends a charge from the hand. Cooldown and hand are both hashed verbatim, so
+// two positions at least four plies apart agree on them only when the cooldown
+// has bottomed out at 0 — and a cooldown of 0 forces both gates to SQ_NONE.
+Key freeze_effect_key(const Position& pos) {
+
+    Key k = 0;
+    for (Color c : {WHITE, BLACK})
+    {
+        const Square g = pos.spell_gate(c, SPELL_FREEZE);
+        if (g == SQ_NONE)
+            continue;
+        for (Bitboard b = FreezeZoneBB[g] & pos.pieces(~c); b;)
+            k ^= Zobrist::spellFrozen[c][pop_lsb(b)];
+    }
+    return k;
 }
 
 }  // namespace
@@ -159,15 +196,20 @@ void Position::init() {
     Zobrist::noPawns = rng.rand<Key>();
 
     for (Color c : {WHITE, BLACK})
+    {
+        for (Square s = SQ_A1; s <= SQ_H8; ++s)
+        {
+            Zobrist::spellGate[c][s]   = rng.rand<Key>();
+            Zobrist::spellFrozen[c][s] = rng.rand<Key>();
+        }
         for (int sp = 0; sp < SPELL_NB; ++sp)
         {
-            for (Square s = SQ_A1; s <= SQ_H8; ++s)
-                Zobrist::spellGate[c][sp][s] = rng.rand<Key>();
             for (int cd = 0; cd <= SPELL_COOLDOWN; ++cd)
                 Zobrist::spellCd[c][sp][cd] = rng.rand<Key>();
             for (int n = 0; n < 8; ++n)
                 Zobrist::spellHand[c][sp][n] = rng.rand<Key>();
         }
+    }
 
     // Prepare the cuckoo tables
     cuckoo.fill(0);
@@ -662,6 +704,8 @@ void Position::set_state() const {
         for (int sp = 0; sp < SPELL_NB; ++sp)
             st->key ^= spell_state_key(c, SpellType(sp), spell_gate(c, SpellType(sp)),
                                        st->spellCooldown[c][sp], st->spellHand[c][sp]);
+
+    st->key ^= freeze_effect_key(*this);
 
     st->materialKey = compute_material_key();
 }
@@ -1215,6 +1259,11 @@ void Position::do_move(Move                      m,
 
     Key k = st->key ^ Zobrist::side;
 
+    // A live freeze zone is hashed by the enemy pieces it catches, so its
+    // contribution depends on the board: toggle it out here, while nothing has
+    // moved yet, and back in once the new board and the new zones are final.
+    k ^= freeze_effect_key(*this);
+
     // Copy some fields of the old state to our new StateInfo object except the
     // ones which are going to be recalculated from scratch anyway and then switch
     // our state pointer to point to the new (ready to be updated) state.
@@ -1440,15 +1489,6 @@ void Position::do_move(Move                      m,
                                      st->spellCooldown[c][sp], st->spellHand[c][sp]);
     }
 
-// first_entry lives in tt.cpp, which drags the thread pool; the bindings
-// build never passes a TT, so the prefetch is compiled out with it.
-#ifndef SPELL_RULES_ONLY
-    if (tt)
-        prefetch(tt->first_entry(adjust_key50(k)));
-#endif
-    // Update the key with the final value
-    st->key = k;
-
     if (history)
     {
         prefetch(&history->pawn_entry(*this)[pc][to]);
@@ -1484,6 +1524,20 @@ void Position::do_move(Move                      m,
 
     // Set capture piece
     st->capturedPiece = captured;
+
+    // Board and zones are both final: fold the freeze effect back in. This is
+    // the last term of the key, hence also the latest point the transposition
+    // table entry can be prefetched.
+    k ^= freeze_effect_key(*this);
+
+// first_entry lives in tt.cpp, which drags the thread pool; the bindings
+// build never passes a TT, so the prefetch is compiled out with it.
+#ifndef SPELL_RULES_ONLY
+    if (tt)
+        prefetch(tt->first_entry(adjust_key50(k)));
+#endif
+    // Update the key with the final value
+    st->key = k;
 
     // Spell-NNUE v2: emit the spell feature flips of this move (cast, ticks,
     // zone expiries, pieces entering/leaving live zones) by diffing the
@@ -1521,6 +1575,10 @@ void Position::do_move(Move                      m,
             stp = stp->previous->previous;
             if (stp->key == st->key)
             {
+                // Effect-canonical zone hashing must never invent a repetition:
+                // matching keys on one line still mean matching zones. See
+                // freeze_effect_key() for why the cooldown/hand pair enforces it.
+                assert(std::memcmp(stp->spellGate, st->spellGate, sizeof(st->spellGate)) == 0);
                 st->repetition = stp->repetition ? -i : i;
                 break;
             }
@@ -2006,6 +2064,10 @@ void Position::do_null_move(StateInfo& newSt, DirtySpell* dsp) {
     {
         const Color them = ~sideToMove;
 
+        // The board does not move here, so the freeze effect only has to be
+        // toggled around the zone changes below.
+        st->key ^= freeze_effect_key(*this);
+
         for (Color c : {WHITE, BLACK})
             for (int sp = 0; sp < SPELL_NB; ++sp)
                 st->key ^= spell_state_key(c, SpellType(sp), Square(st->spellGate[c][sp]),
@@ -2029,6 +2091,8 @@ void Position::do_null_move(StateInfo& newSt, DirtySpell* dsp) {
             for (int sp = 0; sp < SPELL_NB; ++sp)
                 st->key ^= spell_state_key(c, SpellType(sp), Square(st->spellGate[c][sp]),
                                            st->spellCooldown[c][sp], st->spellHand[c][sp]);
+
+        st->key ^= freeze_effect_key(*this);
     }
 
     if (dsp)
