@@ -2058,25 +2058,35 @@ TimePoint Search::Worker::elapsed() const {
 }
 
 Value Search::Worker::evaluate(const Position& pos) {
+
+    Value v;
+
     // Spell-NNUE v2 (SPL2 EvalFile): the modern chassis with the SpellKAv2
     // feature set; blended exactly like the stock path.
     if (useSpellV2)
     {
         if (!spellV2Refresh)
             spellV2Refresh = std::make_unique<Eval::NNUE::SpellV2::Caches>();
-        return Eval::NNUE::SpellV2::evaluate(pos, accumulatorStack, *spellV2Refresh,
-                                             optimism[pos.side_to_move()]);
+        v = Eval::NNUE::SpellV2::evaluate(pos, accumulatorStack, *spellV2Refresh,
+                                          optimism[pos.side_to_move()]);
     }
 
     // With a legacy spell net loaded (EvalFile), evaluation matches the
     // reference engine exactly (including its outer scaling); the stock
     // chess networks remain the spell-blind bootstrap fallback.
-    if (SpellNNUE::loaded())
-        return std::clamp(SpellNNUE::evaluate_scaled(pos, &spellRefreshCache),
-                          VALUE_TB_LOSS_IN_MAX_PLY + 1, VALUE_TB_WIN_IN_MAX_PLY - 1);
+    else if (SpellNNUE::loaded())
+        v = SpellNNUE::evaluate_scaled(pos, &spellRefreshCache);
 
-    return Eval::evaluate(network[numaAccessToken], pos, accumulatorStack, refreshTable,
-                          optimism[pos.side_to_move()]);
+    else
+        v = Eval::evaluate(network[numaAccessToken], pos, accumulatorStack, refreshTable,
+                           optimism[pos.side_to_move()]);
+
+    // The explicit hand term rides on top of whichever network answered: this
+    // is the single funnel every static evaluation passes through, so it is
+    // added exactly once, and the spell hand is part of the Zobrist key, so
+    // transposition-table static evals stay consistent with it.
+    return std::clamp(v + Eval::spell_hand_value(pos), VALUE_TB_LOSS_IN_MAX_PLY + 1,
+                      VALUE_TB_WIN_IN_MAX_PLY - 1);
 }
 
 namespace {

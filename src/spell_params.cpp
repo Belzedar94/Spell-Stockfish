@@ -60,6 +60,14 @@ int SpellRazorGuard           = 0;
 int SpellFreezeGateEffectOnly = 0;
 int SpellDominateCaptures     = 1;
 
+// Explicit spell-hand value — defaults read off the static-vs-search
+// measurement documented in the header
+int SpellHandFreezeValue   = 0;
+int SpellHandJumpValue     = 0;
+int SpellHandFreezeReserve = 230;
+int SpellHandJumpReserve   = 115;
+int SpellHandPhaseEndPct   = 25;
+
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
@@ -85,5 +93,10 @@ TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
 TUNE(SetRange(0, 1), SpellFreezeGateEffectOnly);
 TUNE(SetRange(0, 1), SpellDominateCaptures);
+TUNE(SetRange(0, 400), SpellHandFreezeValue);
+TUNE(SetRange(0, 400), SpellHandJumpValue);
+TUNE(SetRange(0, 800), SpellHandFreezeReserve);
+TUNE(SetRange(0, 800), SpellHandJumpReserve);
+TUNE(SetRange(0, 100), SpellHandPhaseEndPct);
 
 }  // namespace Stockfish

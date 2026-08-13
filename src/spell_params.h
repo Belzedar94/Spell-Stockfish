@@ -128,6 +128,57 @@ extern int SpellFreezeGateEffectOnly;  // 0 (off)
 // there exactly as it does for quiets.
 extern int SpellDominateCaptures;  // 0 (off)
 
+// ---------------------------------------------------------------------------
+// Explicit spell-hand value (docs/spell-game-first-strategy.md, axis 2).
+//
+// Measured against run5rl before writing a line of it, comparing the engine's
+// own static eval (SpellNNUE::evaluate_scaled, i.e. exactly what
+// Search::Worker::evaluate returns) against its depth-14 score, ablating one
+// side's holding and averaging the White-side and Black-side deltas:
+//
+//   * The net already prices the hand, with the right sign and a phase decay
+//     of its own: 47.6cp per freeze at startpos, 45.4cp with the queens off,
+//     28-30cp in a bare-board ending. Per jump: 42-95cp opening/middlegame,
+//     27-36cp in an ending.
+//   * At the margin that price is CORRECT. Over the four interior steps
+//     (5->4, 4->3, 3->2, 2->1 freezes) on two positions the depth-14 search
+//     averages 47.0cp against a static 47.5cp. A linear hand term would
+//     therefore double-count a quantity the net already has right, which is
+//     why SpellHandFreezeValue/SpellHandJumpValue default to 0.
+//   * The one step the net gets wrong is the LAST one. Its pocket features are
+//     linear, so it charges the same 47.6cp for the fifth freeze and for the
+//     only one left, while the search pays ~233cp (startpos, d14) and ~99cp
+//     (Italian, d10) to keep a freeze rather than run out. Jumps: static
+//     107-124cp against a search 127-177cp. Running dry is a cliff a linear
+//     pocket cannot see, and it is where the doc's ~70cp-per-freeze figure
+//     (a five-freeze ablation, 357/5) actually comes from.
+//
+// Hence the shape below: a linear part (off by default, kept because it is the
+// primitive SPSA can shape) plus a RESERVE bonus for still holding at least one
+// of a spell type, both applied to the hand DIFFERENCE, both phase-scaled. With
+// the defaults the term is exactly zero whenever both sides still hold a spell
+// of each type, so it cannot perturb the net's balance in a normal position —
+// it only fires on the depletion asymmetry it was measured on.
+//
+// Units are internal eval units, the same the NNUE output is in: at full
+// material one displayed centipawn is ~3.82 of them (UCIEngine::to_cp).
+extern int SpellHandFreezeValue;    // 0:   per freeze of hand difference
+extern int SpellHandJumpValue;      // 0:   per jump of hand difference
+extern int SpellHandFreezeReserve;  // 230: ~60cp for still holding a freeze
+extern int SpellHandJumpReserve;    // 115: ~30cp for still holding a jump
+
+// Phase scale, percent of the full-material weight left on a bare board. The
+// measured residual on the last freeze is +54cp (Italian, d10) to +186cp
+// (startpos, d14) with a starting army and +6 to +11cp in the B+3P ending, a
+// steeper decay than the 0.61 the net's own hand value shows, so the floor
+// sits below it.
+extern int SpellHandPhaseEndPct;  // 25
+
+// Non-pawn material of the starting array, the top of the phase ramp:
+// 2 x (2N + 2B + 2R + Q) with SF piece values. Kings are commoners and are
+// deliberately excluded from non_pawn_material().
+constexpr int SpellHandPhaseFullNpm = 16604;
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

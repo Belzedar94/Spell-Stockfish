@@ -31,11 +31,49 @@
 #include "nnue/network.h"
 #include "nnue/nnue_misc.h"
 #include "position.h"
+#include "spell_params.h"
 #include "types.h"
 #include "uci.h"
 #include "nnue/nnue_accumulator.h"
 
 namespace Stockfish {
+
+// Spell chess: the value of the spells still in hand, from the side to move.
+//
+// The networks already price the hand linearly and already decay it with the
+// phase, and at the margin they price it correctly (see spell_params.h for the
+// measurement). What they cannot express is depletion: a linear pocket feature
+// charges the same for the fifth freeze and for the last one, while the search
+// pays several times more to avoid running dry. So the default configuration is
+// a pure reserve term — zero whenever both sides still hold a spell of each
+// type — and the linear coefficients are left for SPSA to discover.
+Value Eval::spell_hand_value(const Position& pos) {
+
+    const Color us = pos.side_to_move(), them = ~us;
+
+    const int freeze = pos.spells_in_hand(us, SPELL_FREEZE) - pos.spells_in_hand(them, SPELL_FREEZE);
+    const int jump   = pos.spells_in_hand(us, SPELL_JUMP) - pos.spells_in_hand(them, SPELL_JUMP);
+
+    const int freezeReserve = (pos.spells_in_hand(us, SPELL_FREEZE) > 0)
+                            - (pos.spells_in_hand(them, SPELL_FREEZE) > 0);
+    const int jumpReserve =
+      (pos.spells_in_hand(us, SPELL_JUMP) > 0) - (pos.spells_in_hand(them, SPELL_JUMP) > 0);
+
+    const int hand = SpellHandFreezeValue * freeze + SpellHandJumpValue * jump
+                   + SpellHandFreezeReserve * freezeReserve + SpellHandJumpReserve * jumpReserve;
+
+    if (!hand)
+        return VALUE_ZERO;
+
+    // A spell is worth more with a full army on the board than in a pawn
+    // ending: full weight at the starting non-pawn material, decaying to
+    // SpellHandPhaseEndPct of it on a bare board.
+    const int npm   = std::min(int(pos.non_pawn_material()), SpellHandPhaseFullNpm);
+    const int scale = SpellHandPhaseEndPct
+                    + (100 - SpellHandPhaseEndPct) * npm / SpellHandPhaseFullNpm;
+
+    return Value(hand * scale / 100);
+}
 
 // Evaluate is the evaluator for the outer world. It returns a static evaluation
 // of the position from the point of view of the side to move.

@@ -48,6 +48,12 @@ Value evaluate(const NNUE::Network&           network,
                Eval::NNUE::AccumulatorStack&  accumulators,
                Eval::NNUE::AccumulatorCaches& caches,
                int                            optimism);
+
+// Spell chess: explicit value of the spells still in hand, side-to-move
+// perspective, in the same internal units the networks return. Added on top of
+// whichever network is active (see Search::Worker::evaluate), so it is applied
+// exactly once per static evaluation.
+Value spell_hand_value(const Position& pos);
 }  // namespace Eval
 
 }  // namespace Stockfish
