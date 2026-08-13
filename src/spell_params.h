@@ -97,7 +97,10 @@ extern int SpellNoPenaltyPV;  // 0 (off)
 extern int SpellAspirationPct;  // 100
 
 // Extra margin (cp) added to the SEE pruning threshold of GATED captures:
-// positive values prune fewer spell captures.
+// positive values prune fewer spell captures. Note this pushes the SEE cut
+// point of a gated capture in the OPPOSITE direction to SpellCastSeePrice
+// below, and at the very same expression (search.cpp, step 14); the two are
+// degenerate there, so do not SPSA both at once.
 extern int SpellCaptureSeeMargin;  // 0
 
 // Disable internal iterative reductions: at huge branching, a missing TT
@@ -127,6 +130,24 @@ extern int SpellFreezeGateEffectOnly;  // 0 (off)
 // capture; the domination argument (superset frozen, subset blocked) holds
 // there exactly as it does for quiets.
 extern int SpellDominateCaptures;  // 0 (off)
+
+// Price (cp) of the charge a gated move spends, charged at the SEE cut
+// points. The exchange loop credits a cast with everything it does INSIDE the
+// exchange (frozen defenders miss the recapture, the jump gate opens rays)
+// and debits nothing for the charge it burns, so a gated capture that "wins a
+// pawn" really wins a pawn minus a spell.
+//
+// The hand is measured material. Re-measured for these defaults over six
+// quiet openings at depth 14: dropping one side's five freezes costs 286-458
+// (mean 72 per freeze) and its two jumps 167-411 (mean 124 per jump), which
+// reproduces docs/spell-game-first-strategy.md 2.1. The defaults take those
+// numbers at face value in SEE units, which is the CONSERVATIVE reading: the
+// scale that produced them deflates a pawn to ~55, so a full conversion would
+// price a freeze near 270. Deliberate — the price only has to move the cut
+// point, and a cast worth casting pays it several times over. The SPSA range
+// reaches the full-conversion hypothesis if the games ask for it.
+extern int SpellCastSeePrice;      // 70 (freeze)
+extern int SpellCastSeePriceJump;  // 120 (jump)
 
 }  // namespace Stockfish
 

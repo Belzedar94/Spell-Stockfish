@@ -1302,11 +1302,13 @@ moves_loop:  // When in check, search starts here
                 // SEE based pruning for captures and checks
                 // Avoid pruning sacrifices of our last piece for stalemate
                 // (gated captures optionally get extra margin: their SEE
-                // undervalues the tempo/tactics of the cast)
+                // undervalues the tempo/tactics of the cast). cast_see_price
+                // pulls the same cut point the other way, for the charge the
+                // exchange spends and never prices.
                 int margin = 175 * depth + captHist * 34 / 1024
                            + (move.is_spell() ? SpellCaptureSeeMargin : 0);
                 if ((alpha >= VALUE_DRAW || pos.non_pawn_material(us) != PieceValue[movedPiece])
-                    && !pos.see_ge(move, -margin))
+                    && !pos.see_ge(move, cast_see_price(move) - margin))
                     continue;
             }
             else if (!ss->followPV || !PvNode)
@@ -1352,7 +1354,11 @@ moves_loop:  // When in check, search starts here
 
                 lmrDepth = std::max(lmrDepth, 0);
 
-                // Prune moves with negative SEE
+                // Prune moves with negative SEE. Deliberately NOT cast-priced:
+                // a quiet cast has SEE 0 by construction, so any price at all
+                // would prune every gated quiet whose lmrDepth is 0 or 1 —
+                // a blanket horizon ban on quiet casts (SpellQuietMinDepth's
+                // job) rather than a correction to an exchange.
                 if (!pos.see_ge(move, -25 * lmrDepth * lmrDepth))
                     continue;
             }
@@ -1965,8 +1971,9 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
                 }
 
                 // If static exchange evaluation is low enough
-                // we can prune this move.
-                if (!pos.see_ge(move, alpha - futilityBase))
+                // we can prune this move (a gated one pays for its charge:
+                // qsearch is exactly where nothing else can pay for it).
+                if (!pos.see_ge(move, alpha - futilityBase + cast_see_price(move)))
                 {
                     bestValue = std::max(bestValue, std::min(alpha, futilityBase));
                     continue;
@@ -1978,7 +1985,7 @@ Value Search::Worker::qsearch(Position& pos, Stack* ss, Value alpha, Value beta,
                 continue;
 
             // Do not search moves with bad enough SEE values
-            if (!pos.see_ge(move, -74))
+            if (!pos.see_ge(move, cast_see_price(move) - 74))
                 continue;
         }
 

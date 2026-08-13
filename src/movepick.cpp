@@ -405,8 +405,11 @@ top:
         if (select([&]() {
                 // A gated capture with an irrelevant gate is dominated by the
                 // bare capture; the generator already refused to build one
-                // (except at the root, where searchmoves may force it)
-                if (pos.see_ge(*cur, -cur->value / 18))
+                // (except at the root, where searchmoves may force it).
+                // Cast-aware SEE: a gated capture also pays for its charge, so
+                // an exchange that merely breaks even is not a good capture —
+                // the bare capture, if it exists, is the one that is.
+                if (pos.see_ge(*cur, cast_see_price(*cur) - cur->value / 18))
                     return true;
                 std::swap(*endBadCaptures++, *cur);
                 return false;
@@ -540,7 +543,9 @@ top:
         return select([]() { return true; });
 
     case PROBCUT :
-        return select([&]() { return pos.see_ge(*cur, threshold); });
+        // ProbCut's premise is that this capture alone already beats beta;
+        // a gated one has to beat it after paying for the charge too.
+        return select([&]() { return pos.see_ge(*cur, threshold + cast_see_price(*cur)); });
     }
 
     assert(false);

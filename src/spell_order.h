@@ -155,6 +155,26 @@ inline bool is_useless_spell(const Position& pos, Move m) {
     return !(path & square_bb(m.gate_sq()));
 }
 
+// Resource price of the charge a gated move burns, in the units SEE speaks
+// (centipawns), and zero for a plain move — so every call site can add it to
+// its threshold unconditionally.
+//
+// Position::see_ge already folds the cast's effect INTO the exchange: the
+// pieces the new zone freezes are held out of the recapture, the jump gate
+// opens rays for both colors. What it deliberately leaves out is the price of
+// the charge, which is real and measured — removing one side's five freezes
+// moves the eval by ~350cp, ~70cp per freeze and ~110cp per jump
+// (docs/spell-game-first-strategy.md 2.1). A gated capture that comes out of
+// the exchange level therefore does not come out level: it is a spell down.
+//
+// Adding the price to the THRESHOLD is the same test as subtracting it from
+// the value, since see_ge(m, t) asks SEE(m) >= t and we want SEE(m) - price >= t.
+inline int cast_see_price(Move m) {
+    if (!m.is_spell())
+        return 0;
+    return m.spell_type() == SPELL_JUMP ? SpellCastSeePriceJump : SpellCastSeePrice;
+}
+
 // A freeze cast is "tactical" (reference policy: treated like a capture or
 // check throughout pruning, reductions and extensions) when its zone
 // touches the enemy king, silences an attacker of our own king (defensive
