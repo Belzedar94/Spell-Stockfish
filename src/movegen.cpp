@@ -225,6 +225,29 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
     const Bitboard eRing =
       eksq != SQ_NONE ? Attacks::attacks_bb<KING>(eksq) | square_bb(eksq) : Bitboard(0);
 
+    // King-danger context for the gate budget, computed once and only for the
+    // stage that has a budget. Both scores are otherwise blind to it: they
+    // measure what a cast does to the ENEMY king, which is the wrong question
+    // while ours is the one under attack.
+    Bitboard ourRoyalAttackers = 0, royalDefense = 0;
+    bool     attackPressure = false;
+
+    if (limitGates)
+    {
+        if (pos.count<KING>(Us))
+        {
+            const Square   ksq = pos.square<KING>(Us);
+            const Bitboard att = pos.attackers_to(ksq) & pos.pieces(~Us);
+
+            if (king_exposed(popcount(att)))
+            {
+                ourRoyalAttackers = att;
+                royalDefense      = royal_defense_targets(ksq, att);
+            }
+        }
+        attackPressure = eksq != SQ_NONE && king_exposed(popcount(pos.pieces(Us) & eRing));
+    }
+
     // Squares revealed to each own slider by lifting one blocker, scored once
     int  jumpScore[SQUARE_NB];
     bool jumpScoreReady = false;
@@ -273,7 +296,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
 
             if (sp == SPELL_JUMP && !jumpScoreReady)
             {
-                jump_gate_scores(pos, Us, eksq, jumpScore);
+                jump_gate_scores(pos, Us, eksq, royalDefense, jumpScore);
                 jumpScoreReady = true;
             }
 
@@ -292,7 +315,8 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
                     if (SpellFreezeGateEffectOnly && prune && !(zone & pos.pieces(~Us)))
                         continue;
 
-                    s = freeze_gate_score(pos, Us, g, eksq, eRing);
+                    s =
+                      freeze_gate_score(pos, Us, g, eksq, eRing, ourRoyalAttackers, attackPressure);
                     if (zone & eRing & (SpellFreezeGateEffectOnly ? pos.pieces(~Us) : ~Bitboard(0)))
                         ++ringCount;
                 }

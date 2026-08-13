@@ -41,7 +41,21 @@ namespace Stockfish {
 // king may still move into a zone). SpellFreezeGateEffectOnly requires an
 // enemy piece to stand in the overlap, so the bonus tracks what the cast
 // actually silences.
-inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eksq, Bitboard eRing) {
+//
+// Every term above is aimed at the ENEMY king, which is why the two
+// king-danger terms exist. ourRoyalAttackers is empty unless our own king is
+// exposed, and then a zone that silences one of its attackers is the parry;
+// attackPressure is false unless the enemy king is the one in danger, and then
+// a zone that silences a piece standing in its ring is the attacking freeze
+// that removes a defender instead of a square. Both are free: the caller
+// already holds the attacker set and the ring.
+inline int freeze_gate_score(const Position& pos,
+                             Color           us,
+                             Square          g,
+                             Square          eksq,
+                             Bitboard        eRing,
+                             Bitboard        ourRoyalAttackers,
+                             bool            attackPressure) {
 
     const Bitboard zone = FreezeZoneBB[g];
     const Bitboard them = pos.pieces(~us);
@@ -53,6 +67,10 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
         s += SpellGateKingBonus;
     if (zone & eRing & (SpellFreezeGateEffectOnly ? them : ~Bitboard(0)))
         s += SpellGateKingRingBonus;
+    if (zone & ourRoyalAttackers)
+        s += SpellKingDangerFreezeBonus;
+    if (attackPressure && (zone & eRing & them))
+        s += SpellKingDangerFreezeBonus;
     return s;
 }
 
@@ -155,17 +173,55 @@ inline bool is_useless_spell(const Position& pos, Move m) {
     return !(path & square_bb(m.gate_sq()));
 }
 
-// A freeze cast is "tactical" (reference policy: treated like a capture or
-// check throughout pruning, reductions and extensions) when its zone
-// touches the enemy king, silences an attacker of our own king (defensive
-// freeze), or freezes an enemy piece that is major-valued, attacked by us,
-// or attacking our king. ourRoyalAttackers/enemyRoyal/ourRoyal are
-// precomputed once per node.
-inline bool is_tactical_spell(
-  const Position& pos, Move m, Bitboard ourRoyalAttackers, Square enemyRoyal, Square ourRoyal) {
+// Is a king in enough danger for the critical lines to go first?
+//
+// The two sides are not symmetric and cannot share a measurement. Our own king
+// is counted by its attackers, and with SpellKingDangerAttackers = 1 that is
+// exactly "in check" — the cheapest reading, and the one the search already
+// has in hand; raising the knob asks for a real attack instead of a single
+// checking piece. The enemy king cannot be read that way at all: this is a
+// capture-the-king variant, so an enemy king with attackers is not in danger,
+// it is already lost and we simply take it. What means something there is how
+// much of our army already stands in its ring, which is one AND against a
+// bitboard the gate scoring computes anyway.
+inline bool king_exposed(int count) { return count >= SpellKingDangerAttackers; }
 
-    if (!m.is_spell() || m.spell_type() != SPELL_FREEZE)
+// Squares whose occupation answers an attack on our royal: the attackers
+// themselves (take the checker) and the squares between a sliding attacker and
+// the king (stand in its way). Not the king square — the royal capture ends
+// the game, so nothing defends it, there is no recapture.
+inline Bitboard royal_defense_targets(Square ourRoyal, Bitboard attackers) {
+
+    Bitboard targets = attackers;
+    for (Bitboard b = attackers; b;)
+        targets |= Attacks::between_bb(pop_lsb(b), ourRoyal);
+    return targets & ~square_bb(ourRoyal);
+}
+
+// A cast is "tactical" (reference policy: treated like a capture or check
+// throughout pruning, reductions and extensions) when it is a freeze whose
+// zone touches the enemy king, silences an attacker of our own king
+// (defensive freeze), or freezes an enemy piece that is major-valued,
+// attacked by us, or attacking our king — or a JUMP whose transparency is
+// what answers an attack on our exposed king. ourRoyalAttackers, enemyRoyal,
+// ourRoyal and royalDefense are precomputed once per node; royalDefense is
+// empty unless our king is exposed.
+inline bool is_tactical_spell(const Position& pos,
+                              Move            m,
+                              Bitboard        ourRoyalAttackers,
+                              Square          enemyRoyal,
+                              Square          ourRoyal,
+                              Bitboard        royalDefense) {
+
+    if (!m.is_spell())
         return false;
+
+    // The defensive jump, the one cast the classification had no branch for.
+    // Landing on a defence target settles it: the generator only keeps gated
+    // copies that travel through their gate, so the piece got there on the
+    // transparency and nothing else.
+    if (m.spell_type() == SPELL_JUMP)
+        return bool(royalDefense & square_bb(m.to_sq()));
 
     const Color    us   = pos.side_to_move();
     const Color    them = ~us;
@@ -205,8 +261,16 @@ inline bool is_tactical_spell(
 
 // Fills out[64] with the reveal value of lifting each blocker for our
 // sliders: enemy material newly attacked, plus the king bonus if the enemy
-// king becomes attacked. Non-blocker squares score 0.
-inline void jump_gate_scores(const Position& pos, Color us, Square eksq, int out[SQUARE_NB]) {
+// king becomes attacked, plus SpellKingDangerJumpBonus if the reveal reaches a
+// square that answers an attack on our own exposed king. Non-blocker squares
+// score 0.
+//
+// Same asymmetry as the freeze score: everything the reveal is measured
+// against belongs to the opponent, so with our king exposed the gate that
+// unblocks the answer scores 0 like the thirty other occupied squares and the
+// budget picks among them by nothing.
+inline void jump_gate_scores(
+  const Position& pos, Color us, Square eksq, Bitboard royalDefense, int out[SQUARE_NB]) {
 
     std::fill_n(out, SQUARE_NB, 0);
 
@@ -232,6 +296,8 @@ inline void jump_gate_scores(const Position& pos, Color us, Square eksq, int out
                 s += PieceValue[pos.piece_on(pop_lsb(t))];
             if (eksq != SQ_NONE && (reveal & square_bb(eksq)))
                 s += SpellGateKingBonus;
+            if (reveal & royalDefense)
+                s += SpellKingDangerJumpBonus;
             out[b] += s;
         }
     }

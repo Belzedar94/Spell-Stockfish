@@ -1179,20 +1179,38 @@ moves_loop:  // When in check, search starts here
       (ss - 1)->continuationHistory, (ss - 2)->continuationHistory, (ss - 3)->continuationHistory,
       (ss - 4)->continuationHistory, (ss - 5)->continuationHistory, (ss - 6)->continuationHistory};
 
-    // Spell chess: royal context for classifying tactical freezes (zone
-    // touches the enemy king, silences our king's attackers, or freezes an
-    // attacked/major/king-attacking enemy piece), computed once per node
-    Bitboard ourRoyalAttackers = 0;
+    // Spell chess: royal context for classifying tactical casts (a freeze
+    // whose zone touches the enemy king, silences our king's attackers or
+    // freezes an attacked/major/king-attacking enemy piece; a jump that
+    // answers an attack on our exposed king), computed once per node.
+    //
+    // The precompute also runs when only the JUMP is castable: the
+    // classification is no longer freeze-only, and the same guard feeds
+    // allowSpells, which was blind to our king being under attack in exactly
+    // the positions where the jump is the only cast left.
+    Bitboard ourRoyalAttackers = 0, royalDefense = 0;
     Square   ourRoyal = SQ_NONE, enemyRoyal = SQ_NONE;
-    if (pos.can_cast(us, SPELL_FREEZE))
+    bool     kingDanger = false;
+    if (pos.can_cast(us, SPELL_FREEZE) || pos.can_cast(us, SPELL_JUMP))
     {
         if (pos.count<KING>(us))
         {
             ourRoyal          = pos.square<KING>(us);
             ourRoyalAttackers = pos.attackers_to(ourRoyal) & pos.pieces(~us);
+            if (king_exposed(popcount(ourRoyalAttackers)))
+            {
+                royalDefense = royal_defense_targets(ourRoyal, ourRoyalAttackers);
+                kingDanger   = true;
+            }
         }
         if (pos.count<KING>(~us))
+        {
             enemyRoyal = pos.square<KING>(~us);
+            kingDanger =
+              kingDanger
+              || king_exposed(popcount(
+                pos.pieces(us) & (Attacks::attacks_bb<KING>(enemyRoyal) | square_bb(enemyRoyal))));
+        }
     }
 
     // Relevance gate for the spell stage: PV nodes, nodes with our king
@@ -1251,10 +1269,10 @@ moves_loop:  // When in check, search starts here
         movedPiece = pos.moved_piece(move);
         givesCheck = pos.gives_check(move);
 
-        // A tactical freeze is treated like a capture or a check throughout
+        // A tactical cast is treated like a capture or a check throughout
         // pruning, reductions and extensions (reference policy)
         const bool tacticalSpell =
-          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal);
+          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal, royalDefense);
 
         // Capturing the king ends the game: the terminal move is never pruned
         const bool royalCapture = capture && type_of(pos.piece_on(move.to_sq())) == KING;
@@ -1470,9 +1488,10 @@ moves_loop:  // When in check, search starts here
             r += 1039;
 
         // Reduce tactical spells less, like other tactical moves
-        // (reference policy)
+        // (reference policy), and less still while a king is exposed:
+        // "calculate the critical lines first"
         if (tacticalSpell)
-            r -= SpellTacticalLmrBonus;
+            r -= SpellTacticalLmrBonus + (kingDanger ? SpellTacticalLmrKingDanger : 0);
 
         // Increase reduction if next ply has a lot of fail high
         if ((ss + 1)->cutoffCnt > 1)

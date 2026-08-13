@@ -37,6 +37,28 @@ extern int MaxJumpGates;    // 6
 extern int SpellGateKingBonus;      // 10000: zone covers the enemy king
 extern int SpellGateKingRingBonus;  // 50000: zone touches the enemy king ring
 
+// King danger: how many attackers make a king "exposed". 1 = our king is in
+// check, which is what the search already knows; higher asks for a real
+// attack. The same count reads the enemy king as pieces of OURS standing in
+// its ring, because in a capture-the-king variant an attacked enemy king is
+// not in danger, it is lost.
+extern int SpellKingDangerAttackers;  // 1
+
+// Added to a freeze gate whose zone silences an attacker of our exposed king
+// (the parry), or a defender standing in the ring of an enemy king under
+// pressure. It has to clear SpellGateKingRingBonus: a bare zone/ring overlap
+// currently outranks the only cast that answers a check by fifty to one.
+extern int SpellKingDangerFreezeBonus;  // 75000
+
+// Added to a jump gate whose reveal reaches a square that answers the attack
+// on our exposed king. The offensive reveal score is 0 for all of them.
+extern int SpellKingDangerJumpBonus;  // 12000
+
+// Extra LMR bonus (millidepth) for a tactical cast at a node where a king is
+// exposed: "calculate the critical lines first". 0 = off, on top of
+// SpellTacticalLmrBonus.
+extern int SpellTacticalLmrKingDanger;  // 0
+
 // Depth penalty (plies) for gated moves: the reference searches spell moves
 // shallower (PotionDepthPenaltyTactical/Quiet), which is where a large share
 // of its strength comes from.

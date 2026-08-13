@@ -32,6 +32,15 @@ int MaxJumpGates   = 4;
 int SpellGateKingBonus     = 11789;
 int SpellGateKingRingBonus = 60993;
 
+// 1 = "our king is in check", the cheapest reading and the one already in
+// hand. The freeze bonus clears SpellGateKingRingBonus (60993) plus the king
+// bonus (11789), so a parry outranks any speculative cast near the enemy king
+// while our own is under attack; the LMR context knob ships off.
+int SpellKingDangerAttackers   = 1;
+int SpellKingDangerFreezeBonus = 75000;
+int SpellKingDangerJumpBonus   = 12000;
+int SpellTacticalLmrKingDanger = 0;
+
 int SpellDepthPenaltyTactical = 1;
 int SpellDepthPenaltyQuiet    = 3;
 
@@ -65,6 +74,10 @@ TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
 TUNE(SetRange(1000, 30000), SpellGateKingBonus);
 TUNE(SetRange(5000, 120000), SpellGateKingRingBonus);
+TUNE(SetRange(1, 4), SpellKingDangerAttackers);
+TUNE(SetRange(0, 200000), SpellKingDangerFreezeBonus);
+TUNE(SetRange(0, 120000), SpellKingDangerJumpBonus);
+TUNE(SetRange(0, 3072), SpellTacticalLmrKingDanger);
 TUNE(SetRange(0, 3), SpellDepthPenaltyTactical);
 TUNE(SetRange(0, 4), SpellDepthPenaltyQuiet);
 TUNE(SetRange(0, 3072), SpellTacticalLmrBonus);
