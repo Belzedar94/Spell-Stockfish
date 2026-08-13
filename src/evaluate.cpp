@@ -31,11 +31,46 @@
 #include "nnue/network.h"
 #include "nnue/nnue_misc.h"
 #include "position.h"
+#include "spell_params.h"
 #include "types.h"
 #include "uci.h"
 #include "nnue/nnue_accumulator.h"
 
 namespace Stockfish {
+
+// Spell chess: what the open cooldown windows cost, from the side to move.
+//
+// Casting is the only way to put a spell on cooldown, and the cooldown ticks
+// once per full move, so the value left in it is the number of the owner's own
+// turns still to wait before that spell can answer again. The networks price a
+// cooldown as a step rather than as a ramp because they read it bitwise (see
+// spell_params.h for the measurement); this fills in the ramp.
+Value Eval::spell_cooldown_penalty(const Position& pos) {
+
+    const Color us      = pos.side_to_move();
+    int         penalty = 0;
+
+    for (Color c : {WHITE, BLACK})
+        for (SpellType sp : {SPELL_FREEZE, SPELL_JUMP})
+        {
+            const int cooldown = pos.spell_cooldown(c, sp);
+
+            // Nothing to wait for: the window is over, or the holding is empty
+            // and that spell is never coming back anyway.
+            if (!cooldown || !pos.spells_in_hand(c, sp))
+                continue;
+
+            int p = SpellCooldownPenalty * cooldown;
+
+            // Only exploitable while the opponent still has one to spend.
+            if (!pos.spells_in_hand(~c, sp))
+                p = p * SpellCooldownDisarmedPct / 100;
+
+            penalty += c == us ? -p : p;
+        }
+
+    return Value(penalty);
+}
 
 // Evaluate is the evaluator for the outer world. It returns a static evaluation
 // of the position from the point of view of the side to move.

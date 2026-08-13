@@ -60,6 +60,11 @@ int SpellRazorGuard           = 0;
 int SpellFreezeGateEffectOnly = 0;
 int SpellDominateCaptures     = 1;
 
+// Cooldown-window penalty — default at the low end of the measured band
+// documented in the header
+int SpellCooldownPenalty     = 38;
+int SpellCooldownDisarmedPct = 0;
+
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
@@ -85,5 +90,7 @@ TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
 TUNE(SetRange(0, 1), SpellFreezeGateEffectOnly);
 TUNE(SetRange(0, 1), SpellDominateCaptures);
+TUNE(SetRange(0, 200), SpellCooldownPenalty);
+TUNE(SetRange(0, 100), SpellCooldownDisarmedPct);
 
 }  // namespace Stockfish

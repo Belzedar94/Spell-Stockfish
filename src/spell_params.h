@@ -128,6 +128,52 @@ extern int SpellFreezeGateEffectOnly;  // 0 (off)
 // there exactly as it does for quiets.
 extern int SpellDominateCaptures;  // 0 (off)
 
+// ---------------------------------------------------------------------------
+// Cooldown-window penalty (docs/spell-game-first-strategy.md, axis 2).
+//
+// A cast sets that spell's cooldown to SPELL_COOLDOWN, and the cooldown ticks
+// once per full move, so casting buys a window of up to three of the caster's
+// OWN turns in which that spell cannot answer anything. The remaining cooldown
+// is exactly the length of that window, measured in the owner's turns. The
+// evaluation has no term for it: the resource spent is priced, the window is
+// not.
+//
+// Measured on run5rl before writing it, same protocol as everything else here
+// (SpellNNUE::evaluate_scaled, which is what Search::Worker::evaluate returns
+// for a legacy spell net, against the depth-10/12 score) on a BARE cooldown —
+// the zone has already expired, so only the wait is left. Two positions, cost
+// to the owner in displayed cp:
+//
+//     our freeze cooldown    static           d10           d12
+//     cd = 1                 -7.6 / +4.2    -11 /  -56    -80 /  +1
+//     cd = 2                -61.2 / -58.3     +8 /  -56   -51 / +85
+//     cd = 3                -70.4 / -60.4     -6 / -115  -125 / -57
+//
+// The net does charge for a cooldown, but as a STEP and not as a ramp: cd=1 is
+// nearly free (~5cp) while cd=2 already costs ~60cp. That is the shape of its
+// input rather than of the game — spell_nnue.cpp hashes the cooldown BITWISE
+// into two planes, so bit 1 (cd in {2,3}) can carry the learned weight and
+// bit 0 (cd in {1,3}) almost none. The search rows are one position each and
+// far too noisy to fit a curve on, but they never show cd=1 being free.
+//
+// So the term is a small penalty LINEAR in the remaining cooldown, which is
+// the one shape the net demonstrably does not have. Deliberately at the low
+// end: the point of the patch is the shape, SPSA sets the size.
+extern int SpellCooldownPenalty;  // 38 (~10cp) per remaining cooldown tick
+
+// The window only costs something if the opponent can play into it. Gated on
+// the opponent still HOLDING the symmetric spell rather than on can_cast():
+// the window lasts up to three of our turns, so what matters is whether they
+// have one to spend somewhere inside it, not whether they can cast this very
+// ply. A cooldown on a spell we have run out of is not scored at all — there
+// is nothing left to wait for.
+//
+// This knob is the percent of the penalty that survives when the opponent
+// cannot answer in kind: 0 keeps the gate, 100 removes it. Left for SPSA
+// because the direct measurement of the gate is confounded — emptying the
+// opponent's holding to disarm them changes far more than their readiness.
+extern int SpellCooldownDisarmedPct;  // 0
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
