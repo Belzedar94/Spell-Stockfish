@@ -1195,6 +1195,10 @@ moves_loop:  // When in check, search starts here
             enemyRoyal = pos.square<KING>(~us);
     }
 
+    // Spell chess: is our own freeze still doing its work? Only jumps are
+    // classified by it, so nodes without one in hand never ask.
+    const bool frozenSynergy = pos.can_cast(us, SPELL_JUMP) && jump_frozen_synergy(pos, us);
+
     // Relevance gate for the spell stage: PV nodes, nodes with our king
     // under attack (defensive freeze) and nodes whose static eval is
     // within SpellStageMargin of alpha search gated quiets; nodes failing
@@ -1251,10 +1255,10 @@ moves_loop:  // When in check, search starts here
         movedPiece = pos.moved_piece(move);
         givesCheck = pos.gives_check(move);
 
-        // A tactical freeze is treated like a capture or a check throughout
+        // A tactical cast is treated like a capture or a check throughout
         // pruning, reductions and extensions (reference policy)
         const bool tacticalSpell =
-          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal);
+          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal, frozenSynergy);
 
         // Capturing the king ends the game: the terminal move is never pruned
         const bool royalCapture = capture && type_of(pos.piece_on(move.to_sq())) == KING;

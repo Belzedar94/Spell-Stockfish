@@ -32,6 +32,10 @@ int MaxJumpGates   = 4;
 int SpellGateKingBonus     = 11789;
 int SpellGateKingRingBonus = 60993;
 
+// Above a rook reveal (1276) and below the enemy-king bonus: in the synergy
+// context two threats outweigh one major, a check still outweighs both
+int SpellJumpFrozenSynergy = 1500;
+
 int SpellDepthPenaltyTactical = 1;
 int SpellDepthPenaltyQuiet    = 3;
 
@@ -65,6 +69,7 @@ TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
 TUNE(SetRange(1000, 30000), SpellGateKingBonus);
 TUNE(SetRange(5000, 120000), SpellGateKingRingBonus);
+TUNE(SetRange(0, 20000), SpellJumpFrozenSynergy);
 TUNE(SetRange(0, 3), SpellDepthPenaltyTactical);
 TUNE(SetRange(0, 4), SpellDepthPenaltyQuiet);
 TUNE(SetRange(0, 3072), SpellTacticalLmrBonus);

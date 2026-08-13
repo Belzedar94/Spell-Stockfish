@@ -273,7 +273,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
 
             if (sp == SPELL_JUMP && !jumpScoreReady)
             {
-                jump_gate_scores(pos, Us, eksq, jumpScore);
+                jump_gate_scores(pos, Us, eksq, jump_frozen_synergy(pos, Us), jumpScore);
                 jumpScoreReady = true;
             }
 

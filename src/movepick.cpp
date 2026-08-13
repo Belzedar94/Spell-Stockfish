@@ -476,6 +476,7 @@ top:
                 }
                 if (pos.count<KING>(~us))
                     spellEnemyRoyal = pos.square<KING>(~us);
+                spellFrozenSynergy = pos.can_cast(us, SPELL_JUMP) && jump_frozen_synergy(pos, us);
             }
 
             const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch, ply != 0);
@@ -494,7 +495,7 @@ top:
                     return true;
                 return !onlyTacticalSpells
                     || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
-                                         spellOurRoyal);
+                                         spellOurRoyal, spellFrozenSynergy);
             }))
             return *(cur - 1);
 

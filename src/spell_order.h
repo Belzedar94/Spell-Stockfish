@@ -155,17 +155,69 @@ inline bool is_useless_spell(const Position& pos, Move m) {
     return !(path & square_bb(m.gate_sq()));
 }
 
-// A freeze cast is "tactical" (reference policy: treated like a capture or
-// check throughout pruning, reductions and extensions) when its zone
-// touches the enemy king, silences an attacker of our own king (defensive
-// freeze), or freezes an enemy piece that is major-valued, attacked by us,
-// or attacking our king. ourRoyalAttackers/enemyRoyal/ourRoyal are
-// precomputed once per node.
-inline bool is_tactical_spell(
-  const Position& pos, Move m, Bitboard ourRoyalAttackers, Square enemyRoyal, Square ourRoyal) {
+// "Our freeze is doing its work": the context in which a jump stops being a
+// developing move and becomes the second half of a combination.
+//
+// The literal reading — enemy pieces standing in a live freeze zone of ours —
+// is the first clause, and it is worth knowing that it can only come from a
+// hand-written FEN. do_move sets our zone on the casting ply and the
+// OPPONENT'S do_move clears it (cooldown SPELL_COOLDOWN 3 decremented to
+// SPELL_ZONE_LIFETIME 2, gate reset to SQ_NONE), so a zone of ours is live
+// exactly during their single reply and is gone before our own next turn.
+// Verified with the engine: after f@d7,e2e4 the FEN carries {F@d7:3} with
+// black to move, and after black's reply it reads {F@-:2} with white to move.
+// spell_zone(side_to_move, SPELL_FREEZE) is therefore empty in every position
+// the search can reach.
+//
+// What does survive our own turn is the cooldown, and it says exactly what the
+// player described: cooldown == SPELL_ZONE_LIFETIME means our previous move was
+// the freeze, and the opponent has just answered it short of a piece. That is
+// the moment the follow-up jump is aimed at.
+inline bool jump_frozen_synergy(const Position& pos, Color us) {
 
-    if (!m.is_spell() || m.spell_type() != SPELL_FREEZE)
+    return (pos.pieces(~us) & pos.spell_zone(us, SPELL_FREEZE))
+        || pos.spell_cooldown(us, SPELL_FREEZE) == SPELL_ZONE_LIFETIME;
+}
+
+// A cast is "tactical" (reference policy: treated like a capture or a check
+// throughout pruning, reductions and extensions) when it is a freeze whose
+// zone touches the enemy king, silences an attacker of our own king
+// (defensive freeze), or freezes an enemy piece that is major-valued,
+// attacked by us, or attacking our king — or, with our freeze still doing its
+// work, a JUMP that lands attacking the enemy king or a major piece.
+// ourRoyalAttackers/enemyRoyal/ourRoyal/frozenSynergy are precomputed once per
+// node.
+inline bool is_tactical_spell(const Position& pos,
+                              Move            m,
+                              Bitboard        ourRoyalAttackers,
+                              Square          enemyRoyal,
+                              Square          ourRoyal,
+                              bool            frozenSynergy) {
+
+    if (!m.is_spell())
         return false;
+
+    // Attacking jump in the synergy context. The bar is the freeze branch's
+    // own — king or major — and the move is the attack itself, not a promise:
+    // the generator only keeps gated copies that travel through their gate, so
+    // reaching this square needed the transparency.
+    if (m.spell_type() == SPELL_JUMP)
+    {
+        if (!frozenSynergy)
+            return false;
+
+        const Color  us = pos.side_to_move();
+        const Square to = m.to_sq();
+
+        // Post-cast sliding occupancy: the gate turns transparent, the moved
+        // piece leaves its origin and stands on the destination
+        const Bitboard occ =
+          (pos.occupied_for_sliding() & ~square_bb(m.gate_sq()) & ~square_bb(m.from_sq()))
+          | square_bb(to);
+
+        return bool(Attacks::attacks_bb(pos.moved_piece(m), to, occ)
+                    & pos.pieces(~us, ROOK, QUEEN, KING));
+    }
 
     const Color    us   = pos.side_to_move();
     const Color    them = ~us;
@@ -205,8 +257,19 @@ inline bool is_tactical_spell(
 
 // Fills out[64] with the reveal value of lifting each blocker for our
 // sliders: enemy material newly attacked, plus the king bonus if the enemy
-// king becomes attacked. Non-blocker squares score 0.
-inline void jump_gate_scores(const Position& pos, Color us, Square eksq, int out[SQUARE_NB]) {
+// king becomes attacked, plus SpellJumpFrozenSynergy per enemy piece the
+// reveal reaches while our freeze is doing its work. Non-blocker squares
+// score 0.
+//
+// The synergy term is deliberately a COUNT and not a flat bonus. The gate
+// budget is a top-K selection, so a constant added to every attacking gate
+// reorders nothing; what the context changes is which kind of attacking gate
+// is worth a slot. With the opponent a defender short the cheap multi-threat
+// beats the single big reveal, and counting pieces is exactly that
+// preference. One gate can reach several enemy pieces because several of our
+// sliders can share the same blocker.
+inline void jump_gate_scores(
+  const Position& pos, Color us, Square eksq, bool frozenSynergy, int out[SQUARE_NB]) {
 
     std::fill_n(out, SQUARE_NB, 0);
 
@@ -227,11 +290,15 @@ inline void jump_gate_scores(const Position& pos, Color us, Square eksq, int out
             const Bitboard reveal =
               Attacks::attacks_bb(pt, from, occSliding ^ square_bb(b)) & ~seen;
 
+            const Bitboard hit = reveal & pos.pieces(~us);
+
             int s = 0;
-            for (Bitboard t = reveal & pos.pieces(~us); t;)
+            for (Bitboard t = hit; t;)
                 s += PieceValue[pos.piece_on(pop_lsb(t))];
             if (eksq != SQ_NONE && (reveal & square_bb(eksq)))
                 s += SpellGateKingBonus;
+            if (frozenSynergy)
+                s += SpellJumpFrozenSynergy * popcount(hit);
             out[b] += s;
         }
     }

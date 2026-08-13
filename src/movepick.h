@@ -125,12 +125,13 @@ class MovePicker {
     bool onlyTacticalSpells = false;
     // SpellMergedOrdering generated the gated quiets inside QUIET_INIT, so
     // the SPELL stage must not regenerate them
-    bool      mergedSpells        = false;
-    Bitboard  spellRoyalAttackers = 0;
-    Square    spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
+    bool       mergedSpells        = false;
+    Bitboard   spellRoyalAttackers = 0;
+    bool       spellFrozenSynergy  = false;
+    Square     spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
     MoveArena* arena;
     ExtMove*   moves;
-    Move*     genScratch;
+    Move*      genScratch;
 };
 
 }  // namespace Stockfish
