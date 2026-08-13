@@ -2177,6 +2177,29 @@ void update_all_stats(const Position& pos,
     if (prevSq != SQ_NONE && ((ss - 1)->moveCount == 1 + (ss - 1)->ttHit) && !pos.captured_piece())
         update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq, -malus * 683 / 1024);
 
+    // Spell economy: the best answer to the previous move is a QUIET cast.
+    // Whatever else that move did, it forced the opponent to spend a charge —
+    // ~70cp of latent hand, measured — and to take no material in exchange,
+    // and the returned score cannot express it because the resource never
+    // touches the board. So credit the move that forced the spend, which also
+    // discounts the refutation malus above when both fire. Capture casts are
+    // excluded on purpose: a cast that also wins material is not a spend the
+    // previous move extracted, it is a move the opponent wanted anyway, and
+    // crediting it would pay our own blunders for being punished with style.
+    // Prior captures are excluded for the usual reason: their ordering lives
+    // in captureHistory, so a continuation bonus would land in the wrong table.
+    //
+    // This node, and only this node: the same credit on the TT-cutoff path
+    // re-teaches the same forced cast on every hit of that entry, which
+    // compounds into a +88% bench tree against +17% here (both at bonus 800).
+    // The zero test is not cosmetic either — update_continuation_histories
+    // still writes its flat +71 term when called with a zero bonus, so without
+    // it the knob could not be turned off.
+    if (SpellForcedCastHistBonus && prevSq != SQ_NONE && !pos.captured_piece()
+        && bestMove.is_spell() && !pos.capture_stage(bestMove))
+        update_continuation_histories(ss - 1, pos.piece_on(prevSq), prevSq,
+                                      SpellForcedCastHistBonus);
+
     // Decrease stats for all non-best capture moves
     for (Move move : capturesSearched)
     {

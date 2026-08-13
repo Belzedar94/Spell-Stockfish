@@ -128,6 +128,17 @@ extern int SpellFreezeGateEffectOnly;  // 0 (off)
 // there exactly as it does for quiets.
 extern int SpellDominateCaptures;  // 0 (off)
 
+// History bonus (continuation histories) for the previous move when the best
+// answer to it turned out to be a QUIET cast. The reply spent a charge worth
+// ~70cp of latent hand and took no material for it, which is a gain the score
+// alone cannot express — the resource is not on the board. Forcing the spend
+// is a game-level lever: the side that casts more loses 79% of the decided
+// games with a cast difference (docs/spell-game-first-strategy.md 2.5).
+//
+// Sized under the refutation malus it partly offsets in update_all_stats
+// (534 to 1479 by depth). 0 disables the term and restores main exactly.
+extern int SpellForcedCastHistBonus;  // 800
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

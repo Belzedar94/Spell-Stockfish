@@ -60,6 +60,10 @@ int SpellRazorGuard           = 0;
 int SpellFreezeGateEffectOnly = 0;
 int SpellDominateCaptures     = 1;
 
+// Forcing the opponent to spend a charge: sized below the refutation malus it
+// discounts (534-1479 by depth)
+int SpellForcedCastHistBonus = 800;
+
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
@@ -85,5 +89,6 @@ TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
 TUNE(SetRange(0, 1), SpellFreezeGateEffectOnly);
 TUNE(SetRange(0, 1), SpellDominateCaptures);
+TUNE(SetRange(0, 4096), SpellForcedCastHistBonus);
 
 }  // namespace Stockfish
