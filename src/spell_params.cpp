@@ -60,11 +60,44 @@ int SpellRazorGuard           = 0;
 int SpellFreezeGateEffectOnly = 0;
 int SpellDominateCaptures     = 1;
 
-// SPSA exposure: every spell search-policy knob becomes a UCI option
-TUNE(SetRange(2, 32), MaxFreezeGates);
+// SPSA exposure: every spell search-policy knob becomes a UCI option.
+//
+// The three gate knobs carry ranges re-cut for the post-domination-filter
+// campaign (tools/redundancy_audit.py over 820 positions: the official
+// opening book, plus middlegames and endgames derived from it; see
+// docs/redundancy-audit.md). Defaults are untouched, so this is an
+// options-diff test: same bench, same play until a value is set.
+//
+//   MaxFreezeGates 2..32 -> 2..20. Since dominant_freeze_gates() runs first,
+//   the slots now buy DISTINCT freeze effects, and the audit never found more
+//   than 16 of those in a position (mean 9.2 in middlegames, 7.5 in
+//   endgames). Above ~16 the extra slots can only be spent on gates that
+//   freeze nothing, which is strictly worse than not spending them; 20 keeps
+//   a margin over every position sampled. The narrower range also cuts c_end
+//   from 1.5 to 0.9, i.e. a perturbation of about one gate, which is the
+//   granularity the parameter actually has. Room upward matters: at the
+//   current 8 the cut drops a distinct useful effect in 60% of middlegame
+//   positions, so "raise it" is the live hypothesis.
+//
+//   SpellGateKingBonus 1000.. -> 0.., SpellGateKingRingBonus 5000.. -> 0..
+//   Both floors are arbitrary and both sit above the hypothesis the audit
+//   raises. freeze_gate_score adds the ring bonus on zone-and-king-ring
+//   overlap whether or not anything stands there, and at 60993 that is 24x a
+//   queen (2538) -- so a gate that freezes NOTHING can outscore one that
+//   freezes a queen. Measured consequence: 26% of the freeze slots in
+//   middlegames and 70% in endgames go to gates that freeze nothing. Since
+//   cc78b0a1 those gates no longer build the gated moves that were then
+//   thrown away one by one, so what is left of the waste is exactly the
+//   budget slot — which is the thing this range has to be able to price. A
+//   floor of 5000 is already 2x a queen, so SPSA cannot currently express
+//   "this bonus should be small". Note the knob only reorders: the ringCount
+//   override in movegen.cpp is geometric and admits those gates regardless of
+//   the bonus, and keeping them out of the budget altogether is what the
+//   default-off SpellFreezeGateEffectOnly does.
+TUNE(SetRange(2, 20), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
-TUNE(SetRange(1000, 30000), SpellGateKingBonus);
-TUNE(SetRange(5000, 120000), SpellGateKingRingBonus);
+TUNE(SetRange(0, 30000), SpellGateKingBonus);
+TUNE(SetRange(0, 120000), SpellGateKingRingBonus);
 TUNE(SetRange(0, 3), SpellDepthPenaltyTactical);
 TUNE(SetRange(0, 4), SpellDepthPenaltyQuiet);
 TUNE(SetRange(0, 3072), SpellTacticalLmrBonus);
