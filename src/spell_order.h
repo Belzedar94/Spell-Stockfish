@@ -77,9 +77,11 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
 //     transpose, max over a subset can never exceed max over the superset, so
 //     searching B after A cannot find anything better.
 //
-// Both are search policy, not rules: this runs only on the QUIETS stage, which
-// already limits gates. The legal universe (perft, UCI validation, evasions)
-// never sees it.
+// Both are search policy, not rules: this runs on the gated QUIETS and CAPTURES
+// stages only. The legal universe (perft, UCI validation, evasions) never sees
+// it. Neither relation depends on the opponent having a freeze zone live: that
+// zone restricts OUR origins, and `movable` below reads it from
+// frozen_squares(us) exactly as the generator does.
 //
 // Gates that freeze nothing are passed through untouched — is_useless_spell
 // owns that case, together with its root exception.

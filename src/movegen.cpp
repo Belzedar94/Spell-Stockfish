@@ -244,12 +244,25 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
         //
         // SpellDominateCaptures extends the same filter to the gated captures,
         // which have no budget at all and expand every gate against every base
-        // capture. Both forms are search policy, tied to the same conditions as
-        // the budget: never at the root, never while an enemy freeze is live.
+        // capture.
+        //
+        // Unlike the score cap, domination does NOT need the enemy freeze zone
+        // to be absent. The exemption is about precision of a heuristic ranking
+        // ("full precision where it counts"), while domination is an exact
+        // relation between two of OUR candidate gates: gate j freezes a
+        // superset of i's enemy pieces and blocks a subset of our own origins,
+        // so it produces every gated move i produces and leaves the opponent a
+        // subset of i's replies. A live enemy zone only shrinks the set of our
+        // origins, and dominant_freeze_gates already measures `blocked` against
+        // pieces(Us) & ~frozen_squares(Us) — exactly the origins the generator
+        // itself uses. It never touches the enemy zone otherwise, and that zone
+        // expires on our move regardless of which gate we pick, so the
+        // transposition argument is untouched too. Leaving the filter off there
+        // meant ~60% of the book (every position right after a cast) generated
+        // its gated moves with no filtering at all.
         const bool dominate = sp == SPELL_FREEZE
-                           && (limitGates
-                               || (Type == CAPTURES && prune && SpellDominateCaptures
-                                   && !pos.spell_zone(~Us, SPELL_FREEZE)));
+                           && (Type == QUIETS
+                               || (Type == CAPTURES && prune && SpellDominateCaptures));
 
         if (dominate)
             allGates = dominant_freeze_gates(pos, Us, allGates);
