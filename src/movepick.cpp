@@ -476,6 +476,9 @@ top:
                 }
                 if (pos.count<KING>(~us))
                     spellEnemyRoyal = pos.square<KING>(~us);
+
+                if (SpellFrozenDefenderTactical)
+                    freeze_defender_targets(pos, us, spellDefTargets, spellDefDefenders);
             }
 
             const Move* endGen = generate<SPELL_QUIETS>(pos, genScratch, ply != 0);
@@ -494,7 +497,7 @@ top:
                     return true;
                 return !onlyTacticalSpells
                     || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
-                                         spellOurRoyal);
+                                         spellOurRoyal, spellDefTargets, spellDefDefenders);
             }))
             return *(cur - 1);
 

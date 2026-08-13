@@ -277,6 +277,12 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
                 jumpScoreReady = true;
             }
 
+            // Zone-independent half of the frozen-defender motif, built once
+            // for the whole freeze pass
+            Bitboard defTargets = 0, defDefenders = 0;
+            if (sp == SPELL_FREEZE && SpellFrozenDefenderBonus)
+                freeze_defender_targets(pos, Us, defTargets, defDefenders);
+
             for (Bitboard b = allGates; b;)
             {
                 const Square g = pop_lsb(b);
@@ -292,7 +298,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
                     if (SpellFreezeGateEffectOnly && prune && !(zone & pos.pieces(~Us)))
                         continue;
 
-                    s = freeze_gate_score(pos, Us, g, eksq, eRing);
+                    s = freeze_gate_score(pos, Us, g, eksq, eRing, defTargets, defDefenders);
                     if (zone & eRing & (SpellFreezeGateEffectOnly ? pos.pieces(~Us) : ~Bitboard(0)))
                         ++ringCount;
                 }

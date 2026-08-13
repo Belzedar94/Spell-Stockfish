@@ -32,6 +32,9 @@ int MaxJumpGates   = 4;
 int SpellGateKingBonus     = 11789;
 int SpellGateKingRingBonus = 60993;
 
+int SpellFrozenDefenderBonus    = 8000;
+int SpellFrozenDefenderTactical = 1;
+
 int SpellDepthPenaltyTactical = 1;
 int SpellDepthPenaltyQuiet    = 3;
 
@@ -65,6 +68,8 @@ TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
 TUNE(SetRange(1000, 30000), SpellGateKingBonus);
 TUNE(SetRange(5000, 120000), SpellGateKingRingBonus);
+TUNE(SetRange(0, 60000), SpellFrozenDefenderBonus);
+TUNE(SetRange(0, 1), SpellFrozenDefenderTactical);
 TUNE(SetRange(0, 3), SpellDepthPenaltyTactical);
 TUNE(SetRange(0, 4), SpellDepthPenaltyQuiet);
 TUNE(SetRange(0, 3072), SpellTacticalLmrBonus);

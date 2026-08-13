@@ -33,15 +33,69 @@ namespace Stockfish {
 // and its ring; a jump gate by the material and king attacks its lifted
 // blocker would reveal to our sliders.
 
+// The zone-independent half of the sharpest freeze motif the variant has:
+// freeze the DEFENDER of what you attack, not the attacked piece. A frozen
+// piece gives no attacks, and attackers_to() drops it, so an enemy piece
+// caught by a fresh zone defends nothing for the single reply the zone lives
+// through. A zone that covers EVERY defender of an enemy piece we already
+// attack therefore leaves that piece hanging.
+//
+// Computed once per node, and only where a freeze can actually be cast:
+//   targets   = enemy pieces we attack that still have at least one defender
+//   defenders = the union of those defenders
+// A zone that misses `defenders` entirely cannot create the pattern, which is
+// the one-AND pre-test both callers use before touching a target.
+inline void
+freeze_defender_targets(const Position& pos, Color us, Bitboard& targets, Bitboard& defenders) {
+
+    targets = defenders = 0;
+
+    const Bitboard them       = pos.pieces(~us);
+    const Bitboard occSliding = pos.occupied_for_sliding();
+
+    // Squares we attack. Our own frozen pieces give no attacks either, so an
+    // enemy zone cannot fabricate a target here.
+    Bitboard ourAttacks = 0;
+    for (Bitboard b = pos.pieces(us) & ~pos.frozen_squares(us); b;)
+    {
+        const Square    s  = pop_lsb(b);
+        const PieceType pt = type_of(pos.piece_on(s));
+
+        ourAttacks |=
+          pt == PAWN ? Attacks::attacks_bb<PAWN>(s, us) : Attacks::attacks_bb(pt, s, occSliding);
+    }
+
+    // The enemy king is not a target: attacking it is check, and its defenders
+    // are irrelevant to whether it can be taken.
+    for (Bitboard b = them & ourAttacks & ~pos.pieces(~us, KING); b;)
+    {
+        const Square   s = pop_lsb(b);
+        const Bitboard d = pos.attackers_to(s) & them;
+
+        if (d)
+        {
+            targets |= square_bb(s);
+            defenders |= d;
+        }
+    }
+}
+
 // Score of freezing with the zone centered on g. eksq/eRing are the enemy
-// king square (or SQ_NONE) and king ring, precomputed by the caller.
+// king square (or SQ_NONE) and king ring, defTargets/defDefenders the
+// frozen-defender context, all precomputed by the caller.
 //
 // The king-ring term fires on a bare zone/ring OVERLAP, which is a proxy, not
 // an effect: freezing an empty square next to the king denies nothing (the
 // king may still move into a zone). SpellFreezeGateEffectOnly requires an
 // enemy piece to stand in the overlap, so the bonus tracks what the cast
 // actually silences.
-inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eksq, Bitboard eRing) {
+inline int freeze_gate_score(const Position& pos,
+                             Color           us,
+                             Square          g,
+                             Square          eksq,
+                             Bitboard        eRing,
+                             Bitboard        defTargets,
+                             Bitboard        defDefenders) {
 
     const Bitboard zone = FreezeZoneBB[g];
     const Bitboard them = pos.pieces(~us);
@@ -53,6 +107,19 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
         s += SpellGateKingBonus;
     if (zone & eRing & (SpellFreezeGateEffectOnly ? them : ~Bitboard(0)))
         s += SpellGateKingRingBonus;
+
+    // Every defender of an attacked enemy piece inside the zone: the piece is
+    // hanging, so the gate is worth its material on top of the flat bonus.
+    // The union pre-test keeps attackers_to() off the hot path; a zero bonus
+    // switches the whole term off (callers then skip the precompute too).
+    if (SpellFrozenDefenderBonus && (zone & defDefenders))
+        for (Bitboard t = defTargets; t;)
+        {
+            const Square d = pop_lsb(t);
+            if (!(pos.attackers_to(d) & them & ~zone))
+                s += SpellFrozenDefenderBonus + PieceValue[pos.piece_on(d)];
+        }
+
     return s;
 }
 
@@ -158,11 +225,17 @@ inline bool is_useless_spell(const Position& pos, Move m) {
 // A freeze cast is "tactical" (reference policy: treated like a capture or
 // check throughout pruning, reductions and extensions) when its zone
 // touches the enemy king, silences an attacker of our own king (defensive
-// freeze), or freezes an enemy piece that is major-valued, attacked by us,
-// or attacking our king. ourRoyalAttackers/enemyRoyal/ourRoyal are
+// freeze), strips the last defender of an enemy piece we attack, or freezes
+// an enemy piece that is major-valued, attacked by us, or attacking our king.
+// ourRoyalAttackers/enemyRoyal/ourRoyal and defTargets/defDefenders are
 // precomputed once per node.
-inline bool is_tactical_spell(
-  const Position& pos, Move m, Bitboard ourRoyalAttackers, Square enemyRoyal, Square ourRoyal) {
+inline bool is_tactical_spell(const Position& pos,
+                              Move            m,
+                              Bitboard        ourRoyalAttackers,
+                              Square          enemyRoyal,
+                              Square          ourRoyal,
+                              Bitboard        defTargets,
+                              Bitboard        defDefenders) {
 
     if (!m.is_spell() || m.spell_type() != SPELL_FREEZE)
         return false;
@@ -175,6 +248,14 @@ inline bool is_tactical_spell(
         return true;
     if (ourRoyalAttackers & zone)
         return true;
+
+    // Freeze the defender of what we attack: with every defender inside the
+    // zone the attacked piece is hanging for the reply, which is a tactic even
+    // when the frozen pieces are quiet minors nobody is attacking.
+    if (SpellFrozenDefenderTactical && (zone & defDefenders))
+        for (Bitboard t = defTargets; t;)
+            if (!(pos.attackers_to(pop_lsb(t)) & pos.pieces(them) & ~zone))
+                return true;
 
     Bitboard candidates = zone & pos.pieces(them);
     if (!candidates)

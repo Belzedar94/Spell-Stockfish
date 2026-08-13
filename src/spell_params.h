@@ -37,6 +37,21 @@ extern int MaxJumpGates;    // 6
 extern int SpellGateKingBonus;      // 10000: zone covers the enemy king
 extern int SpellGateKingRingBonus;  // 50000: zone touches the enemy king ring
 
+// "Freeze the defender of what you attack" (docs/spell-game-first-strategy.md,
+// axis 3): a zone covering EVERY defender of an enemy piece we already attack
+// leaves that piece hanging, because attackers_to() drops frozen pieces. Flat
+// bonus per hung target in freeze_gate_score, added on top of the target's own
+// material value. Sized just under SpellGateKingBonus: the motif has to
+// outrank any purely material zone (a 3x3 rarely holds more than a queen plus
+// a rook, ~3.8k) without displacing the king-contact gates. 0 removes the term
+// and its per-node precompute, restoring the pre-patch gate order exactly.
+extern int SpellFrozenDefenderBonus;  // 8000
+
+// Treat the same pattern as a TACTICAL cast (capture/check policy throughout
+// pruning, reductions and extensions). 0 keeps it as pure move ordering and,
+// like the bonus, is an exact no-op: both at 0 reproduce the old bench.
+extern int SpellFrozenDefenderTactical;  // 1
+
 // Depth penalty (plies) for gated moves: the reference searches spell moves
 // shallower (PotionDepthPenaltyTactical/Quiet), which is where a large share
 // of its strength comes from.

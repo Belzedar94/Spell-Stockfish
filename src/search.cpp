@@ -1184,6 +1184,7 @@ moves_loop:  // When in check, search starts here
     // attacked/major/king-attacking enemy piece), computed once per node
     Bitboard ourRoyalAttackers = 0;
     Square   ourRoyal = SQ_NONE, enemyRoyal = SQ_NONE;
+    Bitboard defTargets = 0, defDefenders = 0;
     if (pos.can_cast(us, SPELL_FREEZE))
     {
         if (pos.count<KING>(us))
@@ -1193,6 +1194,11 @@ moves_loop:  // When in check, search starts here
         }
         if (pos.count<KING>(~us))
             enemyRoyal = pos.square<KING>(~us);
+
+        // Enemy pieces we attack that still have a defender: a zone covering
+        // all of a target's defenders hangs it (see freeze_defender_targets)
+        if (SpellFrozenDefenderTactical)
+            freeze_defender_targets(pos, us, defTargets, defDefenders);
     }
 
     // Relevance gate for the spell stage: PV nodes, nodes with our king
@@ -1254,7 +1260,8 @@ moves_loop:  // When in check, search starts here
         // A tactical freeze is treated like a capture or a check throughout
         // pruning, reductions and extensions (reference policy)
         const bool tacticalSpell =
-          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal);
+          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal, defTargets,
+                            defDefenders);
 
         // Capturing the king ends the game: the terminal move is never pruned
         const bool royalCapture = capture && type_of(pos.piece_on(move.to_sq())) == KING;

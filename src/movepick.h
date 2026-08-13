@@ -128,6 +128,7 @@ class MovePicker {
     bool      mergedSpells        = false;
     Bitboard  spellRoyalAttackers = 0;
     Square    spellOurRoyal = SQ_NONE, spellEnemyRoyal = SQ_NONE;
+    Bitboard  spellDefTargets = 0, spellDefDefenders = 0;
     MoveArena* arena;
     ExtMove*   moves;
     Move*     genScratch;
