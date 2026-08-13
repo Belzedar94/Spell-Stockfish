@@ -37,6 +37,12 @@ extern int MaxJumpGates;    // 6
 extern int SpellGateKingBonus;      // 10000: zone covers the enemy king
 extern int SpellGateKingRingBonus;  // 50000: zone touches the enemy king ring
 
+// Jump gates are scored by what their reveal ATTACKS, which is 0 for every
+// gate when the urgent question is our own king. This is the defensive half:
+// with our royal under attack, a reveal that reaches the checker or a square
+// in its way is worth a budget slot.
+extern int SpellJumpDefenseBonus;  // 12000
+
 // Depth penalty (plies) for gated moves: the reference searches spell moves
 // shallower (PotionDepthPenaltyTactical/Quiet), which is where a large share
 // of its strength comes from.

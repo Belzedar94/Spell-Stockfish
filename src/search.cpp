@@ -1179,17 +1179,25 @@ moves_loop:  // When in check, search starts here
       (ss - 1)->continuationHistory, (ss - 2)->continuationHistory, (ss - 3)->continuationHistory,
       (ss - 4)->continuationHistory, (ss - 5)->continuationHistory, (ss - 6)->continuationHistory};
 
-    // Spell chess: royal context for classifying tactical freezes (zone
-    // touches the enemy king, silences our king's attackers, or freezes an
-    // attacked/major/king-attacking enemy piece), computed once per node
-    Bitboard ourRoyalAttackers = 0;
+    // Spell chess: royal context for classifying tactical casts (a freeze
+    // whose zone touches the enemy king, silences our king's attackers or
+    // freezes an attacked/major/king-attacking enemy piece; a jump that
+    // answers an attack on our own king), computed once per node.
+    //
+    // The precompute now also runs when only the JUMP is castable: the
+    // classification is no longer freeze-only, and the same guard feeds
+    // allowSpells, which was blind to our king being under attack in exactly
+    // the positions where the jump is the only cast left.
+    Bitboard ourRoyalAttackers = 0, royalDefense = 0;
     Square   ourRoyal = SQ_NONE, enemyRoyal = SQ_NONE;
-    if (pos.can_cast(us, SPELL_FREEZE))
+    if (pos.can_cast(us, SPELL_FREEZE) || pos.can_cast(us, SPELL_JUMP))
     {
         if (pos.count<KING>(us))
         {
             ourRoyal          = pos.square<KING>(us);
             ourRoyalAttackers = pos.attackers_to(ourRoyal) & pos.pieces(~us);
+            if (ourRoyalAttackers)
+                royalDefense = royal_defense_targets(ourRoyal, ourRoyalAttackers);
         }
         if (pos.count<KING>(~us))
             enemyRoyal = pos.square<KING>(~us);
@@ -1251,10 +1259,10 @@ moves_loop:  // When in check, search starts here
         movedPiece = pos.moved_piece(move);
         givesCheck = pos.gives_check(move);
 
-        // A tactical freeze is treated like a capture or a check throughout
+        // A tactical cast is treated like a capture or a check throughout
         // pruning, reductions and extensions (reference policy)
         const bool tacticalSpell =
-          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal);
+          is_tactical_spell(pos, move, ourRoyalAttackers, enemyRoyal, ourRoyal, royalDefense);
 
         // Capturing the king ends the game: the terminal move is never pruned
         const bool royalCapture = capture && type_of(pos.piece_on(move.to_sq())) == KING;

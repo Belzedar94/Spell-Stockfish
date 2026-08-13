@@ -473,6 +473,9 @@ top:
                 {
                     spellOurRoyal       = pos.square<KING>(us);
                     spellRoyalAttackers = pos.attackers_to(spellOurRoyal) & pos.pieces(~us);
+                    if (spellRoyalAttackers)
+                        spellRoyalDefense =
+                          royal_defense_targets(spellOurRoyal, spellRoyalAttackers);
                 }
                 if (pos.count<KING>(~us))
                     spellEnemyRoyal = pos.square<KING>(~us);
@@ -494,7 +497,7 @@ top:
                     return true;
                 return !onlyTacticalSpells
                     || is_tactical_spell(pos, *cur, spellRoyalAttackers, spellEnemyRoyal,
-                                         spellOurRoyal);
+                                         spellOurRoyal, spellRoyalDefense);
             }))
             return *(cur - 1);
 

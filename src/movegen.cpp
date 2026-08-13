@@ -229,6 +229,11 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
     int  jumpScore[SQUARE_NB];
     bool jumpScoreReady = false;
 
+    // Squares that answer an attack on our own king, empty when it is safe:
+    // the jump gate that unblocks the defence is worth a budget slot exactly
+    // when this set is not
+    Bitboard royalDefense = 0;
+
     for (SpellType sp : {SPELL_FREEZE, SPELL_JUMP})
     {
         if (!pos.can_cast(Us, sp))
@@ -273,7 +278,8 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
 
             if (sp == SPELL_JUMP && !jumpScoreReady)
             {
-                jump_gate_scores(pos, Us, eksq, jumpScore);
+                royalDefense = royal_defense_targets(pos, Us);
+                jump_gate_scores(pos, Us, eksq, royalDefense, jumpScore);
                 jumpScoreReady = true;
             }
 
