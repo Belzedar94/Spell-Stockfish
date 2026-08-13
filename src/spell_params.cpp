@@ -29,8 +29,15 @@ namespace Stockfish {
 int MaxFreezeGates = 8;
 int MaxJumpGates   = 4;
 
-int SpellGateKingBonus     = 11789;
-int SpellGateKingRingBonus = 60993;
+int SpellGateKingBonus = 11789;
+
+// Freeze impact per silenced piece. Scaled against PieceValue (pawn 208,
+// rook 1276, queen 2538) instead of the old geometry bonuses, which dwarfed
+// a frozen queen by 24x: a frozen queen is now 634, a frozen king 2000.
+int SpellFrozenMaterialPct  = 25;
+int SpellFrozenKingBonus    = 2000;
+int SpellFrozenCheckerBonus = 1500;
+int SpellFrozenAttackedPct  = 60;
 
 int SpellDepthPenaltyTactical = 1;
 int SpellDepthPenaltyQuiet    = 3;
@@ -64,7 +71,10 @@ int SpellDominateCaptures     = 1;
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
 TUNE(SetRange(1000, 30000), SpellGateKingBonus);
-TUNE(SetRange(5000, 120000), SpellGateKingRingBonus);
+TUNE(SetRange(0, 200), SpellFrozenMaterialPct);
+TUNE(SetRange(0, 12000), SpellFrozenKingBonus);
+TUNE(SetRange(0, 12000), SpellFrozenCheckerBonus);
+TUNE(SetRange(0, 200), SpellFrozenAttackedPct);
 TUNE(SetRange(0, 3), SpellDepthPenaltyTactical);
 TUNE(SetRange(0, 4), SpellDepthPenaltyQuiet);
 TUNE(SetRange(0, 3072), SpellTacticalLmrBonus);

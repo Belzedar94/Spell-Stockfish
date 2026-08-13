@@ -27,32 +27,100 @@
 
 namespace Stockfish {
 
-// Gate impact heuristics, shared by movegen's QUIETS gate limiting and
-// MovePicker's ordering of gated moves. A freeze gate is scored by the enemy
-// material its zone would silence plus bonuses for reaching the enemy king
-// and its ring; a jump gate by the material and king attacks its lifted
-// blocker would reveal to our sliders.
+// Gate impact heuristics, shared by movegen's QUIETS gate limiting and by the
+// MovePicker's and search's classification of gated moves. A jump gate is
+// scored by the material and king attacks its lifted blocker would reveal to
+// our sliders; a freeze gate by what its zone actually does to the opponent,
+// which is exactly the sum over the enemy PIECES standing in it — see below.
 
-// Score of freezing with the zone centered on g. eksq/eRing are the enemy
-// king square (or SQ_NONE) and king ring, precomputed by the caller.
+// Per-node facts every freeze heuristic needs. Cheap to build (one
+// attackers_to plus one attack sweep) and reused by every gate and every
+// gated move of the node.
+struct FreezeContext {
+    Bitboard ourRoyalAttackers = 0;  // enemy pieces attacking our king
+    Bitboard ourAttacks        = 0;  // squares our unfrozen pieces attack
+};
+
+// Squares attacked by us, with the variant's sliding occupancy and without
+// our frozen pieces — a frozen piece cannot move, so it captures nothing.
+// Same universe as attackers_to(), which the royal context uses.
+inline Bitboard spell_attacks_by(const Position& pos, Color us) {
+
+    const Bitboard occSliding = pos.occupied_for_sliding();
+    const Bitboard active     = pos.pieces(us) & ~pos.frozen_squares(us);
+    const Bitboard pawns      = active & pos.pieces(PAWN);
+
+    Bitboard att = us == WHITE ? pawn_attacks_bb<WHITE>(pawns) : pawn_attacks_bb<BLACK>(pawns);
+
+    for (Bitboard b = active & ~pawns; b;)
+    {
+        const Square s = pop_lsb(b);
+        att |= Attacks::attacks_bb(type_of(pos.piece_on(s)), s, occSliding);
+    }
+    return att;
+}
+
+inline FreezeContext freeze_context(const Position& pos, Color us) {
+
+    FreezeContext fc;
+    if (pos.count<KING>(us))
+        fc.ourRoyalAttackers = pos.attackers_to(pos.square<KING>(us)) & pos.pieces(~us);
+    fc.ourAttacks = spell_attacks_by(pos, us);
+    return fc;
+}
+
+// What silencing the enemy piece on s for one reply is worth, and whether that
+// silencing is a tactical motif rather than a tempo.
 //
-// The king-ring term fires on a bare zone/ring OVERLAP, which is a proxy, not
-// an effect: freezing an empty square next to the king denies nothing (the
-// king may still move into a zone). SpellFreezeGateEffectOnly requires an
-// enemy piece to stand in the overlap, so the bonus tracks what the cast
-// actually silences.
-inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eksq, Bitboard eRing) {
+// This is the ONLY place a freeze is priced. Every consumer — the movegen
+// QUIETS cap, the MovePicker's tactical-only filter, the search's tactical
+// classification — sums or scans this same verdict, so they cannot drift
+// apart, and no consumer scores geometry: a zone denies no squares (moving
+// INTO one is legal), so an intersection with an empty square, the king ring
+// included, is worth exactly nothing.
+//
+// The terms, each a real effect of the piece being unable to move:
+//   * material — one reply of the piece, not the piece: a fraction of its value
+//   * the king itself, which has no material value here but cannot step out of
+//     check, cannot castle and cannot run from an extinction threat
+//   * an attacker of our king, silenced for the reply that mattered
+//   * a piece we already attack, which now cannot run from the capture
+struct FrozenPiece {
+    int  score;     // what silencing it for one reply is worth
+    bool tactical;  // ... and whether that silencing is a motif, not a tempo
+};
 
-    const Bitboard zone = FreezeZoneBB[g];
-    const Bitboard them = pos.pieces(~us);
+inline FrozenPiece frozen_piece(const Position& pos, Square s, const FreezeContext& fc) {
+
+    const Piece pc = pos.piece_on(s);
+
+    FrozenPiece r{PieceValue[pc] * SpellFrozenMaterialPct / 100, PieceValue[pc] >= RookValue};
+
+    if (type_of(pc) == KING)
+    {
+        r.score += SpellFrozenKingBonus;
+        r.tactical = true;
+    }
+    if (fc.ourRoyalAttackers & s)
+    {
+        r.score += SpellFrozenCheckerBonus;
+        r.tactical = true;
+    }
+    if (fc.ourAttacks & s)
+    {
+        r.score += PieceValue[pc] * SpellFrozenAttackedPct / 100;
+        r.tactical = true;
+    }
+    return r;
+}
+
+// Score of freezing with the zone centered on g: the sum over the pieces the
+// zone actually silences.
+inline int freeze_gate_score(const Position& pos, Color us, Square g, const FreezeContext& fc) {
 
     int s = 0;
-    for (Bitboard t = zone & them; t;)
-        s += PieceValue[pos.piece_on(pop_lsb(t))];
-    if (eksq != SQ_NONE && (zone & square_bb(eksq)))
-        s += SpellGateKingBonus;
-    if (zone & eRing & (SpellFreezeGateEffectOnly ? them : ~Bitboard(0)))
-        s += SpellGateKingRingBonus;
+    for (Bitboard t = FreezeZoneBB[g] & pos.pieces(~us); t;)
+        s += frozen_piece(pos, pop_lsb(t), fc).score;
     return s;
 }
 
@@ -156,50 +224,19 @@ inline bool is_useless_spell(const Position& pos, Move m) {
 }
 
 // A freeze cast is "tactical" (reference policy: treated like a capture or
-// check throughout pruning, reductions and extensions) when its zone
-// touches the enemy king, silences an attacker of our own king (defensive
-// freeze), or freezes an enemy piece that is major-valued, attacked by us,
-// or attacking our king. ourRoyalAttackers/enemyRoyal/ourRoyal are
-// precomputed once per node.
-inline bool is_tactical_spell(
-  const Position& pos, Move m, Bitboard ourRoyalAttackers, Square enemyRoyal, Square ourRoyal) {
+// check throughout pruning, reductions and extensions) when it silences at
+// least one piece for a tactical reason — the same per-piece verdict the
+// gate score is built from, so the cap and this test can never disagree
+// about what a freeze does. fc is precomputed once per node.
+inline bool is_tactical_spell(const Position& pos, Move m, const FreezeContext& fc) {
 
     if (!m.is_spell() || m.spell_type() != SPELL_FREEZE)
         return false;
 
-    const Color    us   = pos.side_to_move();
-    const Color    them = ~us;
-    const Bitboard zone = FreezeZoneBB[m.gate_sq()];
-
-    if (enemyRoyal != SQ_NONE && (zone & square_bb(enemyRoyal)))
-        return true;
-    if (ourRoyalAttackers & zone)
-        return true;
-
-    Bitboard candidates = zone & pos.pieces(them);
-    if (!candidates)
-        return false;
-
-    const Bitboard occ = pos.pieces();
-    while (candidates)
-    {
-        const Square    s  = pop_lsb(candidates);
-        const Piece     pc = pos.piece_on(s);
-        const PieceType pt = type_of(pc);
-
-        // Freezing an attacked or major enemy piece is a tactical motif
-        if (PieceValue[pc] >= RookValue)
+    for (Bitboard t = FreezeZoneBB[m.gate_sq()] & pos.pieces(~pos.side_to_move()); t;)
+        if (frozen_piece(pos, pop_lsb(t), fc).tactical)
             return true;
-        if (pos.attackers_to(s) & pos.pieces(us))
-            return true;
-        if (ourRoyal != SQ_NONE)
-        {
-            const Bitboard att =
-              pt == PAWN ? Attacks::attacks_bb<PAWN>(s, them) : Attacks::attacks_bb(pt, s, occ);
-            if (att & square_bb(ourRoyal))
-                return true;
-        }
-    }
+
     return false;
 }
 

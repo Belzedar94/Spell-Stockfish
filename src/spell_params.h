@@ -33,9 +33,19 @@ namespace Stockfish {
 extern int MaxFreezeGates;  // 12
 extern int MaxJumpGates;    // 6
 
-// Gate impact scoring bonuses
-extern int SpellGateKingBonus;      // 10000: zone covers the enemy king
-extern int SpellGateKingRingBonus;  // 50000: zone touches the enemy king ring
+// Jump gate impact: the lifted blocker reveals an attack on the enemy king
+extern int SpellGateKingBonus;  // 10000
+
+// Freeze gate impact, priced per SILENCED ENEMY PIECE (spell_order.h): a zone
+// denies no squares, so only the pieces standing in it are an effect. Material
+// counts as a fraction because the piece loses one reply, not its life; the
+// king carries its own term (it has no material value here); the last two are
+// the tactical motifs — a checker defused, and a piece we attack that can no
+// longer run.
+extern int SpellFrozenMaterialPct;   // 25 (% of the frozen piece's value)
+extern int SpellFrozenKingBonus;     // 2000
+extern int SpellFrozenCheckerBonus;  // 1500
+extern int SpellFrozenAttackedPct;   // 60 (% extra when we attack it)
 
 // Depth penalty (plies) for gated moves: the reference searches spell moves
 // shallower (PotionDepthPenaltyTactical/Quiet), which is where a large share
@@ -113,13 +123,17 @@ extern int SpellContHistSkip;  // 0 (off)
 // misjudged.
 extern int SpellRazorGuard;  // 0 (off)
 
-// Score freeze gates by what they actually freeze. Two changes, both aimed at
-// the same defect: a gate whose zone holds no enemy piece can never be
-// searched (is_useless_spell drops it), yet it still competes for the
-// MaxFreezeGates budget — and it wins, because SpellGateKingRingBonus fires on
-// a bare zone/king-ring overlap. Measured on a K+R vs K endgame: 16 of the 17
-// budgeted gates freeze nothing. With this on, empty gates never enter the
-// budget and the ring bonus needs an enemy piece in the overlap.
+// Keep freeze gates that freeze nothing out of the MaxFreezeGates budget. A
+// gate whose zone holds no enemy piece can never be searched (is_useless_spell
+// drops it, and since cc78b0a1 the generator never builds its moves), yet it
+// still competes for a budget slot. Measured on a K+R vs K endgame: 16 of the
+// 17 budgeted gates freeze nothing.
+//
+// This toggle shipped with a second half — requiring an enemy piece in the
+// zone/king-ring overlap before paying SpellGateKingRingBonus — which has no
+// target on this branch: the ring bonus is gone and the score is now the sum
+// over the pieces the zone silences, so an empty zone already scores 0. What
+// is left, and what the option still buys, is the budget slot itself.
 extern int SpellFreezeGateEffectOnly;  // 0 (off)
 
 // Extend the freeze-gate domination filter to the CAPTURES stage. That stage
