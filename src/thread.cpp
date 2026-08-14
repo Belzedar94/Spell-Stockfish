@@ -35,6 +35,7 @@
 #include "memory.h"
 #include "movegen.h"
 #include "search.h"
+#include "spell_order.h"
 #include "syzygy/tbprobe.h"
 #include "timeman.h"
 #include "types.h"
@@ -310,8 +311,32 @@ void ThreadPool::start_thinking(const OptionsMap&  options,
     }
 
     if (rootMoves.empty())
+    {
+        // Unrestricted root: drop gated moves that are provably no better than
+        // one already in the list — a spell that changes nothing this move
+        // (is_useless_spell: an empty/own-pieces-only freeze zone, or a jump
+        // gate off the base move's path) or a freeze gate strictly dominated
+        // by another surviving one. Both eliminations are exact, not
+        // heuristic — see spell_order.h — and every eliminated move's plain
+        // base move (or its dominating gate) is always separately present in
+        // legalmoves, so this can never empty the root move list. The
+        // searchmoves loop above is unaffected: it reads legalmoves directly,
+        // so a GUI/UCI caller can still force any of these explicitly.
+        const Color    us = pos.side_to_move();
+        const Bitboard survivingFreezeGates =
+          pos.can_cast(us, SPELL_FREEZE) ? dominant_freeze_gates(pos, us, ~Bitboard(0)) : Bitboard(0);
+
         for (const auto& m : legalmoves)
+        {
+            if (is_useless_spell(pos, m))
+                continue;
+            if (m.is_spell() && m.spell_type() == SPELL_FREEZE
+                && !(square_bb(m.gate_sq()) & survivingFreezeGates))
+                continue;
+
             rootMoves.emplace_back(m);
+        }
+    }
 
     Tablebases::Config tbConfig = Tablebases::rank_root_moves(options, pos, rootMoves);
 
