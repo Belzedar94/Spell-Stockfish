@@ -1,93 +1,93 @@
-# Spell-NNUE A ("SSNNa"): la arquitectura plana, sin king buckets
+# Spell-NNUE A ("SSNNa"): the flat architecture, no king buckets
 
-> Estado: implementada en el motor y en el entrenador, sin entrenar todavía.
-> Formato ADICIONAL: SPL3 (v2) y el adaptador run5rl siguen cargando igual.
-> Fichero de red objetivo: ~3 MB frente a los 101,8 MB de run5rl.
+> Status: implemented in the engine and the trainer, not yet trained.
+> ADDITIONAL format: SPL3 (v2) and the run5rl adapter keep loading unchanged.
+> Target net file: ~3 MB against run5rl's 101.8 MB.
 
-## 0. De dónde sale la idea
+## 0. Where the idea comes from
 
-sscg13 (autor de las redes de shatranj, entrenadas con 10.000 millones de
-posiciones) y Dean sostienen lo mismo: **los king buckets no se pagan solos
-hasta volúmenes de datos que nosotros no vamos a tener**. Un bucket multiplica
-por 32 el bloque de piezas; con 50M de posiciones viejas de d2 y 10M en
-generación, cada bucket ve un 3% de los datos. Lo mismo, en peor, vale para
-FullThreats: son 60.720 entradas x 1.024 = 62 millones de parámetros en un solo
-bloque, diseñados para el corpus de SF (miles de millones de posiciones).
+sscg13 (author of the shatranj nets, trained on 10 billion positions) and
+Dean hold the same view: **king buckets do not pay for themselves until data
+volumes we are never going to have**. A bucket multiplies the piece block by
+32; with 50M old d2 positions plus 10M being generated, each bucket sees 3%
+of the data. The same holds, worse, for FullThreats: 60,720 entries x 1,024 =
+62 million parameters in a single block, designed for SF's corpus (billions
+of positions).
 
-El branching factor de spell chess hace que ese corpus no exista ni vaya a
-existir. La conclusión práctica: gastar los parámetros donde sí hay señal.
+Spell chess's branching factor means that corpus does not exist and will not
+exist. The practical conclusion: spend the parameters where there is signal.
 
-## 1. Qué cambia respecto a v2
+## 1. What changes relative to v2
 
-| Bloque | v2 (`SpellKAv2`) | A (`SpellAv2`) |
+| Block | v2 (`SpellKAv2`) | A (`SpellAv2`) |
 |---|---|---|
-| Piezas | 22.528 (32 king buckets, espejo a-h, reyes en un plano común) | **768** (12 planos de 64, sin bucket, **un plano por rey**) |
-| Threats (`FullThreats`) | 60.720 | **fuera** |
-| Zonas freeze | 4.096 (king-bucketeadas) | **128** (planas) |
-| Zonas jump | 128 | 128 |
+| Pieces | 22,528 (32 king buckets, a-h mirror, kings on a shared plane) | **768** (12 planes of 64, no bucket, **one plane per king**) |
+| Threats (`FullThreats`) | 60,720 | **out** |
+| Freeze zones | 4,096 (king-bucketed) | **128** (flat) |
+| Jump zones | 128 | 128 |
 | Frozen | 128 | 128 |
-| Globales spell | 30 | 30 |
-| **Total por perspectiva** | **87.630** | **1.182** |
+| Spell globals | 30 | 30 |
+| **Total per perspective** | **87,630** | **1,182** |
 
-Todo lo demás es idéntico: L1=1024 con salida pairwise, 16 stacks
-32/64/32/128, 16 buckets PSQT sobre la malla material x pociones,
-cuantización y escalas de v2, termómetros de mano/cooldown con sus filas delta
-precalculadas, y el bloque `frozen` explícito.
+Everything else is identical: L1=1024 with pairwise output, 16 stacks
+32/64/32/128, 16 PSQT buckets over the material x potions grid, v2's
+quantization and scales, the hand/cooldown thermometers with their
+precomputed delta rows, and the explicit `frozen` block.
 
-**Los reyes se separan de plano.** En HalfKA los dos reyes comparten
-`PS_KING` porque el propio ya está codificado en el bucket. Sin bucket, un
-plano compartido escondería cuál rey está dónde: por eso A usa 12 planos
-(propias P N B R Q K, rivales P N B R Q K) en vez de 11.
+**The kings get their own planes.** In HalfKA both kings share `PS_KING`
+because the own king is already encoded in the bucket. Without buckets, a
+shared plane would hide which king stands where: hence A uses 12 planes
+(own P N B R Q K, enemy P N B R Q K) instead of 11.
 
-## 2. Por qué también se van los threats
+## 2. Why the threats leave too
 
-No es una segunda idea suelta, es la misma con la misma cuenta:
+Not a separate idea; the same one, with the same arithmetic:
 
-1. **Tamaño.** Los threats son el 90% del fichero (62 MB de i8). Sin tocarlos
-   no se baja de 30 MB con ningún L1 razonable.
-2. **Datos.** 62M de parámetros en un bloque para 60M de posiciones. Cada peso
-   ve, de media, menos de una posición.
-3. **Velocidad.** El bloque de threats es lo que domina el coste del
-   acumulador (hasta 128 filas de 1.024 i8 por nodo) **y** es la única razón
-   por la que en v2 un gate jump vivo fuerza refresco: al cambiar la ocupación
-   de sliders, altera amenazas de piezas que la jugada no tocó.
+1. **Size.** Threats are 90% of the file (62 MB of i8). Keeping them, no
+   reasonable L1 gets below 30 MB.
+2. **Data.** 62M parameters in one block for 60M positions. Each weight sees,
+   on average, less than one position.
+3. **Speed.** The threat block dominates the accumulator cost (up to 128 rows
+   of 1,024 i8 per node) **and** is the only reason a live jump gate forces a
+   refresh in v2: by changing slider occupancy it alters threats of pieces
+   the move never touched.
 
-Quitarlos deja una propiedad estructural fuerte: **ningún índice de `SpellAv2`
-depende de una casilla de rey, así que ninguna jugada invalida una fila ya
-acumulada**. `RequiresRefresh` es `false` en tiempo de compilación, la búsqueda
-entera es incremental, y la tabla Finny pasa de `[64 casillas][2]` a `[2]`
-entradas (de ~290 KB a ~4,5 KB por hilo).
+Removing them leaves a strong structural property: **no `SpellAv2` index
+depends on a king square, so no move can invalidate an already accumulated
+row**. `RequiresRefresh` is `false` at compile time, the whole search is
+incremental, and the Finny table shrinks from `[64 squares][2]` to `[2]`
+entries (~290 KB to ~4.5 KB per thread).
 
-## 3. Tamaño y velocidad medidos
+## 3. Measured size and speed
 
-Fichero (mismo chasis, redes aleatorias generadas por los `gen_random*`):
+File sizes (same chassis, random nets produced by the `gen_random*` tools):
 
-| Red | Bytes |
+| Net | Bytes |
 |---|---|
-| run5rl (v1, FSF) | 101.788.576 |
-| SPL3 v2 aleatoria | 92.281.360 (88,0 MiB) |
-| **SPLA aleatoria** | **1.813.201** |
+| run5rl (v1, FSF) | 101,788,576 |
+| random SPL3 v2 | 92,281,360 (88.0 MiB) |
+| **random SPLA** | **1,813,201** |
 
-Una red A entrenada pesa algo más que la aleatoria (los pesos LEB128 pasan a 2
-bytes): **~3,0 MB en crudo**, contra los ~99 MB de una v2 entrenada. Factor
-~33x contra run5rl.
+A trained A net weighs somewhat more than the random one (LEB128 weights grow
+to 2 bytes): **~3.0 MB raw**, against ~99 MB for a trained v2. Factor ~33x
+against run5rl.
 
-Velocidad, `bench` a 1 hilo en el mismo binario y la misma máquina (redes
-aleatorias, así que los árboles difieren; el nps es la métrica comparable):
+Speed, single-thread `bench` on the same binary and machine (random nets, so
+the trees differ; nps is the comparable metric):
 
-| Red cargada | nps |
+| Loaded net | nps |
 |---|---|
-| stock (sin red spell) | 447.379 |
-| run5rl | 386.002 |
-| SPL3 v2 aleatoria | 356.967 |
-| **SPLA aleatoria** | **433.958** |
+| stock (no spell net) | 447,379 |
+| run5rl | 386,002 |
+| random SPL3 v2 | 356,967 |
+| **random SPLA** | **433,958** |
 
-**+21,6% de nps sobre v2** y +12,4% sobre el adaptador run5rl.
+**+21.6% nps over v2** and +12.4% over the run5rl adapter.
 
-## 4. Formato `SPLA`
+## 4. The `SPLA` format
 
-Magic `0x53504C41`. El loader lo enruta antes que SPL3 y desplaza cualquier
-otra red spell activa: un solo camino de evaluación a la vez.
+Magic `0x53504C41`. The loader routes it before SPL3 and displaces any other
+active spell net: a single evaluation path at a time.
 
 ```
 u32 version = 0x53504C41
@@ -97,72 +97,75 @@ u32 ft_hash           (0x4F234CB8 ^ (L1*2))
 LEB128  biases   i16[1024]
 LEB128  weights  i16[1182][1024]
 LEB128  psqt     i32[1182][16]
-16 x { u32 arch_hash, fc0/fc1/fc2 en crudo }   (idénticos a SPL2)
+16 x { u32 arch_hash, raw fc0/fc1/fc2 }   (identical to SPL2)
 ```
 
-Los stacks son byte a byte los de SPL2, así que `spla.py` reutiliza los
-helpers de `spl2.py`.
+The stacks are byte-for-byte SPL2's, so `spla.py` reuses the `spl2.py`
+helpers.
 
-## 5. Lado del entrenador
+## 5. Trainer side
 
-Todo en `tools/spellnnue-pytorch/`, en paralelo a los módulos de v2 para no
-tocar el camino que ya pasó su gate P1:
+Everything in `tools/spellnnue-pytorch/`, parallel to the v2 modules so the
+path that already passed its P1 gate stays untouched:
 
-| Fichero | Papel |
+| File | Role |
 |---|---|
-| `features_a.py` | extracción `SpellAv2` en python puro; reutiliza `normalized_gates` y el bucket de salida de `features.py` |
-| `spla.py` | escritor/lector SPLA y cadena de hashes |
-| `model_a.py` | `SpellNNUEA` (una tabla de embeddings por cabeza, sin factorizador) y la referencia entera `quantized_forward` |
-| `train_a.py` | driver de entrenamiento (mismo loss, lambda schedule y optimizadores que el de v2) |
-| `serialize_a.py` | checkpoint `.pt` a `.nnue` SPLA |
-| `gen_random_a.py` | red aleatoria estructuralmente válida para gates |
-| `parity_a.py` | paridad motor vs python, con generador de posiciones sintéticas |
+| `features_a.py` | pure-python `SpellAv2` extraction; reuses `normalized_gates` and the output bucket from `features.py` |
+| `spla.py` | SPLA writer/reader and hash chain |
+| `model_a.py` | `SpellNNUEA` (one embedding table per head, no factorizer) and the integer `quantized_forward` reference |
+| `train_a.py` | training driver (same loss, lambda schedule and optimizers as the v2 one) |
+| `serialize_a.py` | `.pt` checkpoint to SPLA `.nnue` |
+| `gen_random_a.py` | structurally valid random net for gates |
+| `parity_a.py` | engine vs python parity, with a synthetic position generator |
 
-**No hay factorizador.** En v2 los 32 buckets de gates de freeze se
-factorizaban a 64 filas virtuales; sin buckets no queda nada que factorizar.
+**There is no factorizer.** In v2 the 32 freeze gate buckets factored down to
+64 virtual rows; without buckets there is nothing left to factor.
 
-## 6. Validación ya hecha
+## 6. Validation already done
 
-- Build MSYS2 `ARCH=x86-64-avx2 COMP=mingw`, sin warnings.
-- `bench` con run5rl cargada por UCI: **4.958.980 nodos**, idéntico a main.
-- Suite perft: **336/336**.
-- Paridad `parity_a.py` sobre 1.000 posiciones sintéticas (426 con zona jump
-  viva, 390 con zona freeze viva): **0 diferencias de features, 0 de eval,
-  max diff 0 cp** contra la referencia entera de python.
-- **Incremental vs refresco forzado**: con un parche temporal que refresca en
-  cada nodo, `bench` con la red A da exactamente los mismos 8.863.608 nodos
-  que el camino incremental. Es el gate de la maquinaria de diff: reproducible
-  sustituyendo el cuerpo de `evaluate_a_side` por una llamada directa a
-  `update_accumulator_refresh_cache_a`.
+- MSYS2 build `ARCH=x86-64-avx2 COMP=mingw`, zero warnings.
+- `bench` with run5rl loaded through UCI: **4,958,980 nodes**, identical to
+  main.
+- Perft suite: **336/336**.
+- `parity_a.py` over 1,000 synthetic positions (426 with a live jump zone,
+  390 with a live freeze zone): **0 feature diffs, 0 eval diffs, max diff
+  0 cp** against the integer python reference.
+- **Incremental vs forced refresh**: with a temporary patch that refreshes at
+  every node, `bench` with the A net produces exactly the same 8,863,608
+  nodes as the incremental path. This is the diff machinery's gate:
+  reproducible by replacing the body of `evaluate_a_side` with a direct call
+  to `update_accumulator_refresh_cache_a`.
 
-## 7. Plan de entrenamiento y test propuesto
+## 7. Proposed training and test plan
 
-1. **Datos**: los mismos que alimentarían a v2 (50M viejas de d2 + los 10M en
-   generación, formato run7). A no cambia el formato de datos ni el generador.
-2. **Overfit gate**: `train_a.py --records 1000000 --epochs 2 --start-lambda 1.0
-   --end-lambda 1.0`. Debe converger igual que el gate P1 de v2.
-3. **Paridad post-entreno**: `parity_a.py --net <red> --data <run7>` con al
-   menos 1.000 posiciones reales antes de cualquier SPRT. Cero diferencias.
-4. **Red 1**: corpus completo, `lambda` según la guía
-   (`docs/nnue-training-guide.md`: lambda manda sobre épocas; arrancar en 1.0
-   para bootstrap puro de eval).
-5. **SPRT** contra el default actual (run5rl), STC y LTC, `[0, 5]` primero
-   para detectar si la arquitectura es siquiera competitiva; si pasa, `[1, 6]`
-   y panel formal de 3 TCs.
-6. **Ablaciones, una variable por vez y solo después del primer pase**:
-   - L1 1024 a 1536 o 2048 (sube el fichero a ~4,5 MB; exige bump de formato)
-   - malla de buckets 16 a 8 (mat 4 x pociones 2) si los datos quedan cortos
-   - devolver FullThreats sobre el feature set plano, para medir cuánto
-     aportan de verdad a nuestra escala de datos
+1. **Data**: the same that would feed v2 (50M old d2 positions + the 10M
+   being generated, run7 format). A changes neither the data format nor the
+   generator.
+2. **Overfit gate**: `train_a.py --records 1000000 --epochs 2
+   --start-lambda 1.0 --end-lambda 1.0`. Must converge like v2's P1 gate.
+3. **Post-training parity**: `parity_a.py --net <net> --data <run7>` with at
+   least 1,000 real positions before any SPRT. Zero diffs.
+4. **Net 1**: full corpus, `lambda` per the guide
+   (`docs/nnue-training-guide.md`: lambda outranks epochs; start at 1.0 for
+   pure eval bootstrap).
+5. **SPRT** against the current default (run5rl), STC and LTC, `[0, 5]`
+   first to detect whether the architecture is even competitive; if it
+   passes, `[1, 6]` and the formal 3-TC panel.
+6. **Ablations, one variable at a time and only after the first pass**:
+   - L1 1024 to 1536 or 2048 (file grows to ~4.5 MB; requires a format bump)
+   - bucket grid 16 to 8 (mat 4 x potions 2) if data runs short
+   - bring FullThreats back on top of the flat feature set, to measure what
+     they actually contribute at our data scale
 
-## 8. Riesgos conocidos
+## 8. Known risks
 
-- **Puede quedarse corta de capacidad.** 1,2M de parámetros en el FT contra
-  los ~49M de run5rl. Si la red 1 pierde por mucho, la primera palanca es L1,
-  no volver a los buckets.
-- **Sin threats, la red tiene que aprender la táctica desde los planos de
-  pieza.** Es exactamente la hipótesis a falsar; el SPRT lo dirá.
-- **La malla de 16 buckets divide los datos por 16** (riesgo ya anotado en
-  `docs/spell-nnue-v2.md` §9). A no lo empeora, pero tampoco lo arregla.
-- El bloque `frozen` sigue siendo explícito y el termómetro sigue siendo
-  monótono: los dos aciertos de v2 se conservan intactos.
+- **It may run short of capacity.** 1.2M FT parameters against run5rl's
+  ~49M. If net 1 loses by a lot, the first lever is L1, not going back to
+  buckets.
+- **Without threats, the net has to learn tactics from the piece planes.**
+  That is exactly the hypothesis to falsify; the SPRT will tell.
+- **The 16-bucket grid divides the data by 16** (risk already noted in
+  `docs/spell-nnue-v2.md` par. 9). A does not make it worse, but does not fix
+  it either.
+- The `frozen` block stays explicit and the thermometer stays monotone: both
+  v2 wins are preserved intact.
