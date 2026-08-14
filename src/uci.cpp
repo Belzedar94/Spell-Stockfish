@@ -189,6 +189,10 @@ int UCIEngine::loop() {
             engine.trace_spell_v2_eval();
         else if (token == "featuresv2")
             engine.dump_spell_v2_features();
+        else if (token == "evala")
+            engine.trace_spell_a_eval();
+        else if (token == "featuresa")
+            engine.dump_spell_a_features();
         else if (token == "see")
         {
             std::string moveStr;

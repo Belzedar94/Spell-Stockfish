@@ -12,9 +12,12 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import features
+import features_a
 import model
+import model_a
 import run7
 import spl2
+import spla
 import train_overfit
 
 
@@ -56,9 +59,40 @@ def threat_semantics_tests() -> None:
     assert features.threat_indices(freeze, 0) == features.threat_indices(freeze_base, 0)
 
 
+def flat_feature_tests() -> None:
+    """SpellAv2 blocks stay inside their ranges and ignore the king square."""
+    record = sample()
+    item = features_a.extract(record)
+    assert all(0 <= i < spla.SPELL_DIMS for i in item.psq_white + item.psq_black)
+    assert item.bucket == features.extract(record).bucket
+
+    # Both kings occupy separate planes, so no piece index collides.
+    assert len(set(item.psq_white)) == len(item.psq_white)
+    white_king_index = features_a.piece_index(0, 4, run7.W_KING)
+    black_king_index = features_a.piece_index(0, 60, run7.B_KING)
+    assert white_king_index != black_king_index
+    assert features_a.PIECE_DIMS <= features_a.FREEZE_ZONE_BASE
+
+    # Moving the own king changes exactly one piece feature and nothing else:
+    # this is the property that makes every accumulator refresh unnecessary.
+    moved = list(record.board)
+    moved[4], moved[5] = 0, run7.W_KING
+    shifted = run7.Record(tuple(moved), *(getattr(record, f) for f in (
+        "stm", "castling", "ep", "rule50", "fullmove", "hands", "cooldowns",
+        "gates", "score", "move", "game_ply", "result")))
+    before, after = set(item.psq_white), set(features_a.extract(shifted).psq_white)
+    assert before - after == {white_king_index}
+    assert after - before == {features_a.piece_index(0, 5, run7.W_KING)}
+
+    params = spla.empty_params()
+    params["ft_bias"][:2] = 255
+    assert model_a.quantized_forward(params, item, record.stm) == (0, 0, 0)
+
+
 def main() -> None:
     run7.self_test()
     threat_semantics_tests()
+    flat_feature_tests()
     record = sample()
     assert run7.unpack(run7.pack(record)) == record
     item = features.extract(record)

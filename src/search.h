@@ -37,6 +37,7 @@
 #include "movepick.h"
 #include "nnue/network.h"
 #include "nnue/nnue_accumulator.h"
+#include "nnue/spell_a.h"
 #include "nnue/spell_v2.h"
 #include "numa.h"
 #include "position.h"
@@ -436,6 +437,14 @@ class Worker {
     // the first evaluation after a v2 net is loaded (~290 KB per thread)
     std::unique_ptr<Eval::NNUE::SpellV2::Caches> spellV2Refresh;
     bool                                         useSpellV2 = false;
+
+    // Same for the Spell-NNUE A net (~4,5 KB per thread: the flat feature set
+    // needs one Finny entry per perspective, not one per king square)
+    std::unique_ptr<Eval::NNUE::SpellA::Caches> spellARefresh;
+    bool                                        useSpellA = false;
+
+    // Both spell nets consume the DirtySpell delta of do_move
+    bool spell_dirty() const { return useSpellV2 || useSpellA; }
 
     // MovePickers claim slots RAII/LIFO from the bump arena — ply-keyed
     // slots would collide when a singular verification search re-enters

@@ -80,7 +80,9 @@ SRCS = attacks.cpp benchmark.cpp bitboard.cpp evaluate.cpp main.cpp notation.cpp
 	misc.cpp movegen.cpp movepick.cpp position.cpp \
 	search.cpp thread.cpp timeman.cpp tt.cpp uci.cpp ucioption.cpp tune.cpp syzygy/tbprobe.cpp \
 	nnue/nnue_accumulator.cpp nnue/nnue_misc.cpp nnue/network.cpp nnue/spell_v2.cpp \
+	nnue/spell_a.cpp \
 	nnue/features/half_ka_v2_hm.cpp nnue/features/full_threats.cpp nnue/features/spell_ka_v2.cpp \
+	nnue/features/spell_a_v2.cpp \
 	datagen.cpp spell_params.cpp spellnnue/spell_nnue.cpp \
 	engine.cpp score.cpp memory.cpp xboard.cpp
 
@@ -89,6 +91,7 @@ OTHER_SRCS = universal/entry_x86.cpp universal/entry_arm64.cpp universal/entry_r
 HEADERS = attacks.h benchmark.h bitboard.h evaluate.h misc.h movegen.h movepick.h history.h \
 		nnue/nnue_misc.h nnue/features/half_ka_v2_hm.h nnue/features/full_threats.h \
 		nnue/features/spell_ka_v2.h nnue/spell_v2.h \
+		nnue/features/spell_a_v2.h nnue/spell_a.h \
 		nnue/layers/affine_transform.h nnue/layers/affine_transform_sparse_input.h \
 		nnue/layers/clipped_relu.h nnue/layers/sqr_clipped_relu.h nnue/nnue_accumulator.h \
 		nnue/nnue_architecture.h nnue/nnue_common.h nnue/nnue_feature_transformer.h nnue/simd.h \

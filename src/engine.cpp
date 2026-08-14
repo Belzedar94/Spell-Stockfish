@@ -35,6 +35,7 @@
 #include "nnue/network.h"
 #include "nnue/nnue_common.h"
 #include "nnue/nnue_accumulator.h"
+#include "nnue/spell_a.h"
 #include "nnue/spell_v2.h"
 #include "notation.h"
 #include "numa.h"
@@ -177,6 +178,26 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
                       resolved = alt.string();
               }
 
+              // Spell-NNUE A (SPLA magic): the flat-feature variant net.
+              // Loading it displaces any other active spell net: one variant
+              // evaluation path at a time.
+              if (Eval::NNUE::SpellA::looks_like_a_net(resolved))
+              {
+                  const bool ok = Eval::NNUE::SpellA::load(resolved);
+                  if (ok)
+                  {
+                      SpellNNUE::unload();
+                      Eval::NNUE::SpellV2::unload();
+                  }
+                  std::string message =
+                    ok ? "Spell NNUE A loaded: " : "ERROR: spell NNUE A failed to load: ";
+                  message += evalPath;
+                  if (!ok)
+                      message += " (" + Eval::NNUE::SpellA::failed_reason() + ')';
+                  sync_cout << "info string " << message << sync_endl;
+                  return std::nullopt;
+              }
+
               // Spell-NNUE v2 (SPL2 magic): the modern-chassis variant net.
               // Loading it displaces any active legacy spell net — one
               // variant evaluation path at a time.
@@ -184,7 +205,10 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
               {
                   const bool ok = Eval::NNUE::SpellV2::load(resolved);
                   if (ok)
+                  {
                       SpellNNUE::unload();
+                      Eval::NNUE::SpellA::unload();
+                  }
                   std::string message =
                     ok ? "Spell NNUE v2 loaded: " : "ERROR: spell NNUE v2 failed to load: ";
                   message += evalPath;
@@ -201,7 +225,10 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
               {
                   const bool ok = SpellNNUE::load(resolved);
                   if (ok)
+                  {
                       Eval::NNUE::SpellV2::unload();
+                      Eval::NNUE::SpellA::unload();
+                  }
                   sync_cout << "info string "
                             << (ok ? "Spell NNUE loaded: " : "ERROR: spell NNUE failed to load: ")
                             << evalPath << sync_endl;
@@ -210,6 +237,7 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
 
               SpellNNUE::unload();
               Eval::NNUE::SpellV2::unload();
+              Eval::NNUE::SpellA::unload();
               load_network(path_from_utf8(resolved));
               return std::nullopt;
           }
@@ -217,6 +245,7 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
           // networks become the evaluation source again
           SpellNNUE::unload();
           Eval::NNUE::SpellV2::unload();
+          Eval::NNUE::SpellA::unload();
           load_network(path_from_utf8(evalPath));
           return std::nullopt;
       }));
@@ -387,11 +416,21 @@ void Engine::verify_network() const {
         std::exit(EXIT_FAILURE);
     }
 
+    if (Eval::NNUE::SpellA::load_failed())
+    {
+        sync_cout << "info string ERROR: the spell NNUE A could not be loaded: "
+                  << Eval::NNUE::SpellA::failed_path()
+                  << ". Fix the EvalFile option (or reset it to the default) before searching."
+                  << sync_endl;
+        std::exit(EXIT_FAILURE);
+    }
+
     // With a spell net active, EvalFile names the variant net; the embedded
     // stock networks (the fallback evaluation) verify against their default.
-    const auto file = SpellNNUE::loaded() || Eval::NNUE::SpellV2::loaded()
-                      ? path_from_utf8(std::string(EvalFileDefaultName))
-                      : path_from_utf8(std::string(options["EvalFile"]));
+    const auto file =
+      SpellNNUE::loaded() || Eval::NNUE::SpellV2::loaded() || Eval::NNUE::SpellA::loaded()
+        ? path_from_utf8(std::string(EvalFileDefaultName))
+        : path_from_utf8(std::string(options["EvalFile"]));
     network->verify(onVerifyNetwork, networkFile, file);
 
     auto statuses = network.get_status_and_errors();
@@ -458,6 +497,12 @@ void Engine::trace_eval() const {
         return;
     }
 
+    if (Eval::NNUE::SpellA::loaded())
+    {
+        trace_spell_a_eval();
+        return;
+    }
+
     StateListPtr trace_states(new std::deque<StateInfo>(1));
     Position     p;
     p.set(pos.fen(), options["UCI_Chess960"], &trace_states->back());
@@ -516,6 +561,40 @@ void Engine::dump_spell_v2_features() const {
     std::stringstream ss;
     Eval::NNUE::SpellV2::dump_features(p, ss);
     sync_cout << ss.str() << "featuresv2 done" << sync_endl;
+}
+
+void Engine::trace_spell_a_eval() const {
+    if (!Eval::NNUE::SpellA::loaded())
+    {
+        sync_cout << "info string no spell NNUE A loaded (set EvalFile first)" << sync_endl;
+        return;
+    }
+
+    StateListPtr trace_states(new std::deque<StateInfo>(1));
+    Position     p;
+    p.set(pos.fen(), options["UCI_Chess960"], &trace_states->back());
+
+    // Fresh stack and caches: a from-scratch evaluation, exact integers for
+    // the python parity harness (side to move perspective, internal units)
+    auto stack  = std::make_unique<Eval::NNUE::AccumulatorStack>();
+    auto caches = std::make_unique<Eval::NNUE::SpellA::Caches>();
+    stack->reset();
+
+    auto [psqt, positional] = Eval::NNUE::SpellA::raw_evaluate(p, *stack, *caches);
+    sync_cout << "spella psqt " << int(psqt) << " positional " << int(positional) << " total "
+              << int(psqt + positional) << " bucket " << Eval::NNUE::SpellA::spell_bucket(p)
+              << sync_endl;
+}
+
+void Engine::dump_spell_a_features() const {
+    // Pure feature indexing: works without any A net loaded
+    StateListPtr trace_states(new std::deque<StateInfo>(1));
+    Position     p;
+    p.set(pos.fen(), options["UCI_Chess960"], &trace_states->back());
+
+    std::stringstream ss;
+    Eval::NNUE::SpellA::dump_features(p, ss);
+    sync_cout << ss.str() << "featuresa done" << sync_endl;
 }
 
 // Debug-only helper behind the non-UCI `see <move>` command: prints the exact

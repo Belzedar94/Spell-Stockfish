@@ -135,3 +135,37 @@ write additional exploratory curves to `.scratch`.
 Generate it at the ignored local path with
 `python tools/spellnnue-pytorch/gen_random.py src/spell-v2-random.nnue --seed 42`;
 the manifest records its exact magic, hash, byte size, description and SHA-256.
+
+## Spell-NNUE A (flat architecture, SPLA)
+
+The `*_a` modules train the flat architecture of `docs/spell-nnue-a.md`:
+`SpellAv2` (1,182 inputs per perspective, no king buckets) with no threat
+block, on the same chassis, buckets and quantization scales as v2. They live
+beside the v2 modules rather than inside them so the v2 gate stays untouched.
+
+| File | Role |
+|---|---|
+| `features_a.py` | `SpellAv2` extraction; reuses `normalized_gates` and the output bucket of `features.py` |
+| `spla.py` | SPLA writer/reader and hash chain; reuses the LEB128 helpers of `spl2.py` |
+| `model_a.py` | `SpellNNUEA` plus the `quantized_forward` integer reference |
+| `train_a.py` | training driver (same loss, lambda schedule and optimizers as `train_overfit.py`) |
+| `serialize_a.py` | `.pt` checkpoint to an SPLA `.nnue` |
+| `gen_random_a.py` | random structurally valid SPLA net for engine gates |
+| `parity_a.py` | engine `featuresa`/`evala` against the Python reference |
+
+There is no factorization: without king buckets the freeze-gate rows have
+nothing to share.
+
+`parity_a.py` accepts `--data <run7>` or, when no corpus is at hand,
+`--random N`. Synthetic positions are legal armies with arbitrary spell state,
+so they cover gate, frozen and thermometer combinations that self-play reaches
+only rarely. Feature indexing is a pure function of the position, and the
+engine stays the judge of the FEN it parses back.
+
+Typical local gate:
+
+```
+python tools/spellnnue-pytorch/gen_random_a.py .scratch/spell-a-random.nnue --seed 42
+python tools/spellnnue-pytorch/parity_a.py --engine src/stockfish.exe \
+    --net .scratch/spell-a-random.nnue --random 1000 --seed 7
+```

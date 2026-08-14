@@ -199,10 +199,11 @@ void Search::Worker::ensure_network_replicated() {
 
 void Search::Worker::start_searching() {
 
-    // EvalFile changes are synchronized between searches. Cache the v2
+    // EvalFile changes are synchronized between searches. Cache the spell
     // dispatch once per worker/search instead of loading the global network
     // pointer on every move, null move and evaluation.
     useSpellV2 = Eval::NNUE::SpellV2::loaded();
+    useSpellA  = Eval::NNUE::SpellA::loaded();
     accumulatorStack.reset();
 
     // Non-main threads go directly to iterative_deepening()
@@ -284,6 +285,7 @@ void Search::Worker::start_searching() {
 
 Value Search::Worker::qsearch_for_datagen() {
     useSpellV2 = Eval::NNUE::SpellV2::loaded();
+    useSpellA  = Eval::NNUE::SpellA::loaded();
     accumulatorStack.reset();
     movesArena.reset();
     optimism[WHITE] = optimism[BLACK] = VALUE_ZERO;
@@ -691,7 +693,7 @@ void Search::Worker::do_move(
 
     auto [dirtyPiece, dirtyThreats, dirtySpell] = accumulatorStack.push();
     pos.do_move(move, st, givesCheck, dirtyPiece, dirtyThreats, &tt, &sharedHistory,
-                useSpellV2 ? &dirtySpell : nullptr);
+                spell_dirty() ? &dirtySpell : nullptr);
 
     if (ss != nullptr)
     {
@@ -705,10 +707,11 @@ void Search::Worker::do_move(
 
 void Search::Worker::do_null_move(Position& pos, StateInfo& st, Stack* const ss) {
     // Spell chess: a null move still ticks the spell clock (zones expire,
-    // cooldowns advance), so with a v2 net active the accumulator stack gets
-    // a piece-less entry carrying only the spell feature flips. Without one,
-    // the stack is untouched exactly like stock (no board features change).
-    if (useSpellV2)
+    // cooldowns advance), so with a spell net active the accumulator stack
+    // gets a piece-less entry carrying only the spell feature flips. Without
+    // one, the stack is untouched exactly like stock (no board features
+    // change).
+    if (spell_dirty())
     {
         auto [dirtyPiece, dirtyThreats, dirtySpell] = accumulatorStack.push();
         (void) dirtyPiece, (void) dirtyThreats;
@@ -730,7 +733,7 @@ void Search::Worker::undo_move(Position& pos, const Move move) {
 
 void Search::Worker::undo_null_move(Position& pos) {
     pos.undo_null_move();
-    if (useSpellV2)
+    if (spell_dirty())
         accumulatorStack.pop();
 }
 
@@ -2066,6 +2069,16 @@ Value Search::Worker::evaluate(const Position& pos) {
             spellV2Refresh = std::make_unique<Eval::NNUE::SpellV2::Caches>();
         return Eval::NNUE::SpellV2::evaluate(pos, accumulatorStack, *spellV2Refresh,
                                              optimism[pos.side_to_move()]);
+    }
+
+    // Spell-NNUE A (SPLA EvalFile): the same chassis reading the flat feature
+    // set, no king buckets and no threats.
+    if (useSpellA)
+    {
+        if (!spellARefresh)
+            spellARefresh = std::make_unique<Eval::NNUE::SpellA::Caches>();
+        return Eval::NNUE::SpellA::evaluate(pos, accumulatorStack, *spellARefresh,
+                                            optimism[pos.side_to_move()]);
     }
 
     // With a legacy spell net loaded (EvalFile), evaluation matches the
