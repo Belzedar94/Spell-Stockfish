@@ -1,0 +1,116 @@
+# Spell Chess tactical regression suite
+#
+# Positions taken from game analysis posted by Slayergon on 2026-08-13, where
+# the engine either missed a spell tactic outright or needed an unreasonable
+# amount of depth to see it. Board, spell hands, active zone and cooldowns were
+# read off the posted screenshots; every FEN below was then round-tripped
+# through "position fen" and is byte-identical to what the engine emits, and
+# each reconstruction was cross-checked against the evaluations and principal
+# variations visible in the screenshot before being accepted.
+#
+# Record format:
+#   <spell-FEN> bm <moves>; id "..."; c0 "<source>";
+# The runner splits a record at the first " bm " / " am " opcode instead of
+# counting FEN fields, so the holdings and the {...} spell-state block survive.
+# Opcodes are then split on ";", so keep semicolons out of the quoted strings.
+#
+# Moves are UCI. A gated move is "<spell>@<gate>,<basemove>". A "*" in the gate
+# slot accepts any gate, so "f@*,d8d7" means Qd7 carried by any freeze; that is
+# how a report naming the base move but not the gate square is encoded.
+#
+# Every number quoted below was measured on this build with the run5rl net, one
+# thread, 256MB hash and depth 20, which is what tests/run_tactics.sh does by
+# default. Scores are from the side to move. Thread count matters here: several
+# of these positions flip with more threads, so a score is only comparable
+# against another run at the same thread count.
+#
+# Where the engine's free search does not produce the move, the entry is only
+# kept if the same search restricted to that move (go searchmoves) comes back
+# clearly better than what the engine actually plays. That forced number is
+# quoted in each case, so no entry rests on the report alone.
+#
+# Baseline on origin/main df98fc28: 1/7 at depth 14, 3/7 at depth 20. ST.05 is
+# the only entry found at depth 14, ST.03 and ST.07 come in by depth 20, and
+# ST.01, ST.02, ST.04 and ST.06 are still missed there.
+
+# ST.01 - White's freeze zone on e5 has the black king frozen on d6, so the only
+# black pieces that can still move are the two rooks, the c8 bishop, the queen
+# and the queenside pawns. Qd7 plus a freeze covering the f4 bishop and the g5
+# knight is literally the only move that does not lose by force: at depth 22 the
+# three best moves are all Qd7 with a different gate, the fourth is already mate
+# in 3 against black, and the a7a5 that a single threaded depth-20 search prefers
+# at -2.60 turns out to be mate in 2. That gap is the whole point of the entry,
+# and it is why the free depth-20 score alone is not enough to judge it. Single
+# threaded the engine does converge, but only at depth 24. The gate is left open
+# because f4, f3, g3 and g4 all score within 50cp of each other.
+r1bq3r/ppp2Qpp/3k1n2/3pp1N1/3nPB2/8/PPP3PP/RN4KR[JJFFjjfff] {F@e5:3,J@-:0,f@-:0,j@-:0} b - - 0 20 bm f@*,d8d7; id "ST.01"; c0 "2026-08-13 Slayergon: qd7 I think is kinda of only move and freeze. Missed at depth 20 single threaded, found at depth 24.";
+
+# ST.02 - The jump makes white's own b2 pawn transparent, so the c1 bishop
+# slides to a3 and hits the f8 queen along a3-f8. Black's freeze zone on f5 has
+# the g5 knight and the e4 pawn frozen, which is part of why the quiet rook move
+# looks attractive first. Free search plays Rf1 at +1.37, restricted to the
+# bishop jump it returns +2.64.
+r1b2q1r/pppp1kpp/2n2n2/4p1N1/3PP3/8/PPP2KPP/RNBQ3R[JJFFFjjfff] {F@-:2,J@-:0,f@f5:3,j@-:0} w - - 0 20 bm j@b2,c1a3; id "ST.02"; c0 "2026-08-13 Slayergon: also here Ba3 jump b2 is very strong, it was suggesting rf1 prior. Still missed at depth 20 single threaded, found around depth 21 with more threads.";
+
+# ST.03 - Same motif on the other wing: the a1 rook reaches a7 through its own
+# transparent a2 pawn. Posted as the example of jump potions being strong when
+# the king is under pressure. Comes in between depth 14 and depth 20.
+r1b4r/ppppqkpp/2n2n2/4p1N1/3PP3/8/PPP2KPP/RNBQ3R[JJFFFjjfff] {F@-:2,J@-:0,f@g5:3,j@-:0} w - - 0 20 bm j@a2,a1a7; id "ST.03"; c0 "2026-08-13 Slayergon: the jump potions are very strong when you are defending the king. Engine prefers a quiet rook move through depth 14 and finds the jump by depth 20.";
+
+# ST.04 - Bc1-a3 through the transparent b2 pawn arrives with check on the
+# a3-f8 diagonal. Free search prefers Na3 at +0.89 and still does at depth 22;
+# restricted to the bishop jump the same search returns +2.56, and the position
+# the move leads to (ST.05) stands at +2.21 for white with black to move.
+r1b1qk1r/pppp2p1/2n2n1p/4p1N1/3PP3/1QP5/PP4PP/RNB3KR[JJFFFFjjffff] {F@-:0,J@-:0,f@-:0,j@-:0} w - - 0 20 bm j@b2,c1a3; id "ST.04"; c0 "2026-08-13 Slayergon: here it also misses Ba3. Still missed by free search at depth 22 on this build.";
+
+# ST.05 - The position ST.04 leads to, posted as after I play it it erupts.
+# Black answers the check with a jump of its own: the a8 rook takes on a3
+# through its own transparent a7 pawn. Found from depth 10 upwards, so this is
+# the one entry that passes at every depth the suite is normally run at, and it
+# is what would catch a regression in jump generation or ordering.
+r1b1qk1r/pppp2p1/2n2n1p/4p1N1/3PP3/BQP5/PP4PP/RN4KR[JFFFFjjffff] {F@-:0,J@b2:3,f@-:0,j@-:0} b - - 0 20 bm j@a7,a8a3; id "ST.05"; c0 "2026-08-13 Slayergon: after I play it it erupts. Rxa3 through the transparent a7 pawn, stable from depth 10.";
+
+# ST.06 - The largest miss in the set. White has just played Ng5 with a freeze
+# on g7, so the black king is frozen on f7 and in check and the f6 knight is
+# frozen with it. Because that knight cannot step aside, the only way to reach
+# the checking knight is to make f6 transparent and slide the queen d8-g5. Free
+# search at depth 20 plays f@g4,d8f8 at -0.97; restricted to the queen jump the
+# same search returns +4.01, a swing of five pawns. The move looks losing until
+# roughly depth 8, since Bxg5 appears to simply win the queen, and that is what
+# buries it.
+r1bq3r/pppp1kpp/2n2n2/4p1N1/3PP3/8/PPP2KPP/RNBQ3R[JJFFFjjffff] {F@g7:3,J@-:0,f@-:0,j@-:0} b - - 0 19 bm j@f6,d8g5; id "ST.06"; c0 "2026-08-13 Slayergon: freeze g7 and ng5 is losing but it took some time to see that q jump takes g5 wins. Still missed at depth 20 on this build.";
+
+# ST.07 - Derived rather than screenshotted: from the ST.01 position, black
+# plays the Bh3 plus freeze branch that Slayergon says loses on the spot. Qc7 is
+# mate in 2, because after Qxc7 the freeze on the f4 bishop has already expired
+# and Bxd6 reaches the king through the transparent e5 pawn. The gate square of
+# black's freeze is not recorded in the report; both readings that cover the f4
+# bishop (e4, taken from the engine's own second line in that screenshot, and
+# f3) give the same mate, so the entry does not depend on the choice. A queen
+# sacrifice answered by a king capture through a jump is exactly the shape the
+# search prunes: single threaded it plays a2a3 at depth 6 to 14 and only sees
+# the mate by depth 20.
+r2q3r/ppp2Qpp/3k1n2/3pp1N1/3nPB2/7b/PPP3PP/RN4KR[JJFFjjff] {F@-:2,J@-:0,f@e4:3,j@-:0} w - - 0 21 bm f7c7; id "ST.07"; c0 "2026-08-13 Slayergon: after bh3 freeze the bishop there is qc7 simply which wins on the spot. Missed through depth 14, mate found by depth 20.";
+
+# Examined and left out
+#
+# Two more screenshots from the same session are reconstructible and round-trip
+# cleanly, but carry no move to assert, so adding them would only have padded
+# the count:
+#
+#   r1bq3r/ppp2kpp/2n2n2/3pp1N1/3PP3/8/PPP3PP/RNBQ2KR[JJFFFjjffff]
+#     {F@g7:3,J@-:0,f@-:0,j@-:0} b - - 0 20
+#   posted as "what is rb8, it calculates a bit stupid lines in critical
+#   moments". It is a complaint about the second line, not a claim about the
+#   first: the engine wanders between f@f4,d8d7 and f@f4,d8e7 across depths 10
+#   to 20 inside a 40cp band, with no move standing out.
+#
+#   r1bq3r/ppp2kpp/2n2n2/3pp1NQ/3PP3/8/PPP2KPP/RNB4R[JJFFFjjfff]
+#     {F@-:2,J@-:0,f@-:2,j@-:0} b - - 0 20   (and the ...b6 sibling with
+#   1pn2n2 on the sixth rank, which the engine scores as mate in 4, matching
+#   the #-4 on the screenshot's evaluation bar)
+#   posted as the "after Qh5 its toast" pair. Black is simply lost and no best
+#   move was claimed for either.
+#
+# The screenshot posted by Opabinia on 2026-08-14 was also skipped: it
+# illustrates a proposed freeze pruning rule rather than an engine failure.
