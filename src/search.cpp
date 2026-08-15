@@ -75,9 +75,11 @@ constexpr u64 NODES_LIMIT_OUTPUT = 10'000'000;
 constexpr int SEARCHEDLIST_CAPACITY = 32;
 using SearchedList                  = ValueList<Move, SEARCHEDLIST_CAPACITY>;
 
-// Spell chess: how many refuted freeze casts a node remembers for the sibling
-// gates that follow them (sibling_gate_refuted). Nodes that search more casts
-// than this simply stop recording.
+// Spell chess: how many refuted moves a node remembers for the freeze gates
+// that follow them (gate_misses_refutation). Each witness class keeps a list
+// of its own, exactly as each prune shipped alone: plain moves that failed
+// low here, and freeze casts that failed low here. Nodes that search more of
+// either than this simply stop recording that class.
 constexpr int REFUTEDLIST_CAPACITY = 32;
 
 // (*Scalers):
@@ -155,57 +157,60 @@ void update_all_stats(const Position& pos,
                       Move            ttMove,
                       bool            PvNode);
 
-// Spell chess: two freeze gates on the same base move transpose after the
-// reply that refuted one of them, so the second one is refuted too.
+// Spell chess: a freeze gate that does not take the refuting reply away is
+// refuted too. One predicate, fed by two kinds of witness, each recorded in
+// a list of its own, both keyed by the base move of the cast being
+// considered.
 //
-// Take a base move M and two freeze casts of it, M + freeze(G1) and
-// M + freeze(G2), both generated at this node. Say M + freeze(G1) was searched
-// here and failed low, and R is the reply the child cut off on. If G2's zone
-// does not cover R's origin square either, then:
+// Witness 1, the plain base move (SpellRefutationPrune). A freeze zone lasts
+// a single ply, so its entire effect on the opponent is the set of replies it
+// takes away: a piece standing inside the zone cannot move, and the zone
+// expires with their answer. Suppose the plain base move M was already
+// searched at this node and failed low, and R is the reply the child cut off
+// on. Then for a gated copy M + freeze(G) whose zone does not cover R's
+// origin square, R is still available to them (the zone removes replies and
+// nothing else), and the position after M + freeze(G), R is the position
+// after M, R minus the freeze charge we just spent, a resource we can only
+// miss later. The gated copy fails low wherever its base move did. This
+// direction is a dominance HEURISTIC with a known hole: R comes from a search
+// that may have been reduced, and a reply that refutes M at reduced depth
+// need not refute M + freeze(G) at the depth the gated copy would get.
 //
-//   * R is available after M + freeze(G2). The board is the same in both lines
-//     (M was played in both); the only difference is which of their pieces the
-//     zone silences, and R's mover stands outside both zones. Whether R leaves
-//     their king in check is decided by OUR attackers, and a caster's own zone
-//     never freezes the caster's own pieces, so R's legality is unchanged.
+// Witness 2, a sibling cast (SpellSiblingGatePrune). Take two freeze casts of
+// the same base, M + freeze(G1) and M + freeze(G2), both generated here. Say
+// M + freeze(G1) was searched and failed low on reply R, and G2's zone does
+// not cover R's origin either. R is available after M + freeze(G2): the board
+// is the same in both lines, R's mover stands outside both zones, its
+// legality is decided by OUR attackers, and a caster's own zone never
+// freezes the caster's own pieces. And the position after M + freeze(G2), R
+// is the position after M + freeze(G1), R: a zone lives exactly one enemy
+// reply, their answer ticks our freeze cooldown past SPELL_ZONE_LIFETIME and
+// clears the gate square, and everything else the two casts touch is common
+// (same board, same charge spent, same cooldown), so the two lines transpose
+// byte for byte, Zobrist key included. The caster-side asymmetry (the base
+// move may not start inside the new 3x3 area, and G1 and G2 need not block
+// the same own pieces, which dominant_freeze_gates in spell_order.h must
+// compare) cannot matter here: that restriction is a generation-time
+// condition on the casting ply alone, and both casts were generated and
+// found legal with base move M. What remains is the usual late-move-prune
+// approximation: the bound comes from the depth and window the first line
+// gave the common position.
 //
-//   * The position after M + freeze(G2), R is the position after
-//     M + freeze(G1), R. A freeze zone lives exactly one enemy reply: their
-//     answer ticks our freeze cooldown past SPELL_ZONE_LIFETIME and clears the
-//     gate square with it. Everything else the two casts touch is common
-//     (same board, same freeze charge spent, same cooldown), so the two lines
-//     transpose byte for byte, Zobrist key included.
-//
-// So with P the common position after R, our value for M + freeze(G2) is at
-// most V(P), and V(P) <= alpha is exactly what the child proved when it cut
-// off on R. The second cast fails low wherever the first one did.
-//
-// The one asymmetry a freeze still has is on the CASTER: its base move may not
-// start inside the new 3x3 area, and G1 and G2 need not block the same own
-// pieces (dominant_freeze_gates in spell_order.h has to compare those sets).
-// It cannot matter here. That restriction is a generation-time condition on
-// the casting ply alone, and both casts were generated and found legal with
-// base move M, so both already satisfy it for the single move it can ever
-// apply to. Afterwards the zone lives only in frozen_squares(them), and it is
-// gone before we move again. spell_order.h compares the blocked-own sets
-// because it filters gates BEFORE they meet a base move, where a gate that
-// blocks more own pieces produces fewer gated moves; here the pairing has
-// already happened, so the exact relation needs no restriction.
-//
-// What remains is not a hole in the transposition but the usual one in every
-// late-move prune: the bound on P comes from the depth and window the
-// M + freeze(G1) line gave it, and the M + freeze(G2) line might have given it
-// more. That is why this is a knob: SpellSiblingGatePrune = 0 restores the
-// plain search bit for bit.
+// In both directions the witness stays in the move list and has already been
+// counted in moveCount, so this can never prune a node down to no moves.
+// Each knob at 0 stops recording its witness class; with both at 0 nothing
+// is recorded and the plain search is restored bit for bit.
 //
 // Only freeze gates are covered. A jump gate takes no reply away from the
-// opponent and is still transparent during their answer, so two jump siblings
-// do not transpose after R.
-bool sibling_gate_refuted(Move m, const u16* base, const u8* replyFrom, int n) {
+// opponent and is still transparent during their answer, so neither argument
+// carries over.
+bool gate_misses_refutation(Move m, const u16* base, const u8* replyFrom, int n) {
 
     const Bitboard zone = FreezeZoneBB[m.gate_sq()];
     const u16      key  = u16(m.base_move().raw());
 
+    // Scan every entry: the same base move can appear once for its plain
+    // refutation and once per refuted sibling cast, each with its own reply.
     for (int i = 0; i < n; ++i)
         if (base[i] == key && !(zone & Square(replyFrom[i])))
             return true;
@@ -1280,13 +1285,19 @@ moves_loop:  // When in check, search starts here
 
     int moveCount = 0;
 
-    // Spell chess: freeze casts searched here that failed low, each keyed by
-    // its base move and carrying the origin square of the reply the child cut
-    // off on. Read further down the list by the sibling gates of those same
-    // base moves.
-    u16 refutedBase[REFUTEDLIST_CAPACITY];
-    u8  refutedReplyFrom[REFUTEDLIST_CAPACITY];
-    int refutedCount = 0;
+    // Spell chess: moves searched here that failed low, each keyed by its
+    // base move and carrying the origin square of the reply the child cut
+    // off on. Read further down by the freeze gates of those same base moves
+    // (gate_misses_refutation). TWO lists, one per witness class, exactly as
+    // each prune shipped alone: plain moves fail low far more often than
+    // casts, so a shared list fills with them and starves the sibling
+    // evidence out of its slots.
+    u16 refutedPlainBase[REFUTEDLIST_CAPACITY];
+    u8  refutedPlainFrom[REFUTEDLIST_CAPACITY];
+    int refutedPlainCount = 0;
+    u16 refutedGateBase[REFUTEDLIST_CAPACITY];
+    u8  refutedGateFrom[REFUTEDLIST_CAPACITY];
+    int refutedGateCount = 0;
 
     // Step 13. Loop through all pseudo-legal moves until no moves remain
     // or a beta cutoff occurs.
@@ -1317,15 +1328,20 @@ moves_loop:  // When in check, search starts here
         if (PvNode)
             (ss + 1)->pv = nullptr;
 
-        // Spell chess: drop a freeze cast whose base move was already searched
-        // here under a sibling gate and refuted by a reply this zone does not
-        // take away either (sibling_gate_refuted). Never at the root, where
-        // searchmoves may legitimately force any legal cast. The sibling stays
-        // in the move list and has already been counted in moveCount, so this
-        // can never prune a node down to no moves.
-        if (SpellSiblingGatePrune && refutedCount && !rootNode && move.is_spell()
-            && move.spell_type() == SPELL_FREEZE
-            && sibling_gate_refuted(move, refutedBase, refutedReplyFrom, refutedCount))
+        // Spell chess: drop a freeze cast whose base move was already refuted
+        // here, either as the plain move or under a sibling gate, by a reply
+        // this zone does not take away either (gate_misses_refutation). Never
+        // at the root, where searchmoves may legitimately force any legal
+        // cast. The witness stays in the move list and has already been
+        // counted in moveCount, so this can never prune a node down to no
+        // moves.
+        if (!rootNode && move.is_spell() && move.spell_type() == SPELL_FREEZE
+            && ((SpellRefutationPrune && refutedPlainCount
+                 && gate_misses_refutation(move, refutedPlainBase,
+                                           refutedPlainFrom, refutedPlainCount))
+                || (SpellSiblingGatePrune && refutedGateCount
+                    && gate_misses_refutation(move, refutedGateBase,
+                                              refutedGateFrom, refutedGateCount))))
             continue;
 
         extension  = 0;
@@ -1519,7 +1535,7 @@ moves_loop:  // When in check, search starts here
         // pruning) leaves no stale move behind to be read as a refutation.
         // Only nodes two plies below can see this field, and they exist only
         // once the child has made a move of its own.
-        if (SpellSiblingGatePrune)
+        if (SpellRefutationPrune || SpellSiblingGatePrune)
             (ss + 1)->currentMove = Move::none();
 
         // Add extension to new depth
@@ -1662,22 +1678,36 @@ moves_loop:  // When in check, search starts here
         if (threads.stop.load(std::memory_order_relaxed))
             return VALUE_ZERO;
 
-        // Spell chess: a freeze cast that failed low leaves its refutation
-        // behind for the sibling gates of the same base move still to come.
-        // The reply is the last move the child made, which on a fail low is
-        // the one it cut off on. A castling reply is skipped: its rook stands
-        // away from the origin square, so a zone that misses the king can
-        // still freeze the rook and prevent the reply after all.
-        if (SpellSiblingGatePrune && move.is_spell() && move.spell_type() == SPELL_FREEZE
-            && value <= alpha && refutedCount < REFUTEDLIST_CAPACITY)
+        // Spell chess: a move that failed low leaves its refutation behind
+        // for the freeze gates of the same base still to come, each witness
+        // class in its own list. The reply is the last move the child made,
+        // which on a fail low is the one it cut off on. A castling reply is
+        // skipped: its rook stands away from the origin square, so a zone
+        // that misses the king can still freeze the rook and prevent the
+        // reply after all.
+        if (SpellRefutationPrune && !move.is_spell() && value <= alpha
+            && refutedPlainCount < REFUTEDLIST_CAPACITY)
         {
             const Move reply = (ss + 1)->currentMove;
 
             if (reply.is_ok() && reply.type_of() != CASTLING)
             {
-                refutedBase[refutedCount]      = u16(move.base_move().raw());
-                refutedReplyFrom[refutedCount] = u8(reply.from_sq());
-                ++refutedCount;
+                refutedPlainBase[refutedPlainCount] = u16(move.raw());
+                refutedPlainFrom[refutedPlainCount] = u8(reply.from_sq());
+                ++refutedPlainCount;
+            }
+        }
+        if (SpellSiblingGatePrune && move.is_spell()
+            && move.spell_type() == SPELL_FREEZE && value <= alpha
+            && refutedGateCount < REFUTEDLIST_CAPACITY)
+        {
+            const Move reply = (ss + 1)->currentMove;
+
+            if (reply.is_ok() && reply.type_of() != CASTLING)
+            {
+                refutedGateBase[refutedGateCount] = u16(move.base_move().raw());
+                refutedGateFrom[refutedGateCount] = u8(reply.from_sq());
+                ++refutedGateCount;
             }
         }
 

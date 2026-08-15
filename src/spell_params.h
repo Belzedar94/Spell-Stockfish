@@ -137,6 +137,17 @@ extern int SpellDominateCaptures;  // 0 (off)
 // given, as in any late-move prune. 0 restores the plain search bit for bit.
 extern int SpellSiblingGatePrune;  // 1 (on)
 
+// Refutation-gated freeze pruning: if the freeze does not prevent the
+// refutation reply, it cannot be good enough either. A freeze lasts a single
+// ply, so its whole effect is the set of replies it removes; a base move that
+// was already searched at this node and refuted stays refuted under a gate
+// whose zone does not cover the refuting reply's origin. Search policy with a
+// witness, not an exact relation (see search.cpp): 0 restores the plain
+// search bit for bit. Shares its evidence list with the sibling-gate prune
+// (gate_misses_refutation in search.cpp); either knob at 0 stops recording
+// its own witness class and only that one.
+extern int SpellRefutationPrune;  // 1 (on)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

@@ -60,6 +60,7 @@ int SpellRazorGuard           = 0;
 int SpellFreezeGateEffectOnly = 0;
 int SpellDominateCaptures     = 1;
 int SpellSiblingGatePrune     = 1;
+int SpellRefutationPrune      = 1;
 
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
@@ -87,5 +88,6 @@ TUNE(SetRange(0, 1), SpellRazorGuard);
 TUNE(SetRange(0, 1), SpellFreezeGateEffectOnly);
 TUNE(SetRange(0, 1), SpellDominateCaptures);
 TUNE(SetRange(0, 1), SpellSiblingGatePrune);
+TUNE(SetRange(0, 1), SpellRefutationPrune);
 
 }  // namespace Stockfish
