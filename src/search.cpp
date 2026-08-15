@@ -977,6 +977,38 @@ Value Search::Worker::search(
         ttWriter.penalize(1);
     }
 
+    // Step 5b. Spell-hand position superiority (off by default)
+    // Spells in hand are optionality, and casting always rides along with a
+    // regular move, so holding one more of a spell can only add gated moves
+    // for the side to move and leaves the opponent's options untouched. Every
+    // line playable with the smaller hand is still playable here, so a LOWER
+    // bound stored for the otherwise identical position with one spell fewer
+    // is a valid lower bound for this one. Probe those two dominated keys and
+    // accept them for a fail-high only: upper bounds cannot travel this way
+    // (the extra optionality can lift the value through a stored ceiling),
+    // and an exact entry is taken strictly as the bound it also is, never
+    // republished as an exact score. See spell_params.h for the full argument
+    // and for the stalemate case where the inequality can break.
+    if (SpellHandTTSuperiority && !PvNode && !excludedMove && depth >= SpellHandTTSupMinDepth
+        && pos.rule50_count() < 96)
+    {
+        for (SpellType sp : {SPELL_FREEZE, SPELL_JUMP})
+        {
+            if (pos.spells_in_hand(us, sp) <= 0)
+                continue;
+
+            auto [supHit, supData, supWriter] = tt.probe(pos.spell_hand_dominated_key(us, sp));
+
+            if (supHit && (supData.bound & BOUND_LOWER) && supData.depth >= depth
+                && is_valid(supData.value))
+            {
+                Value supValue = value_from_tt(supData.value, ss->ply, pos.rule50_count());
+                if (supValue >= beta && !is_decisive(supValue))
+                    return supValue;
+            }
+        }
+    }
+
     // Step 6. Tablebases probe
     if (!rootNode && !excludedMove && tbConfig.cardinality)
     {

@@ -201,6 +201,9 @@ class Position {
 
     // Accessing hash keys
     Key key() const;
+    // Key of the position that is identical to this one except that c holds
+    // one spell of type sp fewer in hand. Requires spells_in_hand(c, sp) > 0.
+    Key spell_hand_dominated_key(Color c, SpellType sp) const;
     Key prefetch_key(Move m) const;
     Key material_key() const;
     Key pawn_key() const;

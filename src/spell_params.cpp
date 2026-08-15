@@ -59,6 +59,8 @@ int SpellContHistSkip         = 0;
 int SpellRazorGuard           = 0;
 int SpellFreezeGateEffectOnly = 0;
 int SpellDominateCaptures     = 1;
+int SpellHandTTSuperiority    = 0;
+int SpellHandTTSupMinDepth    = 4;
 
 // SPSA exposure: every spell search-policy knob becomes a UCI option
 TUNE(SetRange(2, 32), MaxFreezeGates);
@@ -85,5 +87,7 @@ TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);
 TUNE(SetRange(0, 1), SpellFreezeGateEffectOnly);
 TUNE(SetRange(0, 1), SpellDominateCaptures);
+TUNE(SetRange(0, 1), SpellHandTTSuperiority);
+TUNE(SetRange(1, 16), SpellHandTTSupMinDepth);
 
 }  // namespace Stockfish

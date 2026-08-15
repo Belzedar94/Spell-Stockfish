@@ -675,6 +675,16 @@ Key Position::compute_material_key() const {
 }
 
 
+// Key of the position that agrees with this one on everything (board, side to
+// move, castling, en passant, rule50, both spell gates and both cooldowns) and
+// differs only in holding one spell of type sp fewer in c's hand.
+Key Position::spell_hand_dominated_key(Color c, SpellType sp) const {
+    const int hand = st->spellHand[c][sp];
+    assert(hand > 0);
+    return key() ^ Zobrist::spellHand[c][sp][hand] ^ Zobrist::spellHand[c][sp][hand - 1];
+}
+
+
 // Overload to initialize the position object with the given endgame code string
 // like "KBPKN". It's mainly a helper to get the material key out of an endgame code.
 std::optional<PositionSetError> Position::set(const string& code, Color c, StateInfo* si) {

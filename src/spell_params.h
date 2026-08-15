@@ -128,6 +128,44 @@ extern int SpellFreezeGateEffectOnly;  // 0 (off)
 // there exactly as it does for quiets.
 extern int SpellDominateCaptures;  // 0 (off)
 
+// Transposition-table position superiority for spells in hand, the
+// yaneuraou trick for pieces in hand transplanted to the spell reserve.
+//
+// A spell in hand is pure optionality for its owner. Casting always happens
+// together with a regular move, so a bigger hand can only ADD gated moves to
+// the side to move; it never removes one and it never touches the opponent's
+// options. Every strategy playable with the smaller hand is therefore still
+// playable with the bigger one, which makes the value of the superior
+// position at least the value of the inferior one, and makes a stored LOWER
+// bound of the inferior position a valid lower bound here.
+//
+// So the search probes a couple of dominated keys (this position with one
+// freeze fewer, and with one jump fewer, both for the side to move) and
+// accepts them for a fail-high only. Deliberately one-directional:
+//   - Upper bounds are never accepted: the extra optionality can push the
+//     true value straight through a stored ceiling.
+//   - Exact entries qualify only because an exact score is also a lower
+//     bound, and they are consumed as a bound, never republished as exact.
+//   - Only the hand of the SIDE TO MOVE is varied. A bigger hand for the
+//     opponent points the inequality the other way.
+//
+// The known objection to "extra spells are never bad" is that the static
+// evaluation prices the LAST spell specially, and that reserves matter when
+// the rival runs dry. That objection is about how the net prices a hand, not
+// about which lines exist: it applies to the leaf values of both positions
+// alike and never invents a line the superior side cannot copy. The one real
+// hole is stalemate, which is a draw here: a cast can also unblock a move (a
+// jump makes a slider transparent, a freeze can legalize a castling), so a
+// side with an empty hand and a total blockade draws where the same side
+// holding one spell would be forced to move. It takes a full blockade, and
+// it is the same class of unsoundness null-move pruning already accepts.
+//
+// SpellHandTTSuperiority switches the probe on; SpellHandTTSupMinDepth keeps
+// it away from the horizon, where two extra table lookups per node would be
+// pure cost.
+extern int SpellHandTTSuperiority;  // 0 (off)
+extern int SpellHandTTSupMinDepth;  // 4
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED
