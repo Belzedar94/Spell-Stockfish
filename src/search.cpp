@@ -1110,6 +1110,34 @@ Value Search::Worker::search(
 
     improving |= ss->staticEval >= beta;
 
+    // Step 9b. Internal iterative deepening (off by default)
+    // Search this very node at a reduced depth first, then read back what the
+    // transposition table learned, so the real search starts from a move that
+    // was verified instead of from raw history scores. Chess Stockfish traded
+    // this for the reduction of step 10 because the payoff shrinks as move
+    // ordering gets better; spell chess sits at the opposite end, with
+    // hundreds of gated casts per node and thin ordering information for
+    // them. Placed before step 10 on purpose: when IID does find a move the
+    // reduction below no longer applies.
+    if (SpellIID && !rootNode && !excludedMove && depth >= SpellIIDMinDepth
+        && (!ttData.move
+            || (SpellIID >= 2 && !ttData.move.is_spell()
+                && (pos.can_cast(us, SPELL_FREEZE) || pos.can_cast(us, SPELL_JUMP)))))
+    {
+        search<PvNode ? PV : NonPV>(pos, ss, alpha, beta, std::max(1, 3 * depth / 4 - 2), cutNode);
+
+        auto [iidHit, iidData, iidWriter] = tt.probe(posKey);
+
+        ttHit       = iidHit;
+        ss->ttHit   = iidHit;
+        ttWriter    = iidWriter;
+        ttData      = iidData;
+        ttData.move = iidHit ? iidData.move : Move::none();
+        ttData.value =
+          iidHit ? value_from_tt(iidData.value, ss->ply, pos.rule50_count()) : VALUE_NONE;
+        ttCapture = ttData.move && pos.capture_stage(ttData.move);
+    }
+
     // Step 10. Internal iterative reductions
     // At sufficient depth, reduce depth for PV/Cut nodes without a TTMove.
     // (*Scaler) Making IIR more aggressive scales poorly.

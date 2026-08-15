@@ -104,6 +104,22 @@ extern int SpellCaptureSeeMargin;  // 0
 // move is common and IIR compounds the ordering weakness.
 extern int SpellNoIIR;  // 0 (off)
 
+// Internal iterative deepening (suggested by ubdip). Classic IID searches the
+// node itself at reduced depth first and then re-reads the transposition
+// table, so the move ordering of the real search starts from a move that was
+// actually verified rather than from raw history scores. Chess Stockfish
+// dropped it because it pays less and less as move ordering improves; spell
+// chess sits at the opposite end, with hundreds of gated casts per node and
+// almost no ordering signal for them, so the nested deepening may earn its
+// cost back. Runs before the internal iterative reductions of step 10, so a
+// successful IID also cancels the reduction for that node.
+//   0 = off (behavior-preserving)
+//   1 = nodes with no TT move at all (classic condition)
+//   2 = also nodes whose TT move is a plain move while we can still cast,
+//       where the stored move says nothing about the gated part of the tree
+extern int SpellIID;          // 0 (off)
+extern int SpellIIDMinDepth;  // 8
+
 // Do not update continuation histories with spell moves: gated moves share
 // the (piece, to) key with their base move and pollute its stats.
 extern int SpellContHistSkip;  // 0 (off)
