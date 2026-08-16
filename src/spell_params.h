@@ -128,6 +128,15 @@ extern int SpellFreezeGateEffectOnly;  // 0 (off)
 // there exactly as it does for quiets.
 extern int SpellDominateCaptures;  // 0 (off)
 
+// Sibling-gate pruning: two freeze gates on the same base move transpose after
+// the reply that refuted one of them, because a zone lives exactly one enemy
+// reply and both lines spend the same charge. So once a freeze cast has been
+// searched here and refuted, a later gate on the same base whose zone also
+// misses the refuting reply is dropped. The transposition is exact (see
+// search.cpp); the residual approximation is the depth the common position was
+// given, as in any late-move prune. 0 restores the plain search bit for bit.
+extern int SpellSiblingGatePrune;  // 1 (on)
+
 }  // namespace Stockfish
 
 #endif  // #ifndef SPELL_PARAMS_H_INCLUDED

@@ -75,6 +75,11 @@ constexpr u64 NODES_LIMIT_OUTPUT = 10'000'000;
 constexpr int SEARCHEDLIST_CAPACITY = 32;
 using SearchedList                  = ValueList<Move, SEARCHEDLIST_CAPACITY>;
 
+// Spell chess: how many refuted freeze casts a node remembers for the sibling
+// gates that follow them (sibling_gate_refuted). Nodes that search more casts
+// than this simply stop recording.
+constexpr int REFUTEDLIST_CAPACITY = 32;
+
 // (*Scalers):
 // The values with Scaler asterisks have proven non-linear scaling.
 // They are optimized to time controls of 180 + 1.8 and longer,
@@ -149,6 +154,64 @@ void update_all_stats(const Position& pos,
                       Depth           depth,
                       Move            ttMove,
                       bool            PvNode);
+
+// Spell chess: two freeze gates on the same base move transpose after the
+// reply that refuted one of them, so the second one is refuted too.
+//
+// Take a base move M and two freeze casts of it, M + freeze(G1) and
+// M + freeze(G2), both generated at this node. Say M + freeze(G1) was searched
+// here and failed low, and R is the reply the child cut off on. If G2's zone
+// does not cover R's origin square either, then:
+//
+//   * R is available after M + freeze(G2). The board is the same in both lines
+//     (M was played in both); the only difference is which of their pieces the
+//     zone silences, and R's mover stands outside both zones. Whether R leaves
+//     their king in check is decided by OUR attackers, and a caster's own zone
+//     never freezes the caster's own pieces, so R's legality is unchanged.
+//
+//   * The position after M + freeze(G2), R is the position after
+//     M + freeze(G1), R. A freeze zone lives exactly one enemy reply: their
+//     answer ticks our freeze cooldown past SPELL_ZONE_LIFETIME and clears the
+//     gate square with it. Everything else the two casts touch is common
+//     (same board, same freeze charge spent, same cooldown), so the two lines
+//     transpose byte for byte, Zobrist key included.
+//
+// So with P the common position after R, our value for M + freeze(G2) is at
+// most V(P), and V(P) <= alpha is exactly what the child proved when it cut
+// off on R. The second cast fails low wherever the first one did.
+//
+// The one asymmetry a freeze still has is on the CASTER: its base move may not
+// start inside the new 3x3 area, and G1 and G2 need not block the same own
+// pieces (dominant_freeze_gates in spell_order.h has to compare those sets).
+// It cannot matter here. That restriction is a generation-time condition on
+// the casting ply alone, and both casts were generated and found legal with
+// base move M, so both already satisfy it for the single move it can ever
+// apply to. Afterwards the zone lives only in frozen_squares(them), and it is
+// gone before we move again. spell_order.h compares the blocked-own sets
+// because it filters gates BEFORE they meet a base move, where a gate that
+// blocks more own pieces produces fewer gated moves; here the pairing has
+// already happened, so the exact relation needs no restriction.
+//
+// What remains is not a hole in the transposition but the usual one in every
+// late-move prune: the bound on P comes from the depth and window the
+// M + freeze(G1) line gave it, and the M + freeze(G2) line might have given it
+// more. That is why this is a knob: SpellSiblingGatePrune = 0 restores the
+// plain search bit for bit.
+//
+// Only freeze gates are covered. A jump gate takes no reply away from the
+// opponent and is still transparent during their answer, so two jump siblings
+// do not transpose after R.
+bool sibling_gate_refuted(Move m, const u16* base, const u8* replyFrom, int n) {
+
+    const Bitboard zone = FreezeZoneBB[m.gate_sq()];
+    const u16      key  = u16(m.base_move().raw());
+
+    for (int i = 0; i < n; ++i)
+        if (base[i] == key && !(zone & Square(replyFrom[i])))
+            return true;
+
+    return false;
+}
 
 // Detect shuffling moves in order to limit search explosions
 // Added in #6447 as non-regression, and so its parameters should not be tuned
@@ -1217,6 +1280,14 @@ moves_loop:  // When in check, search starts here
 
     int moveCount = 0;
 
+    // Spell chess: freeze casts searched here that failed low, each keyed by
+    // its base move and carrying the origin square of the reply the child cut
+    // off on. Read further down the list by the sibling gates of those same
+    // base moves.
+    u16 refutedBase[REFUTEDLIST_CAPACITY];
+    u8  refutedReplyFrom[REFUTEDLIST_CAPACITY];
+    int refutedCount = 0;
+
     // Step 13. Loop through all pseudo-legal moves until no moves remain
     // or a beta cutoff occurs.
     while ((move = mp.next_move()) != Move::none())
@@ -1245,6 +1316,17 @@ moves_loop:  // When in check, search starts here
         }
         if (PvNode)
             (ss + 1)->pv = nullptr;
+
+        // Spell chess: drop a freeze cast whose base move was already searched
+        // here under a sibling gate and refuted by a reply this zone does not
+        // take away either (sibling_gate_refuted). Never at the root, where
+        // searchmoves may legitimately force any legal cast. The sibling stays
+        // in the move list and has already been counted in moveCount, so this
+        // can never prune a node down to no moves.
+        if (SpellSiblingGatePrune && refutedCount && !rootNode && move.is_spell()
+            && move.spell_type() == SPELL_FREEZE
+            && sibling_gate_refuted(move, refutedBase, refutedReplyFrom, refutedCount))
+            continue;
 
         extension  = 0;
         capture    = pos.capture_stage(move);
@@ -1432,6 +1514,14 @@ moves_loop:  // When in check, search starts here
         // Step 16. Make the move
         do_move(pos, move, st, givesCheck, ss);
 
+        // Spell chess: blank the child's slot so that a child returning
+        // without having searched anything (TT cutoff, null move, static
+        // pruning) leaves no stale move behind to be read as a refutation.
+        // Only nodes two plies below can see this field, and they exist only
+        // once the child has made a move of its own.
+        if (SpellSiblingGatePrune)
+            (ss + 1)->currentMove = Move::none();
+
         // Add extension to new depth
         newDepth += extension;
 
@@ -1571,6 +1661,25 @@ moves_loop:  // When in check, search starts here
         // best move, principal variation nor transposition table.
         if (threads.stop.load(std::memory_order_relaxed))
             return VALUE_ZERO;
+
+        // Spell chess: a freeze cast that failed low leaves its refutation
+        // behind for the sibling gates of the same base move still to come.
+        // The reply is the last move the child made, which on a fail low is
+        // the one it cut off on. A castling reply is skipped: its rook stands
+        // away from the origin square, so a zone that misses the king can
+        // still freeze the rook and prevent the reply after all.
+        if (SpellSiblingGatePrune && move.is_spell() && move.spell_type() == SPELL_FREEZE
+            && value <= alpha && refutedCount < REFUTEDLIST_CAPACITY)
+        {
+            const Move reply = (ss + 1)->currentMove;
+
+            if (reply.is_ok() && reply.type_of() != CASTLING)
+            {
+                refutedBase[refutedCount]      = u16(move.base_move().raw());
+                refutedReplyFrom[refutedCount] = u8(reply.from_sq());
+                ++refutedCount;
+            }
+        }
 
         if (rootNode)
         {
