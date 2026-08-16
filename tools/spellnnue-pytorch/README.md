@@ -276,3 +276,40 @@ loader number (44,261 at batch size 8192).
 The 1M record, 2 epoch A gate reproduces the Python curve exactly: same 978
 steps, initial loss 0.05040193, final loss 0.00591638, ratio 0.117x, with all
 40 logged points identical. Wall time drops from 157.9s to 20.9s.
+
+## Legacy spell-bin conversion
+
+`convert_run7_to_spellbin.py` rewrites a run7 corpus as spell-bin v1, the
+76-byte `PackedSfenValue` record of `docs/spell-bin-v1.md`, which is the only
+format the FSF era trainer in `../Spell-nnue-pytorch` reads.
+
+```powershell
+python tools\spellnnue-pytorch\convert_run7_to_spellbin.py <corpus>.run7 `
+    --out <corpus>.spell.bin --jobs 5 --block 50000 `
+    --val-out <corpus>-val.bin --val-records 1000000 `
+    --slice-out <slice>.bin --slice-records 100000 `
+    --spot-check 10000
+```
+
+The conversion is streaming: the output is preallocated and each worker writes
+its own disjoint record range, so nothing buffers the corpus. Every record is
+checked as it is encoded (piece padding, exactly one king per colour, metadata
+padding, result range, fullmove, and the 512 bit budget of the sfen block), and
+a block that hits a transient `MemoryError` beside another large job is split
+and retried instead of failing the run.
+
+Two decoders guard the output. `--spot-check N` compares N random records field
+by field, `run7.py` against `tools/psv_decode.py`, including the extended FEN
+both of them print. `--slice-out` writes a small prefix so that
+`python tools/psv_decode.py <slice>.bin --quiet` can validate a large sample on
+its own.
+
+The mapping lives in the module docstring. The two details that break a naive
+converter are that the potion block sits between the hand counts and the
+castling rights, and that a zone is stored as a centre square and not as a
+mask, expanded by the reader into the clipped 3x3 freeze neighbourhood or the
+single jump square. Score, move, gamePly and gameResult are copied verbatim
+because both formats already store them from the point of view of the side to
+move. One asymmetry is worth knowing before reading a tournament result: the
+legacy feature loop stops at hand slot 7, so Jump in hand never becomes a
+feature over there. The converter writes it anyway, as the format requires.
