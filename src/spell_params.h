@@ -117,6 +117,10 @@ extern int SpellNoIIR;  // 0 (off)
 //   1 = nodes with no TT move at all (classic condition)
 //   2 = also nodes whose TT move is a plain move while we can still cast,
 //       where the stored move says nothing about the gated part of the tree
+//   3 = PV nodes with no TT move only, and the nested search runs at half
+//       depth instead of three quarters. Modes 1 and 2 failed on cost, so
+//       the last variation pays an order of magnitude less and only where
+//       the move ordering actually decides the tree.
 extern int SpellIID;          // 0 (off)
 extern int SpellIIDMinDepth;  // 8
 

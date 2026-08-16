@@ -83,7 +83,7 @@ TUNE(SetRange(0, 1), SpellNoPenaltyPV);
 TUNE(SetRange(25, 400), SpellAspirationPct);
 TUNE(SetRange(0, 500), SpellCaptureSeeMargin);
 TUNE(SetRange(0, 1), SpellNoIIR);
-TUNE(SetRange(0, 2), SpellIID);
+TUNE(SetRange(0, 3), SpellIID);
 TUNE(SetRange(4, 20), SpellIIDMinDepth);
 TUNE(SetRange(0, 1), SpellContHistSkip);
 TUNE(SetRange(0, 1), SpellRazorGuard);

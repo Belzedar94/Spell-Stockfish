@@ -1120,11 +1120,18 @@ Value Search::Worker::search(
     // them. Placed before step 10 on purpose: when IID does find a move the
     // reduction below no longer applies.
     if (SpellIID && !rootNode && !excludedMove && depth >= SpellIIDMinDepth
+        && (SpellIID < 3 || PvNode)
         && (!ttData.move
-            || (SpellIID >= 2 && !ttData.move.is_spell()
+            || (SpellIID == 2 && !ttData.move.is_spell()
                 && (pos.can_cast(us, SPELL_FREEZE) || pos.can_cast(us, SPELL_JUMP)))))
     {
-        search<PvNode ? PV : NonPV>(pos, ss, alpha, beta, std::max(1, 3 * depth / 4 - 2), cutNode);
+        // Mode 3 confines the nested search to PV nodes and halves the depth
+        // instead of taking three quarters: modes 1 and 2 died in testing on
+        // cost, not on the ordering they bought, so the last variation spends
+        // an order of magnitude less and only where the ordering decides.
+        Depth iidDepth = SpellIID >= 3 ? std::max(1, depth / 2)
+                                       : std::max(1, 3 * depth / 4 - 2);
+        search<PvNode ? PV : NonPV>(pos, ss, alpha, beta, iidDepth, cutNode);
 
         auto [iidHit, iidData, iidWriter] = tt.probe(posKey);
 
