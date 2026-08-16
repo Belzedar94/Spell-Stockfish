@@ -89,10 +89,65 @@ def flat_feature_tests() -> None:
     assert model_a.quantized_forward(params, item, record.stm) == (0, 0, 0)
 
 
+def native_loader_tests() -> None:
+    """Round trips a handful of records through the native loader.
+
+    Skipped when the shared library has not been built.  The exhaustive check
+    is ``parity_native.py``; this one only guards the wiring so a broken build
+    or a stale ABI is caught by the fast structural suite.
+    """
+    import tempfile
+
+    import native_loader
+
+    if not native_loader.available():
+        print(f"native loader tests SKIPPED ({native_loader.load_error()})")
+        return
+
+    records = [sample()]
+    board = list(sample().board)
+    board[27] = run7.W_QUEEN
+    records.append(run7.Record(tuple(board), 1, 0, -1, 0, 1, (0, 0, 3, 1),
+                               (0, 0, 3, 2), (-1, -1, 20, 44), -150, 0, 0, -1))
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = os.path.join(directory, "native-test.run7")
+        with open(path, "wb") as file:
+            run7.write_header(file, len(records))
+            for record in records:
+                file.write(run7.pack(record))
+
+        for arch, extractor in ((native_loader.ARCH_A, features_a),
+                                (native_loader.ARCH_V2, features)):
+            stream = native_loader.NativeBatchStream(
+                path, arch=arch, records=len(records), batch_size=len(records),
+                workers=1, epochs=1, device="cpu")
+            seen = 0
+            for batch, release in stream.raw_batches():
+                size = batch.size
+                total = int(batch.num_spell)
+                spell = np.ctypeslib.as_array(batch.spell_indices, shape=(total,)).copy()
+                offsets = np.ctypeslib.as_array(batch.offsets, shape=(3, 2 * size)).copy()
+                source = np.ctypeslib.as_array(batch.source_index, shape=(size,)).copy()
+                release()
+                for i in range(size):
+                    item = extractor.extract(records[int(source[i])])
+                    for perspective, expected in enumerate((item.psq_white, item.psq_black)):
+                        bag = 2 * i + perspective
+                        start = int(offsets[0][bag])
+                        end = int(offsets[0][bag + 1]) if bag + 1 < 2 * size else total
+                        assert tuple(int(x) for x in spell[start:end]) == expected
+                    seen += 1
+            stream.close()
+            assert seen == len(records)
+    print("native loader tests PASS")
+
+
 def main() -> None:
     run7.self_test()
     threat_semantics_tests()
     flat_feature_tests()
+    native_loader_tests()
     record = sample()
     assert run7.unpack(run7.pack(record)) == record
     item = features.extract(record)

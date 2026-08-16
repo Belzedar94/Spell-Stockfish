@@ -169,3 +169,110 @@ python tools/spellnnue-pytorch/gen_random_a.py .scratch/spell-a-random.nnue --se
 python tools/spellnnue-pytorch/parity_a.py --engine src/stockfish.exe \
     --net .scratch/spell-a-random.nnue --random 1000 --seed 7
 ```
+
+## Native data loader
+
+The pure-Python extractors are the reference, not the production data path.
+Feeding an RTX 3080 from Python leaves the GPU idle most of the time: measured
+loader-only on this box, `features_a` sustains about 10.3K positions per second
+and `features` about 3.0K. `native/spell_data_loader.cpp` replaces that stage
+with a threaded C++ decoder and sparse batch builder.
+
+| File | Role |
+|---|---|
+| `native/spell_data_loader.cpp` | run7 decode, feature extraction, sparse batch assembly |
+| `native/build.sh` | build script for mingw, Linux and macOS |
+| `native_loader.py` | ctypes binding and the batch iterator the trainers consume |
+| `parity_native.py` | native against Python over real and synthetic positions |
+| `bench_loader.py` | throughput for either loader, loader-only or end to end |
+
+### Building
+
+The library exports a plain C ABI and never touches the CPython headers, so the
+interpreter that loads it does not have to match the compiler that built it.
+That matters on Windows, where the torch interpreter is an MSVC build and the
+available C++ toolchain is MSYS2 mingw. The same reasoning is why the reference
+nnue-pytorch loader is a ctypes DLL rather than a pybind11 module.
+
+```
+PATH=/c/msys64/mingw64/bin:$PATH bash tools/spellnnue-pytorch/native/build.sh
+```
+
+The result is `native/spell_data_loader.dll` (`.so` on Linux, `.dylib` on
+macOS), linked with static runtimes so it loads by absolute path with nothing
+but `KERNEL32` and `msvcrt` behind it. `SPELL_LOADER_ARCH=x86-64-v3` builds a
+binary that runs on every machine in the fleet instead of only on the build
+host; `SPELL_LOADER_PATH` points the binding at a library somewhere else.
+
+### Using it
+
+`train_a.py` and `train_overfit.py` take `--loader auto|native|python`. The
+default `auto` uses the native loader whenever it is importable and falls back
+to Python otherwise, so an unbuilt checkout still trains. `--loader native`
+turns a missing library into an error instead of a silent fallback.
+
+```
+python tools/spellnnue-pytorch/train_a.py --data <run7> --records 51000000 \
+    --epochs 4 --loader native --native-workers 8 --out .scratch/net.nnue
+```
+
+`--native-workers` sets the feature thread count (0 picks a default from the
+core count). Throughput saturates well before the core count because the
+consumer side becomes the limit, so there is no reason to hand it the whole
+machine while games are running.
+
+### Semantics
+
+Per position the native path is bit identical to `features_a.extract` and
+`features.extract`, including the output bucket, the eval target with its king
+capture mate label, and the v2 FullThreats and freeze factor bags. Batch
+composition matches too: batch *n* holds records `[n * batch_size, (n + 1) *
+batch_size)` minus the same king filter, in the same order, so a native run
+reproduces a Python run step for step.
+
+The one deliberate difference is shuffling. `--native-seed 0`, the default,
+keeps the sequential order the Python loaders use. A non-zero seed applies a
+keyed Feistel permutation of the record range, redrawn each epoch: every record
+is still visited exactly once per epoch, but the order and therefore the batch
+composition differ from the Python path. Random access over a large corpus wants
+the file in the page cache, so the first shuffled epoch on a cold cache pays for
+the seeks.
+
+### Gates
+
+`parity_native.py` is the contract. It compares every index of every bag
+against the Python extractors over a real run7 file plus synthetic positions,
+and fails on a single difference or on thin live jump and live freeze coverage.
+
+```
+python tools/spellnnue-pytorch/parity_native.py --data <run7> --arch a \
+    --count 100000 --random 25000
+python tools/spellnnue-pytorch/parity_native.py --data <run7> --arch v2 \
+    --count 100000 --random 25000
+```
+
+`test_tools.py` also round trips a couple of records through the loader and
+skips cleanly when the library is not built.
+
+### Measured throughput
+
+Positions per second on the 5950X with an RTX 3080, batch size 2048, with a
+12-thread games run competing for CPU. Loader-only builds batches and discards
+them; end to end adds the forward, backward and optimizer step.
+
+| Path | A loader-only | A end to end | v2 loader-only | v2 end to end |
+|---|---|---|---|---|
+| Python | 10,289 | 8,081 | 3,020 | 3,128 |
+| Native, 1 worker | 622,859 | | 304,739 | |
+| Native, 8 workers | 1,000,000 | 111,794 | 670,241 | 24,559 |
+| Native, 12 workers | 1,273,885 | | 825,764 | |
+
+Feature extraction is no longer the bottleneck for either architecture. What
+limits A end to end is the training step itself; batch size 8192 reaches
+155,727 positions per second. For v2 the limit is the sparse optimizer over an
+87,630 by 1024 embedding, which is why its end to end number sits far below its
+loader number (44,261 at batch size 8192).
+
+The 1M record, 2 epoch A gate reproduces the Python curve exactly: same 978
+steps, initial loss 0.05040193, final loss 0.00591638, ratio 0.117x, with all
+40 logged points identical. Wall time drops from 157.9s to 20.9s.

@@ -10,6 +10,7 @@ the overfit gate, then on the full corpus.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import mmap
 import os
@@ -53,6 +54,39 @@ def iter_batches(path: str, count: int, batch_size: int):
                     results.append(record.result)
                 if extracted:
                     yield model_a.SparseBatch.from_features(extracted, stms, scores, results)
+
+
+def make_batch_source(args, device):
+    """Returns ``(source, name)`` where ``source(epoch)`` yields sparse batches.
+
+    The native loader decodes run7 and extracts features on worker threads and
+    hands over tensors that are already on ``device``; the Python path is kept
+    as the fallback and as the reference the parity gate compares against.
+    Both produce the same batches from the same file: batch *n* holds records
+    ``[n * batch_size, (n + 1) * batch_size)`` minus the king filter.  A non
+    zero ``--native-seed`` opts into the native shuffle, which reorders records
+    within an epoch and therefore changes batch composition.
+    """
+
+    requested = args.loader
+    if requested != "python":
+        import native_loader
+
+        if native_loader.available():
+            def source(epoch):
+                seed = 0 if not args.native_seed else args.native_seed + epoch
+                return native_loader.NativeBatchStream(
+                    args.data, arch=native_loader.ARCH_A, records=args.records,
+                    batch_size=args.batch_size, workers=args.native_workers,
+                    epochs=1, seed=seed, device=device)
+
+            return source, "native"
+        if requested == "native":
+            raise RuntimeError(f"native loader unavailable: {native_loader.load_error()}")
+        print(f"native loader unavailable ({native_loader.load_error()}), "
+              f"falling back to python", flush=True)
+
+    return (lambda epoch: iter_batches(args.data, args.records, args.batch_size)), "python"
 
 
 def load_init_net(net, path: str) -> None:
@@ -110,6 +144,11 @@ def train(args) -> dict:
     sparse_optimizer = torch.optim.SparseAdam(sparse_parameters, lr=args.lr)
     dense_optimizer = torch.optim.AdamW(dense_parameters, lr=args.lr, weight_decay=0.0)
 
+    batch_source, loader_name = make_batch_source(args, device)
+    print(f"loader: {loader_name}"
+          + (f" ({args.native_workers or 'auto'} workers, "
+             f"seed {args.native_seed})" if loader_name == "native" else ""), flush=True)
+
     started = time.monotonic()
     step = 0
     seen = 0
@@ -118,42 +157,44 @@ def train(args) -> dict:
     last_window: deque[float] = deque(maxlen=args.loss_window)
 
     for epoch in range(args.epochs):
-        for cpu_batch in iter_batches(args.data, args.records, args.batch_size):
-            batch = cpu_batch.to(device)
-            sparse_optimizer.zero_grad(set_to_none=True)
-            dense_optimizer.zero_grad(set_to_none=True)
-            prediction_cp = net(batch, quantized_activations=True)
+        with contextlib.closing(batch_source(epoch)) as batches:
+            for cpu_batch in batches:
+                batch = cpu_batch.to(device)
+                sparse_optimizer.zero_grad(set_to_none=True)
+                dense_optimizer.zero_grad(set_to_none=True)
+                prediction_cp = net(batch, quantized_activations=True)
 
-            eval_target = torch.sigmoid(batch.target / args.in_scaling)
-            result_target = (batch.result + 1.0) * 0.5
-            progress = (step / max(1, args.epochs * ((args.records + args.batch_size - 1)
-                                                     // args.batch_size) - 1))
-            actual_lambda = args.start_lambda + (args.end_lambda - args.start_lambda) * progress
-            target = actual_lambda * eval_target + (1.0 - actual_lambda) * result_target
-            prediction = torch.sigmoid(prediction_cp / args.out_scaling)
-            loss = F.mse_loss(prediction, target)
-            loss.backward()
-            sparse_optimizer.step()
-            dense_optimizer.step()
-            net.clip_weights_()
+                eval_target = torch.sigmoid(batch.target / args.in_scaling)
+                result_target = (batch.result + 1.0) * 0.5
+                progress = (step / max(1, args.epochs * ((args.records + args.batch_size - 1)
+                                                         // args.batch_size) - 1))
+                actual_lambda = (args.start_lambda
+                                 + (args.end_lambda - args.start_lambda) * progress)
+                target = actual_lambda * eval_target + (1.0 - actual_lambda) * result_target
+                prediction = torch.sigmoid(prediction_cp / args.out_scaling)
+                loss = F.mse_loss(prediction, target)
+                loss.backward()
+                sparse_optimizer.step()
+                dense_optimizer.step()
+                net.clip_weights_()
 
-            value = float(loss.detach().cpu())
-            step += 1
-            seen += len(batch.stm)
-            if len(first_window) < args.loss_window:
-                first_window.append(value)
-            last_window.append(value)
-            if step == 1 or step % args.log_every == 0:
-                point = {
-                    "epoch": epoch + 1,
-                    "step": step,
-                    "positions": seen,
-                    "loss": value,
-                    "elapsed_s": time.monotonic() - started,
-                }
-                curve.append(point)
-                print(f"epoch={epoch + 1} step={step} positions={seen:,} "
-                      f"loss={value:.8f} elapsed={point['elapsed_s']:.1f}s", flush=True)
+                value = float(loss.detach().cpu())
+                step += 1
+                seen += len(batch.stm)
+                if len(first_window) < args.loss_window:
+                    first_window.append(value)
+                last_window.append(value)
+                if step == 1 or step % args.log_every == 0:
+                    point = {
+                        "epoch": epoch + 1,
+                        "step": step,
+                        "positions": seen,
+                        "loss": value,
+                        "elapsed_s": time.monotonic() - started,
+                    }
+                    curve.append(point)
+                    print(f"epoch={epoch + 1} step={step} positions={seen:,} "
+                          f"loss={value:.8f} elapsed={point['elapsed_s']:.1f}s", flush=True)
 
     initial_loss = sum(first_window) / len(first_window)
     final_loss = sum(last_window) / len(last_window)
@@ -167,6 +208,9 @@ def train(args) -> dict:
         "steps": step,
         "batch_size": args.batch_size,
         "device": str(device),
+        "loader": loader_name,
+        "native_workers": args.native_workers if loader_name == "native" else 0,
+        "native_seed": args.native_seed if loader_name == "native" else 0,
         "seed": args.seed,
         "lambda_start": args.start_lambda,
         "lambda_end": args.end_lambda,
@@ -217,6 +261,13 @@ def main() -> None:
     parser.add_argument("--in-scaling", type=float, default=340.0)
     parser.add_argument("--out-scaling", type=float, default=380.0)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--loader", choices=("auto", "native", "python"), default="auto",
+                        help="auto uses the native loader when it is built")
+    parser.add_argument("--native-workers", type=int, default=0,
+                        help="native feature threads (0 picks a default)")
+    parser.add_argument("--native-seed", type=int, default=0,
+                        help="non-zero shuffles records inside each epoch; "
+                             "0 keeps the sequential Python order")
     parser.add_argument("--seed", type=int, default=1)
     parser.add_argument("--log-every", type=int, default=25)
     parser.add_argument("--loss-window", type=int, default=25)

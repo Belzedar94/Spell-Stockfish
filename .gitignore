@@ -26,3 +26,9 @@ tests/js/cjs/
 tests/js/esm/
 build/
 *.pyd
+
+# Native training data loader build output
+tools/spellnnue-pytorch/native/*.dll
+tools/spellnnue-pytorch/native/*.so
+tools/spellnnue-pytorch/native/*.dylib
+tools/spellnnue-pytorch/.parity/
