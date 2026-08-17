@@ -162,10 +162,31 @@ def train(args) -> dict:
     sparse_parameters = [net.ft_weight, net.threat_weight,
                          net.freeze_factor_weight, net.psqt_weight,
                          net.threat_psqt_weight, net.freeze_factor_psqt_weight]
-    dense_parameters = [net.ft_bias, net.fc0_weight, net.fc0_bias,
-                        net.fc1_weight, net.fc1_bias, net.fc2_weight, net.fc2_bias]
-    sparse_optimizer = torch.optim.SparseAdam(sparse_parameters, lr=args.lr)
-    dense_optimizer = torch.optim.AdamW(dense_parameters, lr=args.lr, weight_decay=0.0)
+    # La capa de SALIDA entrena a LR/10, como el trainer legacy que sostuvo
+    # cinco generaciones de RL: fc2 es el parametro que fija la ESCALA del
+    # eval, y dejarlo al LR pleno es lo que permitio que la calibracion se
+    # fuera andando en la gen-2 (post-mortem 17-ago).
+    dense_parameters = [
+        {"params": [net.ft_bias, net.fc0_weight, net.fc0_bias,
+                    net.fc1_weight, net.fc1_bias], "lr": args.lr},
+        {"params": [net.fc2_weight, net.fc2_bias], "lr": args.lr * 0.1},
+    ]
+    # eps=1e-7 es una eleccion DELIBERADA del legacy ("increasing the eps
+    # leads to less saturated nets with a few dead neurons") que se habia
+    # perdido en la copia.
+    sparse_optimizer = torch.optim.SparseAdam(sparse_parameters, lr=args.lr,
+                                              eps=1e-7)
+    dense_optimizer = torch.optim.AdamW(dense_parameters, lr=args.lr,
+                                        weight_decay=0.0, eps=1e-7)
+    # Annealing REAL equivalente al legacy (auditoria 17-ago: el StepLR 0.987
+    # por epoca a 4 epocas enfriaba un 2.6%, un no-op). El legacy terminaba
+    # sus 10 epocas a ~0.89x del LR; aqui se reparte ese mismo destino entre
+    # las epocas que haya: gamma = 0.89**(1/max(1, epochs-1)).
+    gamma_epoca = 0.89 ** (1.0 / max(1, args.epochs - 1))
+    sparse_scheduler = torch.optim.lr_scheduler.StepLR(
+        sparse_optimizer, step_size=1, gamma=gamma_epoca)
+    dense_scheduler = torch.optim.lr_scheduler.StepLR(
+        dense_optimizer, step_size=1, gamma=gamma_epoca)
 
     batch_source, loader_name = make_batch_source(args, device)
     print(f"loader: {loader_name}", flush=True)
@@ -216,6 +237,29 @@ def train(args) -> dict:
                     curve.append(point)
                     print(f"epoch={epoch + 1} step={step} positions={seen:,} "
                           f"loss={value:.8f} elapsed={point['elapsed_s']:.1f}s", flush=True)
+            # El loader nativo TRUNCA en silencio bolsas desbordadas
+            # (spell>80, threats>128) donde el camino python lanza: entrenar
+            # sobre features truncadas es un sesgo que ningun gate posterior
+            # puede ver (auditoria 17-ago). Cero o no se entrena.  DENTRO del
+            # with: el stream cerrado ya no tiene contadores que leer (el
+            # use-after-close tumbo el primer run2e con access violation).
+            for contador in ("overflows", "decode_errors"):
+                valor = getattr(batches, contador, 0)
+                if valor:
+                    raise RuntimeError(
+                        f"loader nativo reporta {contador}={valor} en la "
+                        f"epoca {epoch + 1}: corpus con bolsas fuera de "
+                        f"cota, subir MAX_SPELL/MAX_THREAT antes de entrenar")
+        sparse_scheduler.step()
+        dense_scheduler.step()
+        print(f"epoch={epoch + 1} lr={dense_optimizer.param_groups[0]['lr']:.2e} "
+              f"overflows=0 decode_errors=0", flush=True)
+        # Checkpoint por EPOCA: el legacy guardaba todas y la receta del
+        # propietario elegia entre e5 y e13; exportar solo el ultimo step
+        # era apostarlo todo a que el iterado final es el mejor.
+        if args.checkpoint:
+            torch.save({"model": net.state_dict()},
+                       f"{args.checkpoint}.e{epoch + 1}")
 
     initial_loss = sum(first_window) / len(first_window)
     final_loss = sum(last_window) / len(last_window)
@@ -285,8 +329,16 @@ def main() -> None:
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--start-lambda", type=float, default=1.0)
     parser.add_argument("--end-lambda", type=float, default=1.0)
-    parser.add_argument("--in-scaling", type=float, default=340.0)
-    parser.add_argument("--out-scaling", type=float, default=380.0)
+    # DIRECCION DE LAS CONSTANTES, la leccion de la gen-2 (17-ago): la GRANDE
+    # divide la ETIQUETA y la PEQUENA divide la SALIDA de la red, como en el
+    # trainer legacy (dato/410, red/361). Asi el optimo emite 340/380=0.895x
+    # la etiqueta: CONTRACTIVO, y la recurrencia del RL converge. Con los
+    # operandos cruzados (dato/340, red/380) la red emitia 1.118x su etiqueta
+    # — medido con pendiente 1.1146-1.1174 — y cada generacion salia un 12%
+    # mas caliente que la anterior: divergencia geometrica que costo el gate
+    # de la gen-2 (-32 en VSTC por margenes de poda descalibrados).
+    parser.add_argument("--in-scaling", type=float, default=380.0)
+    parser.add_argument("--out-scaling", type=float, default=340.0)
     parser.add_argument("--device", default="cuda")
     parser.add_argument("--loader", choices=("auto", "native", "python"), default="auto",
                         help="auto uses the native loader when it is built")
