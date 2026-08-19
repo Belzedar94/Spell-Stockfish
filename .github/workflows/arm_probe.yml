@@ -1,0 +1,89 @@
+name: ARM probe
+
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    name: ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86-64-avx2
+            comp: gcc
+          - runner: macos-14
+            os: darwin
+            arch: apple-silicon
+            comp: clang
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Fetch the release network
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.0 --repo "$GITHUB_REPOSITORY" \
+            --pattern Spell_v2.nnue --dir src
+          test -s src/Spell_v2.nnue
+
+      - name: Build
+        working-directory: src
+        run: |
+          make -j3 build ARCH=${{ matrix.arch }} COMP=${{ matrix.comp }} \
+            EVALFILE=Spell_v2.nnue
+          ls -la stockfish
+
+      - name: Probe
+        working-directory: src
+        run: |
+          python3 - <<'PY' > cmds.txt
+          import re
+          src = open('benchmark.cpp').read()
+          block = src.split('const std::vector<std::string> Defaults = {',1)[1].split('};',1)[0]
+          fens = [m for m in re.findall(r'"([^"]*)"', block) if not m.startswith('setoption')]
+          assert len(fens) == 21, len(fens)
+          print('uci')
+          print('isready')
+          for i, f in enumerate(fens, 1):
+              print(f'position fen {f}')
+              print(f'echoprobe POS {i}')
+              print('featuresv2')
+              print('evalv2')
+              print('go perft 2')
+          print('quit')
+          PY
+          ./stockfish < cmds.txt > probe_raw.txt 2>&1 || true
+          # Strip anything machine-dependent (timings, nps) before comparing
+          grep -vE 'Nodes/second|Total time|nps |info string|^$' probe_raw.txt > probe.txt
+          wc -l probe.txt
+          head -40 probe.txt
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: probe-${{ matrix.os }}
+          path: src/probe.txt
+
+  compare:
+    needs: probe
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: probes
+      - name: Diff
+        run: |
+          ls -R probes
+          if diff -u probes/probe-linux/probe.txt probes/probe-darwin/probe.txt > d.txt; then
+            echo "IDENTICAL"
+          else
+            echo "DIVERGENT"
+            wc -l d.txt
+            head -200 d.txt
+          fi
