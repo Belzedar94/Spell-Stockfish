@@ -1,0 +1,75 @@
+name: Release binaries
+
+# One-off builder for the 2.0 release assets that need non-Windows runners.
+# The network comes from the draft release so every binary can prove, from a
+# directory containing only itself and the network, that bench matches the
+# published 7101277.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_BENCH: "7101277"
+
+jobs:
+  build:
+    name: ${{ matrix.os }} ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86-64-bmi2
+            comp: gcc
+          - runner: ubuntu-latest
+            os: linux
+            arch: x86-64-avx2
+            comp: gcc
+          - runner: macos-14
+            os: darwin
+            arch: apple-silicon
+            comp: clang
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Fetch the release network
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download v2.0 --repo "$GITHUB_REPOSITORY" \
+            --pattern Spell_v2.nnue --dir src
+          test -s src/Spell_v2.nnue
+
+      - name: Build
+        working-directory: src
+        run: |
+          suffix=$(echo "${{ matrix.arch }}" | tr -d ' ')
+          exe="spell-stockfish-2.0-${{ matrix.os }}-$suffix"
+          make -j3 build ARCH=${{ matrix.arch }} COMP=${{ matrix.comp }} \
+            EVALFILE=Spell_v2.nnue
+          mv stockfish "$exe" 2>/dev/null || mv stockfish.exe "$exe"
+          strip "$exe" || true
+          echo "EXE_NAME=$exe" >> "$GITHUB_ENV"
+
+      - name: Bench must match the release number
+        working-directory: src
+        run: |
+          rm -rf ../releasecheck
+          mkdir ../releasecheck
+          cp "$EXE_NAME" Spell_v2.nnue ../releasecheck/
+          cd ../releasecheck
+          ./"$EXE_NAME" bench 2>&1 | tee bench.log
+          grep -q "Nodes searched  : $RELEASE_BENCH" bench.log
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ${{ env.EXE_NAME }}
+          path: src/${{ env.EXE_NAME }}
