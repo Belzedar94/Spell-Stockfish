@@ -32,6 +32,7 @@
 
 #include "evaluate.h"
 #include "misc.h"
+#include "movegen.h"
 #include "nnue/network.h"
 #include "nnue/nnue_common.h"
 #include "nnue/nnue_accumulator.h"
@@ -505,6 +506,82 @@ void Engine::trace_spell_v2_eval() const {
     sync_cout << "spellv2 psqt " << int(psqt) << " positional " << int(positional) << " total "
               << int(psqt + positional) << " bucket " << Eval::NNUE::SpellV2::spell_bucket(p)
               << sync_endl;
+}
+
+// PROBE ONLY: walk the legal tree keeping one shared accumulator stack, and at
+// every node compare the incrementally updated evaluation against a
+// from-scratch one. Self-checking, so a single machine's output tells us
+// whether its incremental path is faithful.
+void Engine::walk_spell_v2(int depth, u64 maxNodes) const {
+    if (!Eval::NNUE::SpellV2::loaded())
+    {
+        sync_cout << "info string no spell NNUE v2 loaded (set EvalFile first)" << sync_endl;
+        return;
+    }
+
+    StateListPtr walk_states(new std::deque<StateInfo>(1));
+    Position     p;
+    p.set(pos.fen(), options["UCI_Chess960"], &walk_states->back());
+
+    auto stack       = std::make_unique<Eval::NNUE::AccumulatorStack>();
+    auto caches      = std::make_unique<Eval::NNUE::SpellV2::Caches>();
+    auto freshStack  = std::make_unique<Eval::NNUE::AccumulatorStack>();
+    auto freshCaches = std::make_unique<Eval::NNUE::SpellV2::Caches>();
+    stack->reset();
+
+    u64         nodes = 0, mismatches = 0, incSum = 0, freshSum = 0;
+    std::string path;
+    std::string firstBad;
+
+    std::deque<StateInfo> sts(depth + 2);
+
+    auto probe = [&](Position& q) {
+        auto [ip, ipos] = Eval::NNUE::SpellV2::raw_evaluate(q, *stack, *caches);
+
+        freshStack->reset();
+        freshCaches->gen = 0;
+        auto [fp, fpos]  = Eval::NNUE::SpellV2::raw_evaluate(q, *freshStack, *freshCaches);
+
+        nodes++;
+        incSum   = incSum * 1000003 + u64(u32(int(ip))) * 31 + u64(u32(int(ipos)));
+        freshSum = freshSum * 1000003 + u64(u32(int(fp))) * 31 + u64(u32(int(fpos)));
+
+        if (ip != fp || ipos != fpos)
+        {
+            mismatches++;
+            if (firstBad.empty())
+                firstBad = path + " inc " + std::to_string(int(ip)) + "/"
+                         + std::to_string(int(ipos)) + " fresh " + std::to_string(int(fp)) + "/"
+                         + std::to_string(int(fpos));
+        }
+    };
+
+    auto rec = [&](auto&& self, Position& q, int d) -> void {
+        probe(q);
+        if (d == 0 || nodes >= maxNodes)
+            return;
+
+        for (const auto& m : MoveList<LEGAL>(q))
+        {
+            auto [dp, dts, dsp] = stack->push();
+            const usize mark    = path.size();
+            path += ' ';
+            path += Notation::move(m, q.is_chess960());
+
+            q.do_move(m, sts[d], q.gives_check(m), dp, dts, nullptr, nullptr, &dsp);
+            self(self, q, d - 1);
+            q.undo_move(m);
+
+            stack->pop();
+            path.resize(mark);
+        }
+    };
+
+    rec(rec, p, depth);
+
+    sync_cout << "walkv2 depth " << depth << " nodes " << nodes << " mismatches " << mismatches
+              << " incsum " << incSum << " freshsum " << freshSum
+              << (firstBad.empty() ? std::string() : " first" + firstBad) << sync_endl;
 }
 
 void Engine::dump_spell_v2_features() const {

@@ -187,6 +187,13 @@ int UCIEngine::loop() {
             engine.trace_spell_eval();
         else if (token == "evalv2")
             engine.trace_spell_v2_eval();
+        else if (token == "walkv2")
+        {
+            int d = 2;
+            u64 n = 1000000;
+            is >> d >> n;
+            engine.walk_spell_v2(d, n);
+        }
         else if (token == "featuresv2")
             engine.dump_spell_v2_features();
         else if (token == "see")
