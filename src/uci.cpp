@@ -194,6 +194,8 @@ int UCIEngine::loop() {
             is >> d >> n;
             engine.walk_spell_v2(d, n);
         }
+        else if (token == "quietsdump")
+            engine.dump_spell_quiets();
         else if (token == "featuresv2")
             engine.dump_spell_v2_features();
         else if (token == "see")

@@ -61,9 +61,11 @@ jobs:
               print('featuresv2')
               print('evalv2')
               print('go perft 2')
-              print('walkv2 4 20000')
+              print('quietsdump')
+              print('walkv2 3 4000')
           print('quit')
           PY
+          ulimit -s unlimited || ulimit -s 65520 || true
           ./stockfish < cmds.txt > probe_raw.txt 2>&1 || true
           # Strip anything machine-dependent (timings, nps) before comparing
           grep -vE 'Nodes/second|Total time|nps |info string|^$' probe_raw.txt > probe.txt

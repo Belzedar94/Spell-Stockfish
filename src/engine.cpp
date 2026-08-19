@@ -584,6 +584,26 @@ void Engine::walk_spell_v2(int depth, u64 maxNodes) const {
               << (firstBad.empty() ? std::string() : " first" + firstBad) << sync_endl;
 }
 
+// PROBE ONLY: the lazily generated gated quiets, in generation order. This is
+// the only move list whose gate set goes through the top-K score cut.
+void Engine::dump_spell_quiets() const {
+    StateListPtr dump_states(new std::deque<StateInfo>(1));
+    Position     p;
+    p.set(pos.fen(), options["UCI_Chess960"], &dump_states->back());
+
+    std::stringstream ss;
+    for (bool prune : {false, true})
+    {
+        static Move list[MAX_MOVES];
+        Move*       end = generate<SPELL_QUIETS>(p, list, prune);
+        ss << "quiets prune " << int(prune) << " count " << int(end - list);
+        for (Move* m = list; m != end; ++m)
+            ss << ' ' << Notation::move(*m, p.is_chess960());
+        ss << '\n';
+    }
+    sync_cout << ss.str() << "quietsdump done" << sync_endl;
+}
+
 void Engine::dump_spell_v2_features() const {
     // Pure feature indexing: works without any v2 net loaded
     StateListPtr trace_states(new std::deque<StateInfo>(1));

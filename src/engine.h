@@ -103,6 +103,7 @@ class Engine {
     void trace_spell_v2_eval() const;
     void dump_spell_v2_features() const;
     void walk_spell_v2(int depth, u64 maxNodes) const;
+    void dump_spell_quiets() const;
     void trace_see(const std::string& moveStr) const;
 
     const OptionsMap& get_options() const;
