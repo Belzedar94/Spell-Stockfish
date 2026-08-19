@@ -200,6 +200,76 @@ Move* generate_moves(const Position& pos, Move* moveList, Bitboard target, Bitbo
 }
 
 
+// Sifts `value` into the heap rooted at `hole` over a[0, len): down to a leaf
+// along the better child, then back up. Helper of select_top_scores().
+template<typename T, typename Compare>
+void sift_gate_score(T* a, int hole, int len, T value, Compare comp) {
+
+    const int top   = hole;
+    int       child = hole;
+
+    while (child < (len - 1) / 2)
+    {
+        child = 2 * (child + 1);
+        if (comp(a[child], a[child - 1]))
+            --child;
+        a[hole] = a[child];
+        hole    = child;
+    }
+
+    // A heap of even size has one node with a single child
+    if ((len & 1) == 0 && child == (len - 2) / 2)
+    {
+        child   = 2 * (child + 1);
+        a[hole] = a[child - 1];
+        hole    = child - 1;
+    }
+
+    for (int parent = (hole - 1) / 2; hole > top && comp(a[parent], value); parent = (hole - 1) / 2)
+    {
+        a[hole] = a[parent];
+        hole    = parent;
+    }
+
+    a[hole] = value;
+}
+
+// Moves the k best of a[0, n) to a[0, k), sorted, with n > k >= 1.
+//
+// std::partial_sort would do this, but it leaves the relative order of
+// equivalent elements unspecified, and gate scores tie often. libstdc++ and
+// libc++ then hand the search different gate budgets for the same position,
+// so the x86-64 and the Apple silicon builds walked different trees and
+// benched different node counts. Selecting here keeps the cut a property of
+// the engine instead of one of the standard library it was built against.
+template<typename T, typename Compare>
+void select_top_scores(T* a, int k, int n, Compare comp) {
+
+    if (k >= 2)
+        for (int parent = (k - 2) / 2;; --parent)
+        {
+            sift_gate_score(a, parent, k, a[parent], comp);
+            if (parent == 0)
+                break;
+        }
+
+    for (int i = k; i < n; ++i)
+        if (comp(a[i], a[0]))
+        {
+            const T value = a[i];
+            a[i]          = a[0];
+            sift_gate_score(a, 0, k, value, comp);
+        }
+
+    for (int end = k - 1; end > 0; --end)
+    {
+        const T value = a[end];
+        a[end]        = a[0];
+        sift_gate_score(a, 0, end, value, comp);
+    }
+}
+
+
 // Appends the gated (spell-casting) versions of the base moves, plus the new
 // slider/pawn moves a candidate jump gate enables. See SPELL_SPEC.md §4.
 template<Color Us, GenType Type>
@@ -320,8 +390,8 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
                 limit = ringCount;
             if (n > limit)
             {
-                std::partial_sort(
-                  scored, scored + limit, scored + n,
+                select_top_scores(
+                  scored, limit, n,
                   [](const GateScore& a, const GateScore& b) { return a.score > b.score; });
                 n = limit;
             }
