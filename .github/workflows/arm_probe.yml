@@ -2,6 +2,10 @@ name: ARM probe
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - arm-bench-probe
+      - 'probe/**'
 
 jobs:
   probe:
