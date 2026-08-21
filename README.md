@@ -85,7 +85,11 @@ This distribution of Stockfish consists of the following files:
     Makefile that can be used to compile Stockfish on Unix-like systems.
 
   * a file with the .nnue extension, storing the neural network for the NNUE
-    evaluation. Binary distributions will have this file embedded.
+    evaluation. Binary distributions have the stock chess network embedded. The
+    Spell Chess network is not embedded: it travels next to the binary as
+    `Spell_v2.nnue` and is loaded at startup. Point the `EvalFile` UCI option
+    at another file to play with a different net; a binary that finds no spell
+    net falls back to the embedded chess one and plays spell-blind.
 
 ## Contributing
 

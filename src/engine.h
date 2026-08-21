@@ -121,6 +121,18 @@ class Engine {
    private:
     const std::filesystem::path binaryDirectory;
 
+    // True only while the constructor applies the compiled-in EvalFile
+    // default. Whatever the handler would report then lands before the
+    // `id name` line of the handshake, and it is not news anyway: a load that
+    // worked is announced by verify_network() before the first search, and one
+    // that failed refuses the search outright.
+    bool applyingDefaultNet = false;
+
+    // True while EvalFile holds the compiled-in default and that net is not
+    // next to the binary: the embedded stock networks are the evaluation, so
+    // that is what verify_network() has to check against.
+    bool stockNetFallback = false;
+
     NumaReplicationContext numaContext;
 
     Position     pos;

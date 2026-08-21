@@ -159,7 +159,8 @@ NetworkOutput Network::evaluate(const Position&    pos,
 
 void Network::verify(const std::function<void(std::string_view)>& f,
                      const EvalFile&                              evalFile,
-                     fs::path                                     evalfilePath) const {
+                     fs::path                                     evalfilePath,
+                     std::string_view                             netDisplayName) const {
     if (evalfilePath.empty())
         evalfilePath = evalFile.defaultName;
 
@@ -189,6 +190,15 @@ void Network::verify(const std::function<void(std::string_view)>& f,
 
     if (f)
     {
+        // The caller evaluates through another net and only keeps these
+        // networks as a fallback: report its file, not this one, and drop the
+        // geometry below since it describes the wrong network.
+        if (!netDisplayName.empty())
+        {
+            f("NNUE evaluation using " + std::string(netDisplayName));
+            return;
+        }
+
         usize size = sizeof(featureTransformer) + sizeof(NetworkArchitecture) * LayerStacks;
         f("NNUE evaluation using " + evalfilePath.string() + " ("
           + std::to_string(size / (1024 * 1024)) + "MiB, ("

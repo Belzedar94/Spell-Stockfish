@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """UCI protocol conformance test for Spell-Stockfish (S5 suite).
 
-Covers: handshake, option enumeration and setting, position/go/stop
-lifecycles, ucinewgame, isready storms, spell-FEN and spell-move round
-trips through `position ... moves`, bestmove under node/depth/movetime
-limits, graceful quit. Exit code 0 = pass.
+Covers: handshake, public option surface, option enumeration and setting,
+position/go/stop lifecycles, ucinewgame, isready storms, spell-FEN and
+spell-move round trips through `position ... moves`, bestmove under
+node/depth/movetime limits, graceful quit. Exit code 0 = pass.
 
 Usage: python protocol_test.py [path-to-engine] [path-to-net]
 """
 
+import re
 import subprocess
 import sys
 import time
@@ -20,6 +21,18 @@ STARTPOS = ("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR[JJFFFFFjjfffff] "
             "{F@-:0,J@-:0,f@-:0,j@-:0} w KQkq - 0 1")
 # f@e7 freezes e7: the reply must come from outside the zone
 SPELL_LINE = "f@e7,e2e4 b8c6 j@c6,d2d4 g8f6"
+
+# The one line a binary is allowed to print before answering `uci`.
+BANNER = "by the Stockfish developers"
+
+# Every knob in spell_params.cpp is named MaxSomething or SpellSomething. This
+# is the only option in that shape that belongs to the public surface, so the
+# check catches knobs added later too.
+PUBLIC_SPELL_OPTIONS = {"SpellNNUEProfile"}
+
+# The embedded stock chess network, `nn-<12 hex digits>.nnue`. EvalFile must
+# default to the spell net that ships next to the binary instead.
+STOCK_NET = re.compile(r"^nn-[0-9a-f]+\.nnue$")
 
 FAILS = []
 
@@ -65,6 +78,31 @@ def main():
     for req in ("Threads", "Hash", "MultiPV", "Move", "EvalFile", "UCI_Variant"):
         check(any(n.startswith(req) for n in names), f"opcion {req}")
     check(any("spell-chess" in l for l in opts), "UCI_Variant anuncia spell-chess")
+
+    # 1b. Public surface: no tuning knobs, nothing dumped before the handshake
+    leaked = sorted(n for n in names
+                    if (n.startswith("Spell") or n.startswith("Max"))
+                    and n not in PUBLIC_SPELL_OPTIONS)
+    check(not leaked, "sin knobs SPSA en la superficie UCI"
+                      + (f" (fugas: {', '.join(leaked)})" if leaked else ""))
+
+    # Registering an SPSA parameter echoes it as `name,value,min,max,step,rate`
+    # as it creates the option, and loading the default net used to report it,
+    # both at startup and so both ahead of the handshake the GUI is waiting for.
+    head = lines[:next((i for i, l in enumerate(lines)
+                        if l.startswith("id name")), len(lines))]
+    noise = [l for l in head if l.strip() and BANNER not in l]
+    check(not noise, "handshake limpio antes de id name"
+                     + (f" ({len(noise)} lineas, p.ej. {noise[0][:50]!r})" if noise else ""))
+
+    multipv = next((l for l in opts if l.startswith("option name MultiPV ")), "")
+    check(multipv.startswith("option name MultiPV type spin default 1 "),
+          f"MultiPV default 1 [{multipv}]")
+
+    evalfile = next((l for l in opts if l.startswith("option name EvalFile ")), "")
+    net = evalfile.split("default ", 1)[-1].strip() if "default " in evalfile else ""
+    check(bool(net) and not STOCK_NET.match(net),
+          f"EvalFile default no es la red de stockfish [{net}]")
 
     # 2. isready storm
     for _ in range(5):
