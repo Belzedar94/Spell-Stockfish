@@ -1,0 +1,15 @@
+# Freeze gate vs a live enemy freeze zone (SPELL_SPEC.md 3.1c).
+# The random walk reaches such positions but never pins the rule down at d1,
+# so these four are recorded by hand. Order matters: the annotations in
+# perft_spell.csv are written against it.
+#
+# 1. the chess.com case of 2026-08-21: after 1.freeze@e6 e4, black keeps 63
+#    freeze gates. f@e6 is gone, f@d6 (6 of the 9 squares shared) is not.
+rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR[JJFFFFjjfffff] {F@e6:3,J@-:0,f@-:0,j@-:0} b KQkq - 0 1
+# 2. the same thing with the colours swapped: black's zone is live on e3.
+r1bqkbnr/pppppppp/2n5/8/4P3/8/PPPP1PPP/RNBQKBNR[JJFFFFFjjffff] {F@-:0,J@-:0,f@e3:3,j@-:0} w KQkq - 1 2
+# 3. a zone clipped by the corner: a1 covers only 4 squares, and its centre is
+#    still refused.
+rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR[JJFFFFjjfffff] {F@a1:3,J@-:0,f@-:0,j@-:0} b KQkq - 0 1
+# 4. control: one ply later the zone has expired and all 64 gates are back.
+r1bqkbnr/pppppppp/2n5/8/4P3/5N2/PPPP1PPP/RNBQKB1R[JJFFFFjjfffff] {F@-:2,J@-:0,f@-:0,j@-:0} b KQkq - 2 2
