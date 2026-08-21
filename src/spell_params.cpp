@@ -62,7 +62,9 @@ int SpellDominateCaptures     = 1;
 int SpellSiblingGatePrune     = 1;
 int SpellRefutationPrune      = 1;
 
-// SPSA exposure: every spell search-policy knob becomes a UCI option
+// SPSA exposure: every spell search-policy knob becomes a UCI option, but
+// only in a tuning build (`make ... tune=yes`). A release binary compiles the
+// registrations away and keeps the defaults above — see tune.h.
 TUNE(SetRange(2, 32), MaxFreezeGates);
 TUNE(SetRange(1, 20), MaxJumpGates);
 TUNE(SetRange(1000, 30000), SpellGateKingBonus);

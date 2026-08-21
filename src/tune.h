@@ -180,13 +180,34 @@ constexpr void tune_check_args(Args&&...) {
 #define STRINGIFY(x) #x
 #define UNIQUE2(x, y) x##y
 #define UNIQUE(x, y) UNIQUE2(x, y)  // Two indirection levels to expand __LINE__
-#define TUNE(...) \
-    int UNIQUE(p, __LINE__) = []() -> int { \
-        tune_check_args(__VA_ARGS__); \
-        return Tune::add(STRINGIFY((__VA_ARGS__)), __VA_ARGS__); \
-    }();
 
-#define UPDATE_ON_LAST() bool UNIQUE(p, __LINE__) = Tune::update_on_last = true
+// Registering a parameter has two public side effects: it adds a UCI option,
+// and make_option() echoes the parameter in Fishtest SPSA format on stdout as
+// the option is created — which happens at startup, i.e. before the `id name`
+// line a GUI is waiting for. Both belong to a tuning binary and to nothing
+// else, so the registrations are compile-time gated: without TUNE_ENABLED the
+// TUNE() lines expand to nothing, Tune's list stays empty, no option is added
+// and nothing is printed. The tuned variables keep their defaults, so the
+// search behaves identically either way (same bench).
+//
+// Build a tuning binary with `make ... tune=yes`.
+#ifdef TUNE_ENABLED
+
+    #define TUNE(...) \
+        int UNIQUE(p, __LINE__) = []() -> int { \
+            tune_check_args(__VA_ARGS__); \
+            return Tune::add(STRINGIFY((__VA_ARGS__)), __VA_ARGS__); \
+        }();
+
+    #define UPDATE_ON_LAST() bool UNIQUE(p, __LINE__) = Tune::update_on_last = true
+
+#else
+
+    // Consume the trailing semicolon of the call site without emitting code.
+    #define TUNE(...) static_assert(true, "tuning disabled")
+    #define UPDATE_ON_LAST() static_assert(true, "tuning disabled")
+
+#endif
 
 }  // namespace Stockfish
 

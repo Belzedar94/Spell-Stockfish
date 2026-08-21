@@ -136,6 +136,7 @@ VPATH = syzygy:nnue:nnue/features:spellnnue
 # lasx = yes/no       --- -mlasx             --- Use Loongson Advanced SIMD eXtension
 # relaxedsimd = y/n   --- -mrelaxed-simd     --- Use WebAssembly relaxed SIMD extension
 # syzygy = yes/no     --- -DNO_TABLEBASES    --- Support Syzygy tablebase probing
+# tune = yes/no       --- -DTUNE_ENABLED     --- Expose the SPSA parameters as UCI options
 #
 # Note that Makefile is space sensitive, so when adding new architectures
 # or modifying existing flags, you have to make sure there are no extra spaces
@@ -178,6 +179,7 @@ endif
 optimize = yes
 debug = no
 sanitize = none
+tune = no
 bits = 64
 prefetch = no
 popcnt = no
@@ -915,6 +917,13 @@ ifeq ($(syzygy),no)
 	CXXFLAGS += -DNO_TABLEBASES
 endif
 
+### SPSA tuning knobs. Off by default: they are UCI options on the public
+### surface and their registration prints the Fishtest parameter block before
+### the handshake, so only a binary built for a tuning session gets them.
+ifeq ($(tune),yes)
+	CXXFLAGS += -DTUNE_ENABLED
+endif
+
 ### 3.8.1 Try to include git info for versioning and avoid recompiles if nothing changes
 BUILD_SHA_FILE       := .build_sha.txt
 BUILD_DATE_FILE      := .build_date.txt
@@ -1275,6 +1284,7 @@ config-sanity: net
 	echo "lsx: '$(lsx)'" && \
 	echo "lasx: '$(lasx)'" && \
 	echo "syzygy: '$(syzygy)'" && \
+	echo "tune: '$(tune)'" && \
 	echo "target_windows: '$(target_windows)'" && \
 	echo "" && \
 	echo "Flags:" && \
@@ -1550,10 +1560,12 @@ endif  # UNIVERSAL_BUILD
 # EVALFILE (the net OpenBench assigns to a test) cannot be embedded through
 # the stock incbin path — spell nets are legacy-format runtime nets loaded
 # via the UCI EvalFile option. Instead its path is baked in as the option's
-# DEFAULT, loaded at engine startup (SPELL_EVALFILE_DEFAULT in engine.cpp).
-# The worker passes the path with forward slashes, so it is a valid C string
-# literal. The embedded stock default (EvalFileDefaultName) is still fetched
-# by the `net` target either way.
+# DEFAULT, loaded at engine startup (SPELL_EVALFILE_DEFAULT in engine.cpp),
+# in place of the published net name the option otherwise defaults to
+# (SpellNetDefaultName in evaluate.h). The worker passes the path with
+# forward slashes, so it is a valid C string literal. The embedded stock
+# default (EvalFileDefaultName) is still fetched by the `net` target either
+# way.
 
 ifdef EVALFILE
     # Single-quoted so paths with spaces survive the shell's word splitting

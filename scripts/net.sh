@@ -12,7 +12,10 @@ if [ -z "$sha256sum" ]; then
 fi
 
 get_nnue_filename() {
-  grep "$1" evaluate.h | grep "#define" | sed "s/.*\(nn-[a-z0-9]\{12\}.nnue\).*/\1/"
+  # -w so a macro that merely contains the name as a substring cannot match:
+  # a second line here leaves the sed with nothing to replace, and the caller
+  # then deletes a perfectly valid net as "invalid".
+  grep -w "$1" evaluate.h | grep "#define" | sed "s/.*\(nn-[a-z0-9]\{12\}.nnue\).*/\1/"
 }
 
 validate_network() {

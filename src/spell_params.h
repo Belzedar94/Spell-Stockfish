@@ -25,7 +25,9 @@ namespace Stockfish {
 // legal move universe (perft, UCI validation) — only which gated moves the
 // search stages consider and how deep they are searched. All of them are
 // SPSA-tunable: plain globals registered with the TUNE machinery in
-// spell_params.cpp (initial values from the public reference baseline).
+// spell_params.cpp (initial values from the public reference baseline). The
+// registration only happens in a tuning build, so a release binary keeps the
+// defaults and exposes no knob on its UCI surface.
 
 // Cap on candidate gate squares per spell in the QUIETS generation stage
 // (unlimited while an enemy freeze zone is active, and in-check nodes use

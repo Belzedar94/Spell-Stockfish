@@ -70,9 +70,14 @@ class Network {
                            AccumulatorCaches& cache) const;
 
 
+    // `netDisplayName`, when set, replaces the description of the loaded file
+    // in the success message. Spell Chess needs it: a spell net evaluates
+    // through its own loader while these networks are only its fallback, so
+    // the file verified here is not the file the user should be told about.
     void verify(const std::function<void(std::string_view)>& f,
                 const EvalFile&                              evalFile,
-                std::filesystem::path                        evalfilePath) const;
+                std::filesystem::path                        evalfilePath,
+                std::string_view                             netDisplayName = {}) const;
 
     NnueEvalTrace trace_evaluate(const Position&    pos,
                                  AccumulatorStack&  accumulatorStack,

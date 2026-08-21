@@ -35,6 +35,17 @@ namespace Eval {
 // in the Makefile/Fishtest.
 #define EvalFileDefaultName "nn-0ee0657fb25e.nnue"
 
+// Spell Chess evaluates through a variant net, and that net is NOT embedded:
+// it is a runtime net loaded through the EvalFile option, published next to
+// the binary. This is the name the release gives it and the default value of
+// that option; `make ... EVALFILE=<net>` overrides it for a build that ships
+// a different net (SPELL_EVALFILE_DEFAULT, see engine.cpp). The stock name
+// above stays what incbin embeds and what the fallback evaluation verifies
+// against, so the two must not be conflated. The name deliberately does not
+// contain EvalFileDefaultName as a substring: scripts/net.sh greps this file
+// for that string to decide which net to fetch and validate.
+#define SpellNetDefaultName "Spell_v2.nnue"
+
 namespace NNUE {
 class Network;
 struct AccumulatorCaches;

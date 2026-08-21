@@ -48,6 +48,14 @@
 #include "uci.h"
 #include "ucioption.h"
 
+// Default value of the EvalFile option, i.e. the spell net the binary expects
+// to find next to itself. `make ... EVALFILE=<net>` bakes in another name:
+// OpenBench assigns a net per test and never injects the option at runtime for
+// a public engine, so the assigned net has to be the default.
+#ifndef SPELL_EVALFILE_DEFAULT
+    #define SPELL_EVALFILE_DEFAULT SpellNetDefaultName
+#endif
+
 namespace Stockfish {
 
 namespace NN = Eval::NNUE;
@@ -156,27 +164,36 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     options.add("SyzygyProbeLimit", Option(7, 0, 7));
 
     options.add(  //
-      "EvalFile", Option(EvalFileDefaultName, [this](const Option& o) {
+      "EvalFile", Option(SPELL_EVALFILE_DEFAULT, [this](const Option& o) {
           // Spell chess: EvalFile points at a reference variant net
           // (e.g. spell-chess_run5rl_e10_l07.nnue). A failed load keeps a
           // previously loaded net if one is active; otherwise the engine
           // refuses to search (see verify_network) rather than silently
           // playing with the spell-blind stock networks.
           const std::string evalPath = std::string(o);
-          if (evalPath != EvalFileDefaultName)
-          {
-              // GUIs often pass a bare filename while launching the engine
-              // from a different working directory: fall back to the binary
-              // directory, like the stock network loader does
-              std::string resolved = evalPath;
-              if (!std::filesystem::exists(path_from_utf8(resolved)) && !binaryDirectory.empty()
-                  && path_from_utf8(evalPath).is_relative())
-              {
-                  const auto alt = binaryDirectory / path_from_utf8(evalPath);
-                  if (std::filesystem::exists(alt))
-                      resolved = alt.string();
-              }
 
+          // GUIs often pass a bare filename while launching the engine
+          // from a different working directory: fall back to the binary
+          // directory, like the stock network loader does
+          std::string resolved = evalPath;
+          if (!std::filesystem::exists(path_from_utf8(resolved)) && !binaryDirectory.empty()
+              && path_from_utf8(evalPath).is_relative())
+          {
+              const auto alt = binaryDirectory / path_from_utf8(evalPath);
+              if (std::filesystem::exists(alt))
+                  resolved = alt.string();
+          }
+
+          // The default names the spell net the release publishes next to the
+          // binary, and a netless build ships without it. Selecting the
+          // default then has to land where booting without it lands, on the
+          // embedded stock networks, or a GUI's "reset to default" would
+          // terminate an engine that was running perfectly well.
+          stockNetFallback = evalPath == std::string(SPELL_EVALFILE_DEFAULT)
+                          && !std::filesystem::exists(path_from_utf8(resolved));
+
+          if (evalPath != EvalFileDefaultName && !stockNetFallback)
+          {
               // Spell-NNUE v2 (SPL2 magic): the modern-chassis variant net.
               // Loading it displaces any active legacy spell net — one
               // variant evaluation path at a time.
@@ -190,7 +207,8 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
                   message += evalPath;
                   if (!ok)
                       message += " (" + Eval::NNUE::SpellV2::failed_reason() + ')';
-                  sync_cout << "info string " << message << sync_endl;
+                  if (!applyingDefaultNet)
+                      sync_cout << "info string " << message << sync_endl;
                   return std::nullopt;
               }
 
@@ -202,9 +220,11 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
                   const bool ok = SpellNNUE::load(resolved);
                   if (ok)
                       Eval::NNUE::SpellV2::unload();
-                  sync_cout << "info string "
-                            << (ok ? "Spell NNUE loaded: " : "ERROR: spell NNUE failed to load: ")
-                            << evalPath << sync_endl;
+                  if (!applyingDefaultNet)
+                      sync_cout << "info string "
+                                << (ok ? "Spell NNUE loaded: "
+                                       : "ERROR: spell NNUE failed to load: ")
+                                << evalPath << sync_endl;
                   return std::nullopt;
               }
 
@@ -213,11 +233,11 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
               load_network(path_from_utf8(resolved));
               return std::nullopt;
           }
-          // Back to the default: drop any active spell net so the stock
-          // networks become the evaluation source again
+          // Back to the stock networks: drop any active spell net so they
+          // become the evaluation source again
           SpellNNUE::unload();
           Eval::NNUE::SpellV2::unload();
-          load_network(path_from_utf8(evalPath));
+          load_network(path_from_utf8(std::string(EvalFileDefaultName)));
           return std::nullopt;
       }));
 
@@ -226,16 +246,19 @@ Engine::Engine(std::optional<std::filesystem::path> path) :
     threads.ensure_network_replicated();
     resize_threads();
 
-#ifdef SPELL_EVALFILE_DEFAULT
-    // OpenBench public flow: the worker passes EVALFILE=<net> at BUILD time
-    // (it never injects the option at runtime for public engines, and it
-    // benches with a bare `bench`), so the assigned net must load by
-    // default. Routing through setoption fires the EvalFile handler above.
+    // The default is a runtime net, so it has to be loaded here: nothing else
+    // will do it for a GUI that never touches the option, or for an OpenBench
+    // worker (it benches a public engine with a bare `bench`). Routing through
+    // setoption fires the EvalFile handler above, which also owns the fallback
+    // to the embedded stock networks when the net is not there. The step is
+    // silent (see applyingDefaultNet): anything written here would land before
+    // the `id name` line of the handshake.
     {
         std::istringstream ss("name EvalFile value " SPELL_EVALFILE_DEFAULT);
+        applyingDefaultNet = true;
         options.setoption(ss);
+        applyingDefaultNet = false;
     }
-#endif
 }
 
 std::variant<u64, PositionSetError>
@@ -389,10 +412,23 @@ void Engine::verify_network() const {
 
     // With a spell net active, EvalFile names the variant net; the embedded
     // stock networks (the fallback evaluation) verify against their default.
-    const auto file = SpellNNUE::loaded() || Eval::NNUE::SpellV2::loaded()
+    // Same when EvalFile names a spell net this build does not ship, since
+    // the stock networks are then the evaluation.
+    const auto file = SpellNNUE::loaded() || Eval::NNUE::SpellV2::loaded() || stockNetFallback
                       ? path_from_utf8(std::string(EvalFileDefaultName))
                       : path_from_utf8(std::string(options["EvalFile"]));
-    network->verify(onVerifyNetwork, networkFile, file);
+
+    // Verifying against the stock default must not make the engine *report*
+    // it: the net that evaluates is the spell net its own loader holds, and
+    // naming the stock file there was how a spell binary ended up announcing
+    // a chess network it never used.
+    std::string active;
+    if (Eval::NNUE::SpellV2::loaded())
+        active = Eval::NNUE::SpellV2::file_name() + " (spell NNUE v2)";
+    else if (SpellNNUE::loaded())
+        active = SpellNNUE::file_name() + " (spell NNUE)";
+
+    network->verify(onVerifyNetwork, networkFile, file, active);
 
     auto statuses = network.get_status_and_errors();
     for (usize i = 0; i < statuses.size(); ++i)
