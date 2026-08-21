@@ -867,6 +867,10 @@ bool Position::legal(Move m) const {
 
         if (sp == SPELL_FREEZE)
         {
+            // The center of a live enemy freeze zone is not a legal gate
+            // (SPELL_SPEC.md 3.1c); overlapping zones stay legal.
+            if (gate == spell_gate(~us, SPELL_FREEZE))
+                return false;
             // The caster's own base move may not start in the newly frozen
             // 3x3 area.
             if (from == gate || (FreezeBlockBB[gate] & from))

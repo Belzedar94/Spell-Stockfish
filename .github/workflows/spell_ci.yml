@@ -32,7 +32,7 @@ jobs:
           echo "$out" | grep -q 'Nodes searched: 1814'
           out=$( (printf 'position startpos\ngo perft 2\n'; sleep 20) | ./stockfish | grep 'Nodes searched' )
           echo "$out"
-          echo "$out" | grep -q 'Nodes searched: 3061102'
+          echo "$out" | grep -q 'Nodes searched: 3041742'
 
       # run_suite --quick orchestrates: spell_tests.py (units + suite d1),
       # protocol_test.py, repro_test.py and compare_perft.py at depth 1.

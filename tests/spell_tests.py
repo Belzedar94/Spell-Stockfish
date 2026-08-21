@@ -128,6 +128,26 @@ class SpellRules(unittest.TestCase):
         fen = fen_after(moves=["f@e7,e2e4", "b8c6"])
         self.assertIn("{F@-:2,", fen)
 
+    def test_live_enemy_freeze_center_is_not_a_gate(self):
+        # chess.com, verified 2026-08-21 on the analysis board: after
+        # 1.freeze@e6 e4 the client refuses a black freeze on e6 itself, but
+        # accepts freeze@d6, which overlaps 6 of e6's 9 squares. Only the exact
+        # center is refused, so black keeps 63 of the 64 gates.
+        moves = moves_at(moves=["f@e6,e2e4"])
+        gates = {m[2:4] for m in moves if m.startswith("f@")}
+        self.assertEqual(len(gates), 63)
+        self.assertNotIn("e6", gates)
+        self.assertIn("d6", gates)
+        self.assertEqual([m for m in moves if m.startswith("f@e6,")], [])
+
+    def test_freeze_center_returns_once_the_zone_expires(self):
+        # Same gate one ply later: white's zone died at the end of black's
+        # reply, so all 64 gates are back.
+        moves = moves_at(moves=["f@e6,e2e4", "b8c6", "g1f3"])
+        gates = {m[2:4] for m in moves if m.startswith("f@")}
+        self.assertEqual(len(gates), 64)
+        self.assertIn("e6", gates)
+
     def test_cooldown_ticks_to_zero_and_recast(self):
         seq = ["f@e7,e2e4", "b8c6", "g1f3", "g8f6", "b1c3", "c6b8"]
         fen = fen_after(moves=seq)

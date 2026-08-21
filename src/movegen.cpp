@@ -295,6 +295,18 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
     const Bitboard eRing =
       eksq != SQ_NONE ? Attacks::attacks_bb<KING>(eksq) | square_bb(eksq) : Bitboard(0);
 
+    // Rule, not policy (see SPELL_SPEC.md 3.1c): the exact CENTER of a live
+    // enemy freeze zone is not a legal freeze gate. Overlap is fine - only the
+    // center square itself is refused, so after 1.f@e6,e2e4 Black still has 63
+    // freeze gates (f@d6 covers 6 of e6's 9 squares and is legal), not 64.
+    // Only the enemy zone can ever be live here: a caster's own zone expires
+    // during the opponent's reply, one ply before their cooldown reaches 0, so
+    // can_cast(Us, SPELL_FREEZE) already implies our own freeze zone is empty
+    // and the symmetric guard would be dead code.
+    const Square   enemyFreezeGate = pos.spell_gate(~Us, SPELL_FREEZE);
+    const Bitboard bannedFreezeGate =
+      enemyFreezeGate != SQ_NONE ? square_bb(enemyFreezeGate) : Bitboard(0);
+
     // Squares revealed to each own slider by lifting one blocker, scored once
     int  jumpScore[SQUARE_NB];
     bool jumpScoreReady = false;
@@ -304,7 +316,7 @@ Move* generate_spell_moves(const Position& pos, Move* baseStart, Move* baseEnd, 
         if (!pos.can_cast(Us, sp))
             continue;
 
-        Bitboard allGates = sp == SPELL_FREEZE ? ~Bitboard(0) : occupied;
+        Bitboard allGates = sp == SPELL_FREEZE ? ~bannedFreezeGate : occupied;
 
         // Drop freeze gates that another candidate already covers: same frozen
         // enemy set and same blocked own set, or a strictly better one of each.

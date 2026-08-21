@@ -30,13 +30,33 @@ D3_MAX_POSITIONS = 4
 
 class Engine:
     def __init__(self, path):
+        self.path = path
+        self.start()
+
+    def start(self):
         self.proc = subprocess.Popen(
-            [path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+            [self.path], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT, text=True, bufsize=1)
         self.send("uci")
         self.read_until("uciok")
         self.send(f"setoption name UCI_Variant value {VARIANT}")
         self.sync()
+
+    def restart(self):
+        """Respawn after the oracle died on us.
+
+        The frozen FSF reference builds with MAX_MOVES = 4096 and writes its
+        move list into a stack array, so any position whose spell universe is
+        larger takes the process down mid-`go perft`. Those positions exist
+        (both spells in hand, cooldowns at 0, a wide board), the walk reaches
+        them by chance, and there is nothing to record for them: the oracle
+        cannot answer. Restart and move on instead of losing the whole run.
+        """
+        try:
+            self.proc.kill()
+        except Exception:
+            pass
+        self.start()
 
     def send(self, line):
         self.proc.stdin.write(line + "\n")
@@ -119,18 +139,27 @@ def has_royals(fen):
 
 
 def measure(eng, fens, d3_budget, tag):
-    """Record perft counts for every FEN; depth 3 while the budget lasts."""
+    """Record perft counts for every FEN; depth 3 while the budget lasts.
+
+    A position the oracle cannot survive (see Engine.restart) is dropped from
+    the suite rather than recorded with a guessed count.
+    """
     rows = []
     for i, fen in enumerate(fens):
-        eng.send(f"position fen {fen}")
-        eng.sync()
-        _, d1 = perft_divide(eng, 1)
-        _, d2 = perft_divide(eng, 2)
-        row = [fen, str(d1), str(d2)]
-        if d2 and d2 < D3_MAX_D2 and d3_budget > 0:
-            _, d3 = perft_divide(eng, 3, timeout=1800)
-            row.append(str(d3))
-            d3_budget -= 1
+        try:
+            eng.send(f"position fen {fen}")
+            eng.sync()
+            _, d1 = perft_divide(eng, 1)
+            _, d2 = perft_divide(eng, 2)
+            row = [fen, str(d1), str(d2)]
+            if d2 and d2 < D3_MAX_D2 and d3_budget > 0:
+                _, d3 = perft_divide(eng, 3, timeout=1800)
+                row.append(str(d3))
+                d3_budget -= 1
+        except (RuntimeError, OSError) as exc:
+            eng.restart()
+            print(f"[{tag} {i+1}/{len(fens)}] SKIPPED ({exc}) {fen}", flush=True)
+            continue
         rows.append(row)
         print(f"[{tag} {i+1}/{len(fens)}] d1={d1} d2={d2} {fen}", flush=True)
     return rows
@@ -166,7 +195,15 @@ def main():
         moves = []
         eng.set_position(moves)
         for ply in range(MAX_PLIES):
-            root, total = perft_divide(eng, 1)
+            try:
+                root, total = perft_divide(eng, 1)
+            except (RuntimeError, OSError) as exc:
+                # The oracle died on this position; end the game here and keep
+                # whatever it already answered for (see Engine.restart).
+                eng.restart()
+                print(f"[game {game+1}/{NUM_GAMES}] oracle died at ply {ply} "
+                      f"({exc}); walk truncated", flush=True)
+                break
             if total == 0 or not root:
                 break
             gated = [m for m in root if m.startswith(("f@", "j@"))]
