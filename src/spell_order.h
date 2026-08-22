@@ -87,6 +87,17 @@ inline int freeze_gate_score(const Position& pos, Color us, Square g, Square eks
 // owns that case, together with its root exception.
 inline Bitboard dominant_freeze_gates(const Position& pos, Color us, Bitboard candidates) {
 
+    // The domination argument needs the dominator to be castable: the centre
+    // of a live enemy zone is not a legal gate (SPELL_SPEC.md 3.1c), and it is
+    // also the systematic winner of this tournament, since the enemy zone has
+    // already frozen our pieces around it and its own blocked set is therefore
+    // (near-)empty. Left in the candidate set it eliminates its legal
+    // neighbours while producing no move itself, and the reply side loses
+    // every counter-freeze covering that area.
+    const Square enemyGate = pos.spell_gate(~us, SPELL_FREEZE);
+    if (enemyGate != SQ_NONE)
+        candidates &= ~square_bb(enemyGate);
+
     const Bitboard them    = pos.pieces(~us);
     const Bitboard movable = pos.pieces(us) & ~pos.frozen_squares(us);
 

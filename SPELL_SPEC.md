@@ -186,6 +186,13 @@ A legal move is either:
   overrides) applies **only** to the QUIETS generation stage used by the search — never to the
   legal universe (perft, UCI move validation, evasions, urgent defense, or when an enemy freeze is
   active).
+- The freeze-gate domination filter (`dominant_freeze_gates`) excludes the banned §3.1c centre from
+  its candidate set: the domination argument assumes the dominator is searchable, and the enemy
+  centre is the systematic tournament winner precisely because the enemy zone already froze our
+  pieces around it (its own blocked set is near-empty). Left as a candidate it knocks every legal
+  neighbouring gate out of the root move list while producing no move itself, which is how the
+  reply side lost all counter-freezes covering the contested area (sscg13's mate -1 report,
+  2026-08-22).
 
 ### 4.1 Reference perft (startpos)
 
