@@ -86,6 +86,23 @@ class Engine:
                 return None if tail == "illegal" else int(tail)
         raise RuntimeError("no see output")
 
+    def search(self, depth):
+        # Fixed-depth search: (kind, value, bestmove) from the last info
+        # line, where kind is "cp" or "mate"
+        self.send(f"go depth {depth}")
+        kind = value = None
+        while True:
+            line = self.proc.stdout.readline()
+            if not line:
+                raise RuntimeError("engine died")
+            line = line.rstrip("\n")
+            if line.startswith("info") and " score " in line:
+                toks = line.split()
+                i = toks.index("score")
+                kind, value = toks[i + 1], int(toks[i + 2])
+            if line.startswith("bestmove"):
+                return kind, value, line.split()[1]
+
 
 def moves_at(fen=None, moves=()):
     e = Engine.get()
@@ -147,6 +164,22 @@ class SpellRules(unittest.TestCase):
         gates = {m[2:4] for m in moves if m.startswith("f@")}
         self.assertEqual(len(gates), 64)
         self.assertIn("e6", gates)
+
+    def test_root_search_keeps_counter_freezes_under_check(self):
+        # sscg13's line, 2026-08-21: after 1.e4 e5 2.Bc4 Qf6 3.f@e7,Bxf7 the
+        # root used to score mate -1 although eight legal gates still freeze
+        # the checking bishop. The banned center e7 blocks no movable black
+        # piece (the enemy zone already froze them all), so it dominates every
+        # neighbouring gate covering f7; left inside the domination candidate
+        # set it eliminated all of them from the root while being illegal
+        # itself, and only the king-losing base moves remained.
+        e = Engine.get()
+        e.position(moves=["e2e4", "e7e5", "f1c4", "d8f6", "f@e7,c4f7"])
+        kind, value, best = e.search(depth=8)
+        self.assertEqual(kind, "cp")
+        self.assertGreater(value, -900)
+        self.assertTrue(best.startswith("f@"))
+        self.assertIn(best[2:4], {"e6", "f6", "g6", "f7", "g7", "e8", "f8", "g8"})
 
     def test_cooldown_ticks_to_zero_and_recast(self):
         seq = ["f@e7,e2e4", "b8c6", "g1f3", "g8f6", "b1c3", "c6b8"]
