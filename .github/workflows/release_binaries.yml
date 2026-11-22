@@ -21,16 +21,23 @@ jobs:
     timeout-minutes: 60
     strategy:
       fail-fast: false
+      # Linux on a pinned image: see spell_binaries.yml (ubuntu-latest is
+      # 26.04, whose startup files declare x86-64-v3 and whose glibc 2.43
+      # symbol versions most distributions lack).
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             os: linux
             arch: x86-64-bmi2
             comp: gcc
-          - runner: ubuntu-latest
+            isa: --exact v3
+            ldflags: -Wl,-z,x86-64-v3
+          - runner: ubuntu-24.04
             os: linux
             arch: x86-64-avx2
             comp: gcc
+            isa: --exact v3
+            ldflags: -Wl,-z,x86-64-v3
           - runner: macos-14
             os: darwin
             arch: apple-silicon
@@ -50,6 +57,8 @@ jobs:
 
       - name: Build
         working-directory: src
+        env:
+          LDFLAGS: ${{ matrix.ldflags }}
         run: |
           suffix=$(echo "${{ matrix.arch }}" | tr -d ' ')
           exe="spell-stockfish-2.0-${{ matrix.os }}-$suffix"
@@ -68,6 +77,14 @@ jobs:
           cd ../releasecheck
           ./"$EXE_NAME" bench 2>&1 | tee bench.log
           grep -q "Nodes searched  : $RELEASE_BENCH" bench.log
+
+      - name: Check the declared x86-64 level
+        if: matrix.isa != ''
+        working-directory: src
+        run: |
+          python3 ../scripts/check_elf_isa_level.py "$EXE_NAME" ${{ matrix.isa }}
+          echo "Highest glibc symbol version required:" \
+            "$(objdump -T "$EXE_NAME" | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -n 1)"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

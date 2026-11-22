@@ -8,6 +8,13 @@ on:
   push:
     branches:
       - main
+  # A pull request that touches how the binaries are built builds them too
+  # (artifacts only; the rolling prerelease is published from main alone).
+  pull_request:
+    paths:
+      - src/Makefile
+      - scripts/check_elf_isa_level.py
+      - .github/workflows/spell_binaries.yml
   workflow_dispatch:
 
 permissions:
@@ -27,20 +34,35 @@ jobs:
         shell: ${{ matrix.shell }}
     strategy:
       fail-fast: false
+      # Linux builds run on a pinned image, not ubuntu-latest. Ubuntu 26.04
+      # (ubuntu-latest since November 2026) builds its glibc for x86-64-v3:
+      # its crt1.o/Scrt1.o carry ISA_1_NEEDED = v3, so every binary linked
+      # there declares v3 whatever -march says, and its glibc 2.43 symbol
+      # versions would shut out most distributions in use. 24.04 is the image
+      # spell_ci.yml gates on.
+      #
+      # isa: the x86-64 level each Linux binary must declare (glibc refuses
+      # to load a binary that needs more than the CPU has).
+      # ldflags: the AVX2 builds say so themselves (-z x86-64-v3), so an
+      # older CPU gets the loader's clear error instead of SIGILL mid-search.
       matrix:
         include:
-          - runner: ubuntu-latest
+          - runner: ubuntu-24.04
             os: linux
             arch: x86-64-bmi2
             comp: gcc
             shell: bash
             ext: ""
-          - runner: ubuntu-latest
+            isa: --exact v3
+            ldflags: -Wl,-z,x86-64-v3
+          - runner: ubuntu-24.04
             os: linux
             arch: x86-64-avx2
             comp: gcc
             shell: bash
             ext: ""
+            isa: --exact v3
+            ldflags: -Wl,-z,x86-64-v3
           - runner: windows-latest
             os: windows
             arch: x86-64-bmi2
@@ -110,10 +132,25 @@ jobs:
           echo "suffix=$suffix" >> "$GITHUB_OUTPUT"
           echo "EXE_NAME=spell-stockfish-${{ matrix.os }}-${{ matrix.arch }}${suffix}${{ matrix.ext }}" >> "$GITHUB_ENV"
 
+      # What the compiler targets when given no -march, and the level the
+      # system's startup files declare: the Makefile pins -march for every
+      # x86-64 ARCH, but crt1.o is linked into every binary, so a runner
+      # image built for a higher level shows up here first.
+      - name: Toolchain report
+        if: runner.os == 'Linux'
+        run: |
+          g++ --version | sed -n 1p
+          g++ -Q --help=target 2>/dev/null | grep -E '^[[:space:]]+-m(arch|tune)=' || true
+          echo | g++ -dM -E -x c++ - | grep -E '__(AVX2|SSE4_2|x86_64)__' | sort || true
+          ldd --version | sed -n 1p
+          crt=$(g++ -print-file-name=Scrt1.o)
+          echo "$crt: $(readelf -n "$crt" | grep -E 'ISA needed' | sed 's/^[[:space:]]*//' || echo 'no ISA needed note')"
+
       - name: Build
         working-directory: src
         env:
           SPELL_NET: ${{ steps.spellnet.outputs.net }}
+          LDFLAGS: ${{ matrix.ldflags }}
         run: |
           if [ -n "$SPELL_NET" ]; then
             make -j2 build ARCH=${{ matrix.arch }} COMP=${{ matrix.comp }} \
@@ -133,6 +170,18 @@ jobs:
           nodes=$(grep -oE 'Nodes searched[[:space:]]*:[[:space:]]*[0-9]+' bench.log | grep -oE '[0-9]+$' | tail -n 1)
           test -n "$nodes"
           test "$nodes" -gt 0
+
+      # glibc reads the x86-64 level a binary declares (.note.gnu.property,
+      # ISA_1_NEEDED) and refuses to start it on a CPU below that level. The
+      # runner has AVX2, so the bench above passes whatever was declared:
+      # check the declared level and the newest glibc symbol it requires.
+      - name: Check the declared x86-64 level
+        if: matrix.isa != ''
+        working-directory: src
+        run: |
+          python3 ../scripts/check_elf_isa_level.py "$EXE_NAME" ${{ matrix.isa }}
+          echo "Highest glibc symbol version required:" \
+            "$(objdump -T "$EXE_NAME" | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -n 1)"
 
       # The embedded network is most of the binary and does not compress, so
       # zipping it only costs upload time.
